@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Prompt in a Box",
-  "version": "0.1.0",
-  "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent loop on a schedule, act through Chrome APIs granted by the manifest.",
+  "version": "0.2.0",
+  "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
   "prompt_in_a_box": {
     "prompt": "prompt.md",
     "alarm_minutes": 30,
@@ -10,11 +10,11 @@
     "default_model": "claude-sonnet-4-6"
   },
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "dist/background.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "dist/popup.html",
     "default_title": "Prompt in a Box",
     "default_icon": { "32": "icon.png" }
   },
@@ -25,18 +25,26 @@
     "notifications",
     "tabs"
   ],
+  "optional_permissions": [
+    "bookmarks",
+    "history",
+    "downloads",
+    "clipboardWrite",
+    "scripting"
+  ],
   "host_permissions": [
-    "https://api.anthropic.com/*",
-    "https://generativelanguage.googleapis.com/*",
-    "https://api.openai.com/*"
+    "https://api.anthropic.com/*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
   ],
   "web_accessible_resources": [
     {
-      "resources": ["prompt.md"],
+      "resources": ["prompt.md", "icon.png"],
       "matches": ["<all_urls>"]
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com;"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.anthropic.com;"
   }
 }

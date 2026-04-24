@@ -1,6 +1,7 @@
-.DS_Store
 node_modules/
-*.zip
+dist/
+.DS_Store
 *.crx
+*.zip
 .env
 .env.local
