@@ -1,6 +1,6 @@
 # Prompt in a Box
 
-A Chrome extension whose entire behaviour lives in a markdown file.
+A Chrome extension whose entire behaviour lives in a markdown file. First-time users get an onboarding flow that picks a provider and validates an API key; returning users get a full options page with a per-run audit log (tool calls, token counts, cost per run, exportable JSON).
 
 A `.crx` is a zip plus a manifest. It already has a permission model, a sandbox, a distribution channel, and an event-driven runtime that wakes on schedule. Drop a prompt into that zip alongside a generic agent loop, and you have a distributable prompt-program. The manifest declares what the agent can reach. The prompt declares what the agent should do. Swap `prompt.md` for a different set of instructions and the same extension becomes a different tool.
 
@@ -13,9 +13,12 @@ manifest.json           – permissions, host_permissions, CSP, alarm defaults
 prompt.md               – the program. swap this for a different behaviour.
 icon.png                – placeholder icon
 src/
-  background.ts         – MV3 service worker: alarm wiring, popup RPC, loop driver
-  popup.ts / popup.html – settings + recent-runs log
-  config.ts             – BYO API key, per-user settings via chrome.storage
+  background.ts         – MV3 service worker: alarm wiring, popup/options RPC, loop driver, audit capture
+  popup.ts / popup.html – quick-glance runner: current provider, "Run now", link to options
+  options.ts /          – full settings + audit view (onboarding flow too)
+  options.html
+  config.ts             – provider selection, per-provider API keys, schedule
+  audit.ts              – per-run audit records: tool calls, tokens, cost, OPFS-backed
   storage/
     opfs.ts             – Origin Private File System wrapper
   tools/
@@ -45,17 +48,32 @@ Nothing in `background.ts`, `config.ts`, `popup.ts`, or the tool files is specif
 
 ## Install (unpacked)
 
-1. Get an Anthropic API key from [console.anthropic.com](https://console.anthropic.com/).
-2. Clone this repo and build it:
+1. Clone this repo and build it:
    ```sh
    npm install
    npm run build
    ```
-3. In Chrome, open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select this directory.
-4. Click the extension's toolbar icon. Paste your API key. Click **Save**, then **Run now**.
+2. In Chrome, open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select this directory.
+3. The options page opens automatically on first install. Pick a provider (Anthropic, Google, or OpenAI), paste the API key, click **Test** to verify, then **Save**.
+4. Click the toolbar icon → **Run now**.
 5. If you have more than 20 tabs open, you should see a desktop notification within a few seconds.
 
-The extension then runs on a 30-minute alarm (configurable in the popup).
+The extension then runs on a 30-minute alarm (configurable in the options page).
+
+### Provider selection
+
+Three providers are wired in: Anthropic (Claude), Google (Gemini), and OpenAI (GPT). API keys are stored *per provider* so switching back and forth doesn't lose any of them. Only the currently-selected provider's key is used at run time; only that provider's endpoint is contacted.
+
+### Audit log
+
+Every run captures:
+- Trigger (alarm, manual, onboarding test) and duration
+- Provider and model used
+- Full tool-call trace — name, arguments, result, timestamp, duration per call
+- Token usage (input / output) and estimated cost
+- Final text the model returned
+
+Detailed records live in OPFS (`audit/<runId>.json`); a summary index lives in `chrome.storage.local` for fast pagination. The options page shows a stats header (total runs, successful runs, total tool calls, total estimated spend) and expandable rows for each run. **Export JSON** downloads the complete log of every detailed record as a single file.
 
 ## Why MV3 service workers are a surprisingly good agent runtime
 

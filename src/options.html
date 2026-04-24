@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <title>Prompt in a Box — settings &amp; audit</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 0;
+        padding: 32px;
+        max-width: 900px;
+      }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      h2 { font-size: 16px; margin: 28px 0 10px; }
+      h3 { font-size: 14px; margin: 18px 0 6px; }
+      .subtitle { color: #888; margin: 0 0 24px; }
+      fieldset {
+        border: 1px solid rgba(128,128,128,0.3);
+        border-radius: 6px;
+        padding: 14px 18px 18px;
+        margin: 0 0 18px;
+      }
+      legend { padding: 0 8px; font-weight: 600; }
+      label { display: block; margin: 10px 0 4px; font-weight: 500; }
+      input, select {
+        width: 100%;
+        padding: 7px 9px;
+        font: inherit;
+        border: 1px solid rgba(128,128,128,0.4);
+        border-radius: 4px;
+        background: Canvas;
+        color: CanvasText;
+      }
+      input[type="number"] { width: 120px; }
+      .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+      .row > * { flex: 1; min-width: 180px; }
+      button {
+        padding: 8px 14px;
+        font: inherit;
+        font-weight: 500;
+        border: 1px solid rgba(128,128,128,0.4);
+        border-radius: 4px;
+        background: ButtonFace;
+        color: ButtonText;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #2f6fe1;
+        color: white;
+        border-color: #2f6fe1;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .hint { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+      .hint a { color: inherit; }
+      .provider-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin: 8px 0 14px;
+      }
+      .provider-card {
+        padding: 12px;
+        border: 2px solid rgba(128,128,128,0.3);
+        border-radius: 6px;
+        cursor: pointer;
+        text-align: center;
+      }
+      .provider-card.selected {
+        border-color: #2f6fe1;
+        background: rgba(47,111,225,0.08);
+      }
+      .provider-card .label { font-weight: 600; }
+      .provider-card .model { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+
+      /* Onboarding banner */
+      .onboarding {
+        background: rgba(47,111,225,0.08);
+        border: 1px solid #2f6fe1;
+        padding: 14px 18px;
+        border-radius: 6px;
+        margin-bottom: 24px;
+      }
+      .onboarding h2 { margin-top: 0; }
+      .onboarding .steps { margin: 0; padding-left: 20px; }
+
+      /* Audit table */
+      .audit-row {
+        border-top: 1px solid rgba(128,128,128,0.2);
+        padding: 10px 0;
+      }
+      .audit-row.header {
+        font-weight: 600;
+        font-size: 12px;
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        border-top: none;
+        padding-top: 0;
+      }
+      .audit-cols {
+        display: grid;
+        grid-template-columns: 130px 80px 1fr 70px 80px 90px 30px;
+        gap: 10px;
+        align-items: center;
+      }
+      .audit-cols .status-ok { color: #2a8a2a; }
+      .audit-cols .status-error { color: #c03030; }
+      .audit-cols .status-skipped { opacity: 0.6; }
+      .audit-row .expand {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        color: inherit;
+        padding: 0 4px;
+      }
+      .audit-detail {
+        margin-top: 12px;
+        padding: 14px;
+        background: rgba(128,128,128,0.06);
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .audit-detail h4 { margin: 0 0 6px; font-size: 13px; }
+      .audit-detail pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 12px/1.4 ui-monospace, monospace;
+        background: rgba(128,128,128,0.08);
+        padding: 8px 10px;
+        border-radius: 4px;
+        margin: 4px 0;
+        max-height: 300px;
+        overflow: auto;
+      }
+      .tool-call {
+        border-left: 3px solid #2f6fe1;
+        padding: 6px 10px;
+        margin: 8px 0;
+        background: rgba(47,111,225,0.04);
+      }
+      .tool-call .tool-name { font-weight: 600; font-family: ui-monospace, monospace; }
+      .tool-call .tool-meta { font-size: 11px; opacity: 0.6; margin-top: 2px; }
+
+      .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 16px;
+        background: #2a8a2a;
+        color: white;
+        border-radius: 4px;
+        font-size: 13px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+      .toast.show { opacity: 1; }
+      .toast.error { background: #c03030; }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin: 12px 0 20px;
+      }
+      .stat {
+        padding: 12px;
+        background: rgba(128,128,128,0.06);
+        border-radius: 6px;
+        text-align: center;
+      }
+      .stat .num { font-size: 20px; font-weight: 600; }
+      .stat .label { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+    </style>
+  </head>
+  <body>
+    <h1>Prompt in a Box</h1>
+    <p class="subtitle">Your prompt is the program. This page configures the runtime and audits every action the agent takes.</p>
+
+    <div id="onboarding" class="onboarding" hidden>
+      <h2>First-time setup</h2>
+      <ol class="steps">
+        <li>Pick a model provider below.</li>
+        <li>Paste its API key. Keys are stored only in this browser, and sent only to the provider's endpoint.</li>
+        <li>Click <strong>Test</strong> to prove the key works, then <strong>Save &amp; finish</strong>.</li>
+      </ol>
+    </div>
+
+    <fieldset>
+      <legend>Provider</legend>
+      <div class="provider-grid" id="providerGrid"></div>
+      <div id="providerDetails">
+        <div class="row">
+          <div>
+            <label for="apiKey">API key</label>
+            <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
+            <div class="hint" id="apiKeyHint"></div>
+          </div>
+          <div>
+            <label for="model">Model</label>
+            <input id="model" placeholder="" />
+            <div class="hint">Any model ID the SDK accepts. Default is tracked in <code>config.ts</code>.</div>
+          </div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Schedule</legend>
+      <label for="alarmMinutes">Run the prompt every</label>
+      <div class="row">
+        <div>
+          <input id="alarmMinutes" type="number" min="1" max="1440" />
+        </div>
+        <div style="flex: 2;"><div class="hint" style="margin-top: 11px;">Minutes between automatic runs. The service worker dies between invocations; this is the only thing that wakes it.</div></div>
+      </div>
+    </fieldset>
+
+    <div class="row" style="margin-bottom: 24px;">
+      <button id="test">Test</button>
+      <button id="save" class="primary">Save</button>
+      <button id="runNow">Run now</button>
+    </div>
+
+    <h2>Audit</h2>
+    <div class="stats" id="stats">
+      <div class="stat"><div class="num" id="stat-runs">0</div><div class="label">Total runs</div></div>
+      <div class="stat"><div class="num" id="stat-ok">0</div><div class="label">Successful</div></div>
+      <div class="stat"><div class="num" id="stat-tools">0</div><div class="label">Tool calls</div></div>
+      <div class="stat"><div class="num" id="stat-cost">$0.0000</div><div class="label">Estimated spend</div></div>
+    </div>
+    <div class="row" style="margin-bottom: 10px;">
+      <button id="refreshAudit">Refresh</button>
+      <button id="exportAudit">Export JSON</button>
+      <button id="clearAudit">Clear</button>
+    </div>
+    <div class="audit-cols audit-row header">
+      <div>When</div>
+      <div>Trigger</div>
+      <div>Summary</div>
+      <div>Tools</div>
+      <div>Tokens</div>
+      <div>Cost</div>
+      <div></div>
+    </div>
+    <div id="auditList"></div>
+
+    <div id="toast" class="toast"></div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

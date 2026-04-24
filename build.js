@@ -72,12 +72,14 @@ const common = {
 const entries = [
   { in: 'src/background.ts', out: 'dist/background.js' },
   { in: 'src/popup.ts', out: 'dist/popup.js' },
+  { in: 'src/options.ts', out: 'dist/options.js' },
 ];
 
 async function run() {
   mkdirSync('dist', { recursive: true });
   // Copy static assets that aren't TS sources.
   cpSync('src/popup.html', 'dist/popup.html');
+  cpSync('src/options.html', 'dist/options.html');
 
   if (watch) {
     for (const e of entries) {
