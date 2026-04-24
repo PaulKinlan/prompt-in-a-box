@@ -151,6 +151,22 @@ If the prompt doesn't need a given event, the operator doesn't grant the permiss
 
 Some operations need a DOM — most famously clipboard writes (`navigator.clipboard.writeText`) and HTML parsing (`DOMParser`). Service workers have neither. `src/offscreen.ts` runs in an offscreen document created on demand; the SW talks to it via `chrome.runtime.sendMessage`. This is how `clipboard_write` works. The same document can be extended with more DOM-dependent tools.
 
+## Provider-native tools
+
+Custom tools (the ones under `src/tools/`) aren't the only thing the agent can call. Every provider ships server-executed tools we merge into the tool set:
+
+| Provider | Tools |
+| --- | --- |
+| Anthropic | `web_search`, `web_fetch`, `code_execution` |
+| Google (Gemini) | `google_search`, `url_context`, `code_execution` |
+| OpenAI | `web_search` |
+
+These execute on the provider's infrastructure and count against the same API usage as any other request. The results flow back to the agent loop as regular `tool-result` messages, same as local tools — the prompt doesn't need to know which is which.
+
+On by default. Users can disable any of them by name from the options page. Disabling is by tool name, not by provider, so a single disable list applies consistently when switching providers (e.g. unchecking `code_execution` turns it off for both Anthropic and Google).
+
+Implementation is in `src/provider-tools.ts`. The pattern mirrors what the CHAOS extension does — a factory function per provider that returns a `ToolSet`, merged into the custom set before the loop runs.
+
 ## Artifacts — things the agent creates for you
 
 A prompt produces two kinds of output: **internal state** (cursors, dedup keys, event logs — written via `opfs_write` / `storage_set`) and **artifacts** (user-facing things the human will want to browse — summaries, digests, journal entries, screenshots, quotes, meeting notes). Artifacts are written via the `artifact_create` tool and appear in:

@@ -76,6 +76,23 @@
       .provider-card .label { font-weight: 600; }
       .provider-card .model { font-size: 11px; opacity: 0.7; margin-top: 4px; }
 
+      .provider-tools-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 8px;
+      }
+      .provider-tool {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(128,128,128,0.3);
+        border-radius: 6px;
+      }
+      .provider-tool input { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
+      .provider-tool label { margin: 0; font-weight: 500; cursor: pointer; flex: 1; }
+      .provider-tool .desc { font-size: 11px; opacity: 0.65; margin-top: 2px; font-weight: normal; }
+
       /* Onboarding banner */
       .onboarding {
         background: rgba(47,111,225,0.08);
@@ -208,6 +225,12 @@
           </div>
         </div>
       </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Provider tools</legend>
+      <div class="hint" style="margin-bottom: 10px;">Server-executed tools the provider runs on your behalf — web search, web fetch, code execution. They count against the provider's API usage like any other call. Turn off any you don't want the agent to use.</div>
+      <div id="providerToolsGrid" class="provider-tools-grid"></div>
     </fieldset>
 
     <fieldset>

@@ -22,6 +22,13 @@ export interface Config {
   keys: Record<Provider, string>;
   /** Whether the user has completed the onboarding flow. */
   onboarded: boolean;
+  /**
+   * Names of provider-native tools (web_search, web_fetch, google_search,
+   * code_execution, url_context) the user has turned off. Empty = all on.
+   * Applies across providers — a name in this list is excluded from any
+   * provider that exposes a tool by that name.
+   */
+  disabledProviderTools: string[];
 }
 
 /**
@@ -76,6 +83,7 @@ const FALLBACKS: Omit<Config, 'keys'> = {
   model: 'claude-sonnet-4-6',
   alarmMinutes: 30,
   onboarded: false,
+  disabledProviderTools: [],
 };
 
 export async function getConfig(): Promise<Config> {
@@ -89,6 +97,7 @@ export async function getConfig(): Promise<Config> {
     'alarmMinutes',
     'keys',
     'onboarded',
+    'disabledProviderTools',
   ]);
 
   const provider =
@@ -104,6 +113,8 @@ export async function getConfig(): Promise<Config> {
       (stored.alarmMinutes as number) ?? m.alarm_minutes ?? FALLBACKS.alarmMinutes,
     keys: mergeKeys(stored.keys as Partial<Record<Provider, string>> | undefined),
     onboarded: Boolean(stored.onboarded),
+    disabledProviderTools:
+      (stored.disabledProviderTools as string[]) ?? FALLBACKS.disabledProviderTools,
   };
 }
 
@@ -114,6 +125,7 @@ export async function setConfig(patch: Partial<Config>): Promise<void> {
     'alarmMinutes',
     'keys',
     'onboarded',
+    'disabledProviderTools',
   ];
   const clean: Partial<Config> = {};
   for (const k of allowed) {

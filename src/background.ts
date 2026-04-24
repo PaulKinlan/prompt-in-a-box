@@ -22,6 +22,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { buildToolSet } from './tools';
+import { getProviderTools, filterProviderTools } from './provider-tools';
 import { getConfig, activeKey, type Config, type Provider } from './config';
 import {
   writeAudit,
@@ -165,7 +166,15 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
   }
 
   const prompt = await loadPrompt();
-  const tools = await buildToolSet();
+  const customTools = await buildToolSet();
+  const providerTools = filterProviderTools(
+    getProviderTools(cfg.provider, apiKey),
+    cfg.disabledProviderTools,
+  );
+  // Merge: custom tools win on name conflict (never expected, but let's
+  // be deterministic if anthropic ever ships a tool named the same as
+  // one of ours).
+  const tools = { ...providerTools, ...customTools };
   const toolCalls: AuditToolCall[] = [];
   const pendingByName = new Map<string, { at: number; args: unknown }>();
   let tokens = { input: 0, output: 0, estimatedCost: 0 };
@@ -337,11 +346,17 @@ async function testProvider(patch: Partial<Config>): Promise<AuditEntry> {
       tokens: { input: 0, output: 0, estimatedCost: 0 },
     };
   }
-  const snapshot = await chrome.storage.local.get(['provider', 'model', 'keys']);
+  const snapshot = await chrome.storage.local.get([
+    'provider',
+    'model',
+    'keys',
+    'disabledProviderTools',
+  ]);
   await chrome.storage.local.set({
     provider: cfg.provider,
     model: cfg.model,
     keys: cfg.keys,
+    disabledProviderTools: cfg.disabledProviderTools,
   });
   try {
     return await run('onboarding-test');

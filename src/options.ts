@@ -34,9 +34,69 @@ async function loadUI(): Promise<void> {
 
   renderProviderGrid();
   renderActiveProvider();
+  renderProviderTools();
   ($('alarmMinutes') as HTMLInputElement).value = String(currentConfig.alarmMinutes);
 
   await refreshAudit();
+}
+
+// ─── Provider-native tools ────────────────────────────────────────
+
+interface ProviderToolDef {
+  name: string;
+  label: string;
+  desc: string;
+}
+
+const PROVIDER_TOOLS_BY_PROVIDER: Record<Provider, ProviderToolDef[]> = {
+  anthropic: [
+    { name: 'web_search', label: 'Web search', desc: 'Anthropic-hosted web search. Results returned inline.' },
+    { name: 'web_fetch', label: 'Web fetch', desc: 'Fetch a URL and return its content to the model.' },
+    { name: 'code_execution', label: 'Code execution', desc: 'Python sandbox for computation, parsing, plotting.' },
+  ],
+  google: [
+    { name: 'google_search', label: 'Google search', desc: 'Google-hosted grounded search with citations.' },
+    { name: 'url_context', label: 'URL context', desc: 'Fetch URLs referenced in the prompt.' },
+    { name: 'code_execution', label: 'Code execution', desc: 'Python sandbox the model can call.' },
+  ],
+  openai: [
+    { name: 'web_search', label: 'Web search', desc: 'OpenAI web search (Responses API).' },
+  ],
+};
+
+function renderProviderTools(): void {
+  const grid = $('providerToolsGrid');
+  grid.innerHTML = '';
+  const defs = PROVIDER_TOOLS_BY_PROVIDER[currentProvider];
+  const disabled = new Set(currentConfig.disabledProviderTools);
+  for (const t of defs) {
+    const wrap = document.createElement('div');
+    wrap.className = 'provider-tool';
+    const id = `pt-${t.name}`;
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = id;
+    input.checked = !disabled.has(t.name);
+    input.addEventListener('change', () => {
+      const now = new Set(currentConfig.disabledProviderTools);
+      if (input.checked) now.delete(t.name);
+      else now.add(t.name);
+      currentConfig = {
+        ...currentConfig,
+        disabledProviderTools: Array.from(now),
+      };
+    });
+    const label = document.createElement('label');
+    label.setAttribute('for', id);
+    label.textContent = t.label;
+    const desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = t.desc;
+    label.appendChild(desc);
+    wrap.appendChild(input);
+    wrap.appendChild(label);
+    grid.appendChild(wrap);
+  }
 }
 
 function renderProviderGrid(): void {
@@ -58,6 +118,7 @@ function renderProviderGrid(): void {
       currentProvider = key;
       renderProviderGrid();
       renderActiveProvider();
+      renderProviderTools();
     });
     grid.appendChild(card);
   }
@@ -90,6 +151,7 @@ function collectConfig(): Partial<Config> {
     model,
     alarmMinutes,
     keys,
+    disabledProviderTools: currentConfig.disabledProviderTools,
   };
 }
 
