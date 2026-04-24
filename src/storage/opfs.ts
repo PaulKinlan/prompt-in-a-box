@@ -64,6 +64,23 @@ export class OPFS {
     await w.close();
   }
 
+  async writeBytes(path: string, bytes: Uint8Array): Promise<void> {
+    const [parent, name] = await this.resolveParent(path, true);
+    const fh = await parent.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    // Cast through Blob to dodge the ArrayBuffer/SharedArrayBuffer
+    // variance issue in TS's lib.dom types — runtime is fine either way.
+    await w.write(new Blob([bytes as unknown as BlobPart]));
+    await w.close();
+  }
+
+  async readBytes(path: string): Promise<Uint8Array> {
+    const [parent, name] = await this.resolveParent(path, false);
+    const fh = await parent.getFileHandle(name);
+    const file = await fh.getFile();
+    return new Uint8Array(await file.arrayBuffer());
+  }
+
   async exists(path: string): Promise<boolean> {
     try {
       const [parent, name] = await this.resolveParent(path, false);

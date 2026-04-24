@@ -18,6 +18,15 @@ Each folder here is a different program for the same extension. The folder conta
 
 The point of these examples isn't that any one of them is production-ready. It's that **the same code** runs all of them. Swap `prompt.md` and the same extension becomes a different tool. That's the whole idea.
 
+## Artifacts vs internal state
+
+Prompts distinguish between two kinds of output:
+
+- **Artifacts** — user-facing things the human will want to read or view. Summaries, digests, journal entries, screenshots, meeting notes, saved quotes, translations. Save these via the `artifact_create` tool. They show up in the popup's "Recent artifacts" list and the full artifacts browser.
+- **Internal state** — cursors, dedup keys, event logs, snapshots, daily counters. The human never needs to see these. Use `opfs_write` and `storage_set` directly.
+
+A single run may produce zero, one, or several artifacts plus any amount of internal state. A housekeeping prompt (like `stale-tab-closer`) may never produce artifacts at all. A summarising prompt (like `daily-summary`) produces one per day.
+
 ## Writing your own
 
 `prompt.md` is just a system prompt for an [agent-do](https://www.npmjs.com/package/agent-do) loop. You get tools for whatever manifest permissions the user has granted — see the main [README](../README.md) for the tool catalogue. The user message on each run is either `"Begin your scheduled run now."` or, if Chrome events fired since the last run, a summary of them that looks like:

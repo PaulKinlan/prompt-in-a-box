@@ -19,10 +19,17 @@ The user message will contain the event payload. Extract `info.menuItemId` and `
 1. If `menuItemId !== 'summarise-page'`, ignore.
 2. `tab_read` the tab.
 3. Write a 4-sentence summary.
-4. Fire a `notification_show` with:
-   - `title`: the page title (truncated to 50 chars)
+4. Call `artifact_create` with:
+   - `kind`: `markdown`
+   - `title`: the page title
+   - `content`: a markdown block with the summary, 3-5 key topics, and a link back to the source
+   - `sourceUrl`: the tab URL
+   - `tags`: `["summary", "right-click"]`
+5. Fire a `notification_show`:
+   - `title`: "Summary saved"
    - `message`: the summary (truncated to 300 chars)
-5. Optional: `opfs_write` the full summary to `summaries/<slug>.md` for later reference.
+
+The artifact shows up in the popup and the full artifacts browser so the user can come back to it later.
 
 ## On scheduled runs with no events
 

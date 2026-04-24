@@ -32,6 +32,12 @@ import {
   type AuditEntry,
   type AuditToolCall,
 } from './audit';
+import {
+  getArtifact,
+  deleteArtifact,
+  clearArtifacts,
+  listArtifacts,
+} from './artifacts';
 import { startEvents } from './events/dispatcher';
 import { drainEvents } from './events/queue';
 
@@ -103,6 +109,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await getAuditEntry(msg.runId as string));
       } else if (msg?.type === 'clear-audit') {
         await clearAudit();
+        sendResponse({ ok: true });
+      } else if (msg?.type === 'list-artifacts') {
+        sendResponse(await listArtifacts());
+      } else if (msg?.type === 'get-artifact') {
+        sendResponse(await getArtifact(msg.artifactId as string));
+      } else if (msg?.type === 'delete-artifact') {
+        await deleteArtifact(msg.artifactId as string);
+        sendResponse({ ok: true });
+      } else if (msg?.type === 'clear-artifacts') {
+        await clearArtifacts();
         sendResponse({ ok: true });
       } else if (msg?.type === 'reschedule-alarm') {
         const cfg = await getConfig();

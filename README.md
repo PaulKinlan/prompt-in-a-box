@@ -151,6 +151,19 @@ If the prompt doesn't need a given event, the operator doesn't grant the permiss
 
 Some operations need a DOM — most famously clipboard writes (`navigator.clipboard.writeText`) and HTML parsing (`DOMParser`). Service workers have neither. `src/offscreen.ts` runs in an offscreen document created on demand; the SW talks to it via `chrome.runtime.sendMessage`. This is how `clipboard_write` works. The same document can be extended with more DOM-dependent tools.
 
+## Artifacts — things the agent creates for you
+
+A prompt produces two kinds of output: **internal state** (cursors, dedup keys, event logs — written via `opfs_write` / `storage_set`) and **artifacts** (user-facing things the human will want to browse — summaries, digests, journal entries, screenshots, quotes, meeting notes). Artifacts are written via the `artifact_create` tool and appear in:
+
+- The extension popup's "Recent artifacts" list (latest 5, click to open).
+- The full artifacts browser at `dist/artifacts.html` — group by date, filter by kind/tag/source, inline viewer with a minimal markdown renderer, per-artifact download and delete.
+
+Under the hood, `artifact_create` writes content to OPFS under `artifacts/YYYY-MM-DD/<slug>-<id>.<ext>` and appends a metadata row (title, kind, tags, preview, source URL, size) to an index in `chrome.storage.local`. The popup and browser read the index directly; the content is loaded on demand.
+
+Supported kinds: `markdown`, `html`, `json`, `text`, `image-png`, `image-jpeg`. Images come in as base64 without the `data:` prefix.
+
+A prompt doesn't have to produce artifacts. A tab-hygiene prompt might never create one. A summarising prompt might create one per day. The choice belongs to the prompt.
+
 ## Swapping in a different prompt
 
 Replace `prompt.md`. That's it. Everything else stays the same.

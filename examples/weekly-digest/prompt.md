@@ -15,7 +15,7 @@ On each scheduled run:
 2. `reading_list_query`, filter to entries where `creationTime` falls in the last 7 days.
 3. Group bookmarks by inferred topic (3-5 topic clusters).
 4. For reading list items, group by "read" vs "unread".
-5. Write to `OPFS://digests/YYYY-MM-DD.md`:
+5. Build the markdown:
 
    ```markdown
    # Week of YYYY-MM-DD
@@ -34,8 +34,13 @@ On each scheduled run:
    <one-paragraph summary of themes>
    ```
 
-6. `notification_show`: "Weekly digest ready — OPFS digests/<filename>".
-7. `storage_set` `lastDigest: today`.
+6. Call `artifact_create` with:
+   - `kind`: `markdown`
+   - `title`: `"Weekly digest — week of YYYY-MM-DD"`
+   - `content`: the markdown above
+   - `tags`: `["weekly-digest"]`
+7. `notification_show`: "Weekly digest ready — view in the artifacts browser."
+8. `storage_set` `lastDigest: today`.
 
 ## Constraints
 - Only fires once per week. Belt and braces via `lastDigest`.

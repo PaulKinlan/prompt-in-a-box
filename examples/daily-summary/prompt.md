@@ -18,7 +18,7 @@ Once a day, in the evening, summarise the user's browsing into an OPFS journal e
 2. Filter out obvious junk: internal SaaS dashboards the user clearly just keeps open (group by host, if 30+ visits within the day from a single host to the same path, collapse to one entry).
 3. Cluster the history into ~5-7 themes via LLM. Each theme gets a name, a 2-sentence description, and the top 3-5 representative URLs.
 4. Also pull `reading_list_query` additions from today — mention them in a separate "Saved for later" section.
-5. Write to `OPFS://journal/YYYY-MM-DD.md`:
+5. Build the markdown:
 
    ```markdown
    # YYYY-MM-DD browsing
@@ -35,8 +35,13 @@ Once a day, in the evening, summarise the user's browsing into an OPFS journal e
    <one paragraph on the shape of the day>
    ```
 
-6. `notification_show`: "Today's browsing journal written — OPFS journal/YYYY-MM-DD.md".
-7. `storage_set` `lastDailySummary: today`.
+6. Call `artifact_create` with:
+   - `kind`: `markdown`
+   - `title`: `"Daily summary — YYYY-MM-DD"`
+   - `content`: the markdown above
+   - `tags`: `["daily-summary", "journal"]`
+7. `notification_show`: "Today's browsing journal written — check the artifacts tab."
+8. `storage_set` `lastDailySummary: today`.
 
 ## Constraints
 - No more than one notification per day.

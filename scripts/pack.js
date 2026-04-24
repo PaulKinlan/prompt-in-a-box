@@ -37,6 +37,8 @@ const REQUIRED = [
   'dist/options.html',
   'dist/offscreen.js',
   'dist/offscreen.html',
+  'dist/artifacts.html',
+  'dist/artifacts-browser.js',
 ];
 
 const missing = REQUIRED.filter((f) => !existsSync(f));

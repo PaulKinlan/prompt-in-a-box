@@ -74,6 +74,7 @@ const entries = [
   { in: 'src/popup.ts', out: 'dist/popup.js' },
   { in: 'src/options.ts', out: 'dist/options.js' },
   { in: 'src/offscreen.ts', out: 'dist/offscreen.js' },
+  { in: 'src/artifacts-browser.ts', out: 'dist/artifacts-browser.js' },
 ];
 
 async function run() {
@@ -82,6 +83,7 @@ async function run() {
   cpSync('src/popup.html', 'dist/popup.html');
   cpSync('src/options.html', 'dist/options.html');
   cpSync('src/offscreen.html', 'dist/offscreen.html');
+  cpSync('src/artifacts.html', 'dist/artifacts.html');
 
   if (watch) {
     for (const e of entries) {

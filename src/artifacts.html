@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <title>Prompt in a Box — artifacts</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 0;
+        padding: 32px;
+        max-width: 1100px;
+      }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      h2 { font-size: 16px; margin: 24px 0 10px; }
+      .subtitle { color: #888; margin: 0 0 24px; }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin: 12px 0 20px;
+      }
+      .stat {
+        padding: 12px;
+        background: rgba(128,128,128,0.06);
+        border-radius: 6px;
+        text-align: center;
+      }
+      .stat .num { font-size: 20px; font-weight: 600; }
+      .stat .label { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+
+      .filters {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 18px;
+        padding: 12px;
+        background: rgba(128,128,128,0.04);
+        border-radius: 6px;
+      }
+      .filters label { font-size: 12px; opacity: 0.75; margin-right: 4px; }
+      .filters select, .filters input {
+        padding: 5px 8px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid rgba(128,128,128,0.4);
+        border-radius: 4px;
+        background: Canvas;
+        color: CanvasText;
+      }
+      .filters input[type="search"] { min-width: 200px; }
+      button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid rgba(128,128,128,0.4);
+        border-radius: 4px;
+        background: ButtonFace;
+        color: ButtonText;
+        cursor: pointer;
+      }
+      button.danger { color: #c03030; }
+      button.primary { background: #2f6fe1; color: white; border-color: #2f6fe1; }
+
+      .date-group { margin-bottom: 28px; }
+      .date-group h3 {
+        font-size: 13px;
+        opacity: 0.7;
+        margin: 0 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(128,128,128,0.2);
+      }
+      .artifact {
+        padding: 12px 14px;
+        border: 1px solid rgba(128,128,128,0.2);
+        border-radius: 6px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        gap: 12px;
+        align-items: center;
+      }
+      .artifact:hover { background: rgba(128,128,128,0.05); }
+      .artifact .kind-badge {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: rgba(47,111,225,0.12);
+        color: #2f6fe1;
+      }
+      .artifact .kind-image { background: rgba(200,130,30,0.14); color: #c8821e; }
+      .artifact .kind-html { background: rgba(200,30,130,0.12); color: #c81e82; }
+      .artifact .kind-json { background: rgba(130,200,30,0.14); color: #4a8a16; }
+      .artifact .title {
+        font-weight: 500;
+        margin: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .artifact .preview {
+        font-size: 12px;
+        opacity: 0.65;
+        margin-top: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .artifact .tags {
+        font-size: 11px;
+        opacity: 0.7;
+      }
+      .artifact .tags span {
+        display: inline-block;
+        margin-right: 4px;
+        padding: 1px 5px;
+        background: rgba(128,128,128,0.12);
+        border-radius: 3px;
+      }
+      .artifact .time { font-size: 11px; opacity: 0.6; font-family: ui-monospace, monospace; }
+
+      /* Viewer */
+      .viewer {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .viewer[hidden] { display: none; }
+      .viewer-inner {
+        background: Canvas;
+        color: CanvasText;
+        border-radius: 8px;
+        max-width: 900px;
+        max-height: 90vh;
+        width: 90%;
+        overflow: auto;
+        padding: 20px 24px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      }
+      .viewer-header {
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 14px;
+      }
+      .viewer-header h2 { margin: 0; font-size: 18px; }
+      .viewer-meta { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+      .viewer-meta a { color: inherit; }
+      .viewer-actions { display: flex; gap: 6px; flex-shrink: 0; }
+      .viewer-body {
+        padding: 16px;
+        background: rgba(128,128,128,0.06);
+        border-radius: 6px;
+        max-height: 60vh;
+        overflow: auto;
+      }
+      .viewer-body pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 13px/1.5 ui-monospace, monospace;
+        margin: 0;
+      }
+      .viewer-body img { max-width: 100%; height: auto; display: block; }
+      .viewer-body.markdown h1, .viewer-body.markdown h2, .viewer-body.markdown h3 { margin: 12px 0 6px; }
+      .viewer-body.markdown p { margin: 8px 0; }
+      .viewer-body.markdown ul, .viewer-body.markdown ol { padding-left: 20px; }
+      .viewer-body.markdown code { font-family: ui-monospace, monospace; font-size: 13px; background: rgba(128,128,128,0.14); padding: 1px 4px; border-radius: 3px; }
+      .viewer-body.markdown pre code { background: none; padding: 0; }
+
+      .empty {
+        padding: 40px;
+        text-align: center;
+        opacity: 0.6;
+      }
+
+      .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 16px;
+        background: #2a8a2a;
+        color: white;
+        border-radius: 4px;
+        font-size: 13px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+      .toast.show { opacity: 1; }
+      .toast.error { background: #c03030; }
+    </style>
+  </head>
+  <body>
+    <h1>Artifacts</h1>
+    <p class="subtitle">Everything the agent has produced for you. The prompt decides what lands here via the <code>artifact_create</code> tool.</p>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="num" id="stat-total">0</div><div class="label">Total artifacts</div></div>
+      <div class="stat"><div class="num" id="stat-today">0</div><div class="label">Today</div></div>
+      <div class="stat"><div class="num" id="stat-week">0</div><div class="label">This week</div></div>
+      <div class="stat"><div class="num" id="stat-kinds">0</div><div class="label">Distinct kinds</div></div>
+      <div class="stat"><div class="num" id="stat-size">0 KB</div><div class="label">On disk</div></div>
+    </div>
+
+    <div class="filters">
+      <label>Kind</label>
+      <select id="filter-kind">
+        <option value="">All</option>
+        <option value="markdown">markdown</option>
+        <option value="html">html</option>
+        <option value="json">json</option>
+        <option value="text">text</option>
+        <option value="image-png">image-png</option>
+        <option value="image-jpeg">image-jpeg</option>
+      </select>
+      <label>Tag</label>
+      <select id="filter-tag">
+        <option value="">All</option>
+      </select>
+      <label>Search</label>
+      <input id="filter-search" type="search" placeholder="title, preview, URL" />
+      <div style="flex:1"></div>
+      <button id="refresh">Refresh</button>
+      <button id="clearAll" class="danger">Delete all</button>
+    </div>
+
+    <div id="list"></div>
+
+    <div id="viewer" class="viewer" hidden>
+      <div class="viewer-inner">
+        <div class="viewer-header">
+          <div>
+            <h2 id="v-title"></h2>
+            <div class="viewer-meta" id="v-meta"></div>
+          </div>
+          <div class="viewer-actions">
+            <button id="v-download">Download</button>
+            <button id="v-delete" class="danger">Delete</button>
+            <button id="v-close">Close</button>
+          </div>
+        </div>
+        <div class="viewer-body" id="v-body"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script type="module" src="artifacts-browser.js"></script>
+  </body>
+</html>

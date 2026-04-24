@@ -32,7 +32,12 @@ When the user opens a Google Calendar event page, scrape the attendees, meeting 
    -
    ```
 
-5. Write to `OPFS://meetings/YYYY-MM-DD-<slug-of-title>.md`. Slug is kebab-case, truncated to 40 chars.
+5. Call `artifact_create` with:
+   - `kind`: `markdown`
+   - `title`: `"Meeting: <meeting title>"`
+   - `content`: the template above
+   - `sourceUrl`: the event URL
+   - `tags`: `["meeting-notes", "YYYY-MM-DD"]` (using the actual date)
 6. `notification_show`: "Notes template ready for <title>".
 
 ## Dedup
