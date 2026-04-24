@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Prompt in a Box",
+  "version": "0.1.0",
+  "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent loop on a schedule, act through Chrome APIs granted by the manifest.",
+  "prompt_in_a_box": {
+    "prompt": "prompt.md",
+    "alarm_minutes": 30,
+    "default_provider": "anthropic",
+    "default_model": "claude-sonnet-4-6"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Prompt in a Box",
+    "default_icon": { "32": "icon.png" }
+  },
+  "icons": { "32": "icon.png" },
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["prompt.md"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com;"
+  }
+}

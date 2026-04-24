@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+    <title>Prompt in a Box</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font: 13px/1.4 system-ui, sans-serif;
+        width: 340px;
+        padding: 14px;
+        margin: 0;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      h1 small { font-weight: normal; opacity: 0.7; font-size: 11px; }
+      label { display: block; margin: 10px 0 3px; font-weight: 500; }
+      input, select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        font: inherit;
+        border: 1px solid rgba(128,128,128,0.4);
+        border-radius: 4px;
+        background: Canvas;
+        color: CanvasText;
+      }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .row > * { flex: 1; }
+      button {
+        padding: 7px 10px;
+        font: inherit;
+        font-weight: 500;
+        border: 1px solid rgba(128,128,128,0.4);
+        border-radius: 4px;
+        background: ButtonFace;
+        color: ButtonText;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(1.05); }
+      button.primary {
+        background: #2f6fe1;
+        color: white;
+        border-color: #2f6fe1;
+      }
+      .hint { font-size: 11px; opacity: 0.7; margin-top: 3px; }
+      .log { margin-top: 12px; }
+      .log-entry {
+        border-top: 1px solid rgba(128,128,128,0.2);
+        padding: 6px 0;
+        font-size: 12px;
+      }
+      .log-entry .when { opacity: 0.6; font-size: 11px; }
+      .status-ok { color: #2a8a2a; }
+      .status-error { color: #c03030; }
+      .status-skipped { opacity: 0.6; }
+      details { margin-top: 10px; }
+      summary { cursor: pointer; font-size: 12px; opacity: 0.75; }
+    </style>
+  </head>
+  <body>
+    <h1>Prompt in a Box <small id="version"></small></h1>
+
+    <label for="apiKey">Anthropic API key</label>
+    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+    <div class="hint">Stored only in this browser's local storage. Sent only to the provider endpoint declared in manifest.json.</div>
+
+    <label for="model">Model</label>
+    <input id="model" placeholder="claude-sonnet-4-6" />
+
+    <label for="alarmMinutes">Run every</label>
+    <div class="row">
+      <input id="alarmMinutes" type="number" min="1" max="1440" />
+      <span>minutes</span>
+    </div>
+
+    <div class="row" style="margin-top: 14px;">
+      <button id="save">Save</button>
+      <button id="runNow" class="primary">Run now</button>
+    </div>
+
+    <details>
+      <summary>Recent runs</summary>
+      <div class="log" id="log"></div>
+    </details>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
