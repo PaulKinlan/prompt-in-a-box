@@ -40,7 +40,14 @@ export interface AuditEntry {
   runId: string;
   startedAt: number;
   finishedAt?: number;
-  trigger: 'alarm' | 'manual' | 'event' | 'onboarding-test';
+  trigger:
+    | 'alarm'
+    | 'manual'
+    | 'event'
+    | 'onboarding-test'
+    | 'install'
+    | 'update'
+    | 'startup';
   status: 'ok' | 'error' | 'skipped';
   provider: string;
   model: string;

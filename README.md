@@ -102,14 +102,37 @@ The post that introduces this demo — [where prompts run](https://aifoc.us/wher
 
 ## How the loop works
 
-On each alarm tick (or **Run now** from the popup) the service worker:
+The service worker runs the agent loop in response to seven distinct triggers, each recorded in the audit log:
+
+| Trigger | Fires when | User message to the prompt |
+| --- | --- | --- |
+| `install` | Extension freshly installed | "The extension was just installed. Perform any bootstrap steps…" + queued events (if any) |
+| `update` | Extension updated to a new version | "The extension was just updated. Re-assert state new prompt logic needs…" + queued events |
+| `startup` | Browser starts | "The browser just started. Re-check state; drain queued events below." |
+| `alarm` | Scheduled tick (`chrome.alarms`, every `cfg.alarmMinutes`) | "Begin your scheduled run now." or the queued events |
+| `event` | An immediate-trigger event fires (context menu click, notification click, keyboard command, omnibox entry) | "Chrome events have fired since your last run. …" + the event payload |
+| `manual` | User clicks **Run now** in the popup | Same as `alarm` |
+| `onboarding-test` | User clicks **Test** in the options page during setup | Same as `alarm`, but with a temporary config patch |
+
+On every trigger the SW:
 
 1. Loads `prompt.md` via `chrome.runtime.getURL` + `fetch`.
 2. Builds a `ToolSet` of only the Chrome APIs granted by the manifest (see `src/tools/index.ts` — each permission unlocks a bucket).
-3. Calls [`agent-do`'s `runAgentLoop`](https://www.npmjs.com/package/agent-do) with an Anthropic model, the prompt as the system message, and the tool set.
+3. Calls [`agent-do`'s `runAgentLoop`](https://www.npmjs.com/package/agent-do) with the configured model, `prompt.md` as the system message, and the tool set.
 4. `agent-do` runs the tool-use loop until the model returns a final message with no tool calls (or `maxIterations` is reached).
-5. A short summary is appended to an in-memory log for the popup to show.
+5. Writes a full audit record (tool calls, tokens, cost, final text) to OPFS + a summary index to `chrome.storage.local`.
 6. The SW exits. Chrome kills it shortly after.
+
+### Bootstrap on install/update/startup
+
+Install, update, and startup triggers give the prompt a first-run hook. Use this for idempotent setup:
+
+- Create context menu items (check `context_menu_list` first so re-runs are no-ops).
+- Seed default values in `storage_set` if missing.
+- Write OPFS directory markers or initial log files.
+- Re-assert keyboard command defaults.
+
+Context menus, keyboard shortcuts, and omnibox keywords **survive** SW restarts — Chrome holds them. You still want an idempotent bootstrap run to cover the fresh-install case and to re-seed anything your prompt needs.
 
 `agent-do` handles the provider abstraction, tool-call marshalling, permissions, and usage tracking. This project contributes the host wiring: which Chrome APIs are tools, how state persists, when the loop fires. That separation is the point.
 

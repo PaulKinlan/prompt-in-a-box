@@ -50,6 +50,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install' || !cfg.onboarded) {
     chrome.runtime.openOptionsPage();
   }
+
+  // Fire a bootstrap run so the prompt can set up context menus,
+  // seed defaults, register commands, etc. on install/update/reload.
+  // run() no-ops with a 'skipped' audit if there's no API key yet.
+  const trigger: AuditEntry['trigger'] =
+    details.reason === 'update' ? 'update' : 'install';
+  await run(trigger).catch((err) => console.warn('[prompt-in-a-box] bootstrap run failed:', err));
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -58,6 +65,9 @@ chrome.runtime.onStartup.addListener(async () => {
     delayInMinutes: 1,
     periodInMinutes: cfg.alarmMinutes,
   });
+  // Startup run so the prompt can check state, drain any events that
+  // queued between sessions, and re-assert context menus / commands.
+  await run('startup').catch((err) => console.warn('[prompt-in-a-box] startup run failed:', err));
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
@@ -173,7 +183,7 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
 
   try {
     const model = pickModel(cfg.provider, cfg.model, apiKey);
-    const userMessage = await composeUserMessage();
+    const userMessage = await composeUserMessage(trigger);
     const result = await runAgentLoop(
       {
         id: 'prompt-in-a-box',
@@ -241,26 +251,51 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
   }
 }
 
-async function composeUserMessage(): Promise<string> {
-  // Drain the event queue. If anything's there, hand it to the prompt
-  // as "Events since last run"; the prompt decides what to do with
-  // them. Otherwise just ask for a scheduled tick.
+async function composeUserMessage(
+  trigger: AuditEntry['trigger'],
+): Promise<string> {
+  // Bootstrap triggers get an explicit hint so the prompt can perform
+  // one-shot setup (context menus, seeded defaults, etc.). The event
+  // queue is still drained and appended, so setup + event handling can
+  // happen in the same run if events queued between sessions.
+  const bootstrapHint =
+    trigger === 'install'
+      ? 'The extension was just installed. Perform any one-time bootstrap steps (create context menus, seed default state in storage, etc.) — idempotent by design.'
+      : trigger === 'update'
+        ? 'The extension was just updated. Re-assert any state that new prompt logic requires (context menus, default storage keys, etc.) — skip anything already present.'
+        : trigger === 'startup'
+          ? 'The browser just started. Re-check any state you rely on (context menus will have survived, but storage is your source of truth); drain queued events below.'
+          : null;
+
   const events = await drainEvents();
-  if (events.length === 0) {
+
+  if (!bootstrapHint && events.length === 0) {
     return 'Begin your scheduled run now.';
   }
-  const lines = events
-    .slice(0, 50) // safety cap in case a burst accumulated
-    .map(
-      (e) =>
-        `  - ${new Date(e.at).toISOString()} [${e.source}] ${JSON.stringify(e.payload).slice(0, 500)}`,
-    )
-    .join('\n');
-  const truncationNote =
-    events.length > 50
-      ? `\n  (+${events.length - 50} more events truncated)`
-      : '';
-  return `Chrome events have fired since your last run. Decide what, if anything, to act on.\n\n${lines}${truncationNote}`;
+
+  const parts: string[] = [];
+  if (bootstrapHint) parts.push(bootstrapHint);
+
+  if (events.length > 0) {
+    const lines = events
+      .slice(0, 50) // safety cap in case a burst accumulated
+      .map(
+        (e) =>
+          `  - ${new Date(e.at).toISOString()} [${e.source}] ${JSON.stringify(e.payload).slice(0, 500)}`,
+      )
+      .join('\n');
+    const truncationNote =
+      events.length > 50
+        ? `\n  (+${events.length - 50} more events truncated)`
+        : '';
+    parts.push(
+      `Chrome events have fired since your last run. Decide what, if anything, to act on.\n\n${lines}${truncationNote}`,
+    );
+  } else if (bootstrapHint) {
+    parts.push('No queued events.');
+  }
+
+  return parts.join('\n\n');
 }
 
 async function testProvider(patch: Partial<Config>): Promise<AuditEntry> {
