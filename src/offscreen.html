@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self';" />
+    <title>prompt-in-a-box offscreen</title>
+  </head>
+  <body>
+    <!--
+      Offscreen document. MV3 service workers have no DOM, so anything
+      that needs one (clipboard, DOMParser, audio decoding, blob URLs,
+      fetch-then-parse HTML) runs here. The SW creates us on demand and
+      closes us when idle.
+
+      This page ships no UI. It listens for chrome.runtime messages
+      addressed to the 'offscreen' target, performs the work, and
+      replies.
+    -->
+    <script type="module" src="offscreen.js"></script>
+  </body>
+</html>

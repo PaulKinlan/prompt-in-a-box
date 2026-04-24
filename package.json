@@ -1,6 +1,6 @@
 {
   "name": "prompt-in-a-box",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
   "type": "module",

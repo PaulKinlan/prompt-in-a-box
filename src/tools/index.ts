@@ -16,8 +16,19 @@ import { tabList } from './tab-list';
 import { tabClose } from './tab-close';
 import { tabOpen } from './tab-open';
 import { tabFocus } from './tab-focus';
+import { tabNavigate } from './tab-navigate';
+import { tabDuplicate } from './tab-duplicate';
+import { tabMove } from './tab-move';
+import { tabMute } from './tab-mute';
+import { tabPin } from './tab-pin';
+import { tabGroup } from './tab-group';
+import { tabRead } from './tab-read';
+import { tabScreenshot } from './tab-screenshot';
 import { notificationShow } from './notification-show';
 import { bookmarkSearch } from './bookmark-search';
+import { bookmarkAdd } from './bookmark-add';
+import { bookmarkList } from './bookmark-list';
+import { bookmarkRemove } from './bookmark-remove';
 import { historySearch } from './history-search';
 import { storageGet } from './storage-get';
 import { storageSet } from './storage-set';
@@ -25,13 +36,30 @@ import { opfsRead } from './opfs-read';
 import { opfsWrite } from './opfs-write';
 import { opfsList } from './opfs-list';
 import { alarmSet } from './alarm-set';
+import { alarmList } from './alarm-list';
+import { alarmClear } from './alarm-clear';
+import { windowList } from './window-list';
+import { windowCreate } from './window-create';
+import { windowClose } from './window-close';
+import { windowFocus } from './window-focus';
+import { windowResize } from './window-resize';
+import { downloadFile } from './download-file';
+import { downloadList } from './download-list';
+import { contextMenuCreate } from './context-menu-create';
+import { contextMenuUpdate } from './context-menu-update';
+import { contextMenuRemove } from './context-menu-remove';
+import { contextMenuList } from './context-menu-list';
+import { readingListAdd } from './reading-list-add';
+import { readingListQuery } from './reading-list-query';
+import { clipboardWrite } from './clipboard-write';
 
 /**
  * Map Chrome permission → tools it unlocks.
  *
  * `__always__` is a meta-bucket for tools that work regardless of
  * Chrome permissions — notably OPFS, which is part of the Web Platform
- * (navigator.storage) rather than the chrome.* API set.
+ * (navigator.storage) rather than the chrome.* API set. Window tools
+ * also live here because the `windows` namespace needs no permission.
  */
 const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   __always__: {
@@ -40,28 +68,62 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
     opfs_read: opfsRead,
     opfs_write: opfsWrite,
     opfs_list: opfsList,
+    window_list: windowList,
+    window_create: windowCreate,
+    window_close: windowClose,
+    window_focus: windowFocus,
+    window_resize: windowResize,
   },
   tabs: {
     tab_list: tabList,
     tab_close: tabClose,
     tab_open: tabOpen,
     tab_focus: tabFocus,
+    tab_navigate: tabNavigate,
+    tab_duplicate: tabDuplicate,
+    tab_move: tabMove,
+    tab_mute: tabMute,
+    tab_pin: tabPin,
+    tab_group: tabGroup,
+  },
+  scripting: {
+    tab_read: tabRead,
+    tab_screenshot: tabScreenshot,
   },
   notifications: {
     notification_show: notificationShow,
   },
   bookmarks: {
     bookmark_search: bookmarkSearch,
+    bookmark_add: bookmarkAdd,
+    bookmark_list: bookmarkList,
+    bookmark_remove: bookmarkRemove,
   },
   history: {
     history_search: historySearch,
   },
   alarms: {
     alarm_set: alarmSet,
+    alarm_list: alarmList,
+    alarm_clear: alarmClear,
   },
-  // `storage` permission is required for storage_get/set too, but storage is
-  // listed in the always-on bucket because the extension couldn't function
-  // at all without it, so we don't re-gate.
+  downloads: {
+    download_file: downloadFile,
+    download_list: downloadList,
+  },
+  contextMenus: {
+    context_menu_create: contextMenuCreate,
+    context_menu_update: contextMenuUpdate,
+    context_menu_remove: contextMenuRemove,
+    context_menu_list: contextMenuList,
+  },
+  readingList: {
+    reading_list_add: readingListAdd,
+    reading_list_query: readingListQuery,
+  },
+  clipboardWrite: {
+    clipboard_write: clipboardWrite,
+  },
 };
 
 export async function buildToolSet(): Promise<ToolSet> {
@@ -75,7 +137,6 @@ export async function buildToolSet(): Promise<ToolSet> {
 }
 
 async function listGrantedPermissions(): Promise<string[]> {
-  // `getAll` returns both manifest-declared and runtime-granted permissions.
   return await new Promise((resolve) => {
     chrome.permissions.getAll((p) => resolve(p.permissions ?? []));
   });

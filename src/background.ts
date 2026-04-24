@@ -4,13 +4,16 @@
  * Everything the extension actually *does* is decided by prompt.md.
  * This file's responsibilities are:
  *   1. Keep an alarm alive so the SW is revived on schedule.
- *   2. When revived (or when the popup / options page asks), load
- *      prompt.md, build the ToolSet from manifest permissions, pick
- *      the right provider, and run agent-do's loop.
- *   3. Capture a full audit trail (tool calls, token usage, cost)
- *      and persist it to OPFS + a summary index in chrome.storage.
+ *   2. When revived (or asked), load prompt.md, build the ToolSet
+ *      from manifest permissions, pick the right provider, drain any
+ *      queued Chrome events, and run agent-do's loop.
+ *   3. Capture a full audit trail (tool calls, token usage, cost) to
+ *      OPFS + a summary index in chrome.storage.
  *   4. On first install, open the options page so the user can pick
  *      a provider and paste a key.
+ *   5. Subscribe to Chrome events via the events dispatcher so the
+ *      agent can respond to things that happen in the browser
+ *      (context-menu clicks, bookmark changes, downloads, etc.).
  */
 
 import { runAgentLoop, DEFAULT_PRICING, estimateCost } from 'agent-do';
@@ -29,6 +32,8 @@ import {
   type AuditEntry,
   type AuditToolCall,
 } from './audit';
+import { startEvents } from './events/dispatcher';
+import { drainEvents } from './events/queue';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
 
@@ -42,7 +47,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   });
   log('installed; alarm scheduled every', cfg.alarmMinutes, 'min');
 
-  // First install (not update / chrome_update) → open onboarding.
   if (details.reason === 'install' || !cfg.onboarded) {
     chrome.runtime.openOptionsPage();
   }
@@ -61,16 +65,27 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   await run('alarm');
 });
 
+// Subscribe to all Chrome events the manifest grants permission for.
+// Event firings append to an OPFS queue; immediate-trigger events
+// (context menu clicks etc.) call `run('event')` right away.
+const triggerRun = async (): Promise<void> => {
+  await run('event');
+};
+startEvents(triggerRun).catch((err) => {
+  console.warn('[prompt-in-a-box] events bootstrap failed:', err);
+});
+
 // ─── Popup / options RPC ───────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // Ignore messages targeted at the offscreen document.
+  if (msg?.target === 'offscreen') return false;
+
   (async () => {
     try {
       if (msg?.type === 'run-now') {
         sendResponse(await run('manual'));
       } else if (msg?.type === 'test-provider') {
-        // Onboarding: run a tiny prompt against the provider to prove
-        // the key works. Audited as trigger='onboarding-test'.
         sendResponse(await testProvider(msg.config as Partial<Config>));
       } else if (msg?.type === 'get-audit-index') {
         sendResponse(await getAuditIndex());
@@ -85,6 +100,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           delayInMinutes: 1,
           periodInMinutes: cfg.alarmMinutes,
         });
+        // Permissions may have changed since last boot; re-scan.
+        startEvents(triggerRun).catch(() => {});
         sendResponse({ ok: true });
       } else {
         sendResponse({ error: `unknown message type: ${msg?.type}` });
@@ -93,7 +110,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ error: err instanceof Error ? err.message : String(err) });
     }
   })();
-  return true; // keep channel open for async response
+  return true;
 });
 
 // ─── Main loop ─────────────────────────────────────────────────────
@@ -125,7 +142,6 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
   const tools = await buildToolSet();
   const toolCalls: AuditToolCall[] = [];
   const pendingByName = new Map<string, { at: number; args: unknown }>();
-
   let tokens = { input: 0, output: 0, estimatedCost: 0 };
 
   const hooks: AgentHooks = {
@@ -157,6 +173,7 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
 
   try {
     const model = pickModel(cfg.provider, cfg.model, apiKey);
+    const userMessage = await composeUserMessage();
     const result = await runAgentLoop(
       {
         id: 'prompt-in-a-box',
@@ -168,11 +185,9 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
         hooks,
         usage: { enabled: true },
       },
-      'Begin your scheduled run now.',
+      userMessage,
     );
 
-    // If usage tracking didn't fire (e.g. unknown model), fall back to
-    // a manual cost estimate from result.usage totals.
     if (tokens.estimatedCost === 0 && result.usage) {
       tokens = {
         input: result.usage.totalInputTokens,
@@ -226,10 +241,29 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
   }
 }
 
+async function composeUserMessage(): Promise<string> {
+  // Drain the event queue. If anything's there, hand it to the prompt
+  // as "Events since last run"; the prompt decides what to do with
+  // them. Otherwise just ask for a scheduled tick.
+  const events = await drainEvents();
+  if (events.length === 0) {
+    return 'Begin your scheduled run now.';
+  }
+  const lines = events
+    .slice(0, 50) // safety cap in case a burst accumulated
+    .map(
+      (e) =>
+        `  - ${new Date(e.at).toISOString()} [${e.source}] ${JSON.stringify(e.payload).slice(0, 500)}`,
+    )
+    .join('\n');
+  const truncationNote =
+    events.length > 50
+      ? `\n  (+${events.length - 50} more events truncated)`
+      : '';
+  return `Chrome events have fired since your last run. Decide what, if anything, to act on.\n\n${lines}${truncationNote}`;
+}
+
 async function testProvider(patch: Partial<Config>): Promise<AuditEntry> {
-  // Merge the patch into the current config temporarily (doesn't
-  // persist until the user hits Save). The onboarding "Test" button
-  // uses this to verify a key works before committing it.
   const base = await getConfig();
   const cfg: Config = {
     ...base,
@@ -252,8 +286,6 @@ async function testProvider(patch: Partial<Config>): Promise<AuditEntry> {
       tokens: { input: 0, output: 0, estimatedCost: 0 },
     };
   }
-
-  // Temporarily stash the config so `run()` reads it, then restore.
   const snapshot = await chrome.storage.local.get(['provider', 'model', 'keys']);
   await chrome.storage.local.set({
     provider: cfg.provider,
@@ -276,9 +308,6 @@ function pickModel(provider: Provider, modelId: string, apiKey: string) {
         apiKey,
         headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
       });
-      // agent-do takes a LanguageModel (Vercel AI SDK). Each provider
-      // factory returns the branded type; cast through unknown for
-      // portability across provider versions.
       return p(modelId) as unknown as Parameters<typeof runAgentLoop>[0]['model'];
     }
     case 'google': {

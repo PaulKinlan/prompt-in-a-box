@@ -23,24 +23,32 @@ src/
     opfs.ts             – Origin Private File System wrapper
   tools/
     index.ts            – permission → tools mapping
-    tab-list.ts         – one file per Chrome API surface
-    tab-close.ts
-    tab-open.ts
-    tab-focus.ts
-    notification-show.ts
-    bookmark-search.ts
+    tab-*.ts            – list/open/close/focus/navigate/duplicate/move/mute/pin/group
+    tab-read.ts         – scrape visible tab text (via chrome.scripting)
+    tab-screenshot.ts   – capture visible area to OPFS
+    window-*.ts         – list/create/close/focus/resize
+    bookmark-*.ts       – search/add/list/remove
     history-search.ts
-    storage-get.ts
-    storage-set.ts
-    opfs-read.ts
-    opfs-write.ts
-    opfs-list.ts
-    alarm-set.ts
+    download-*.ts       – file/list
+    alarm-*.ts          – set/list/clear
+    context-menu-*.ts   – create/update/remove/list
+    reading-list-*.ts   – add/query
+    clipboard-write.ts  – via offscreen document
+    notification-show.ts
+    storage-get.ts / storage-set.ts
+    opfs-read.ts / opfs-write.ts / opfs-list.ts
+  events/
+    registry.ts         – Chrome event source catalogue (immediate + queued)
+    dispatcher.ts       – subscribes to events based on granted permissions
+    queue.ts            – OPFS-backed JSONL queue for ambient events
+  offscreen.ts /        – DOM-dependent operations (clipboard, HTML parsing)
+  offscreen.html
+  offscreen-client.ts   – SW-side RPC to the offscreen document
   stubs/
     mcp-sdk.ts          – build-time stubs (agent-do's MCP imports are node-only)
     node-only.ts
     node-module.ts
-build.js                – esbuild driver → dist/background.js, dist/popup.js
+build.js                – esbuild driver → dist/background.js, dist/popup.js, dist/options.js, dist/offscreen.js
 dist/                   – bundled output (gitignored)
 ```
 
@@ -97,6 +105,21 @@ On each alarm tick (or **Run now** from the popup) the service worker:
 
 `agent-do` handles the provider abstraction, tool-call marshalling, permissions, and usage tracking. This project contributes the host wiring: which Chrome APIs are tools, how state persists, when the loop fires. That separation is the point.
 
+## Events: the agent reacts to the browser
+
+Scheduled ticks aren't the only reason the agent wakes. `src/events/` subscribes to every Chrome event source the manifest has permission for and either:
+
+- **Triggers a run immediately** — context-menu clicks, notification clicks, keyboard shortcuts, omnibox entries. The user just did something and expects a response.
+- **Queues the event for the next run** — tab created/updated/removed, bookmark added/changed, history visited, download started/finished, window focus change, reading-list changes, tab-group changes, webNavigation completion, idle state changes.
+
+When a run starts, `composeUserMessage` drains the queue and hands the events to the prompt as "Events since last run". The prompt decides what, if anything, to act on. This lets a single prompt create a context menu item *and* handle its clicks, or watch for new bookmarks and react on the next tick.
+
+If the prompt doesn't need a given event, the operator doesn't grant the permission; the subscription is skipped. Permission declarations remain the one knob.
+
+## Offscreen document
+
+Some operations need a DOM — most famously clipboard writes (`navigator.clipboard.writeText`) and HTML parsing (`DOMParser`). Service workers have neither. `src/offscreen.ts` runs in an offscreen document created on demand; the SW talks to it via `chrome.runtime.sendMessage`. This is how `clipboard_write` works. The same document can be extended with more DOM-dependent tools.
+
 ## Swapping in a different prompt
 
 Replace `prompt.md`. That's it. Everything else stays the same.
@@ -115,10 +138,9 @@ If a new prompt wants additional capabilities (history, scripting, downloads, cl
 
 This is a proof-of-concept, not a product:
 
-- Only Anthropic is wired. Google and OpenAI adapters would be a small addition via `@ai-sdk/google` / `@ai-sdk/openai`.
-- The tool set covers the commonly-used chrome.* surface but isn't exhaustive (scripting, downloads, clipboard, tab screenshots, window management, etc. are easy additions).
 - Tools aren't auto-generated from the manifest's `permissions` array — adding a permission still requires writing its tool file.
 - No tests yet.
+- A few low-value Chrome event sources (`cookies.onChanged`, `permissions.onAdded`, etc.) aren't wired.
 
 ## License
 

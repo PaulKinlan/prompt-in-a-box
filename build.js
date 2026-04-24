@@ -73,6 +73,7 @@ const entries = [
   { in: 'src/background.ts', out: 'dist/background.js' },
   { in: 'src/popup.ts', out: 'dist/popup.js' },
   { in: 'src/options.ts', out: 'dist/options.js' },
+  { in: 'src/offscreen.ts', out: 'dist/offscreen.js' },
 ];
 
 async function run() {
@@ -80,6 +81,7 @@ async function run() {
   // Copy static assets that aren't TS sources.
   cpSync('src/popup.html', 'dist/popup.html');
   cpSync('src/options.html', 'dist/options.html');
+  cpSync('src/offscreen.html', 'dist/offscreen.html');
 
   if (watch) {
     for (const e of entries) {
