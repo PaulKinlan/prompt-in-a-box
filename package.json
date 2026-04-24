@@ -7,7 +7,9 @@
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack": "node scripts/pack.js",
+    "release": "npm run build && npm run pack"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.71",
