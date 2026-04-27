@@ -82,6 +82,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   await run('alarm');
 });
 
+chrome.notifications.onClicked.addListener((notificationId) => {
+  console.log('[prompt-in-a-box] Notification clicked:', notificationId);
+  if (notificationId.startsWith('artifact-')) {
+    const artifactId = notificationId.replace('artifact-', '');
+    chrome.tabs.create({
+      url: chrome.runtime.getURL(`dist/artifacts.html?id=${artifactId}`)
+    });
+  }
+});
+
 // Subscribe to all Chrome events the manifest grants permission for.
 // Event firings append to an OPFS queue; immediate-trigger events
 // (context menu clicks etc.) call `run('event')` right away.

@@ -7,9 +7,10 @@ export const notificationShow = tool({
   inputSchema: z.object({
     title: z.string().max(80),
     body: z.string().max(400),
+    artifactId: z.string().optional().describe("Optional ID of the artifact this relates to"),
   }),
-  execute: async ({ title, body }) => {
-    const id = `pib-${Date.now()}`;
+  execute: async ({ title, body, artifactId }) => {
+    const id = artifactId ? `artifact-${artifactId}` : `pib-${Date.now()}`;
     await chrome.notifications.create(id, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icon.png'),

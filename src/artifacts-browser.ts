@@ -316,10 +316,12 @@ async function openViewer(artifactId: string): Promise<void> {
       body.innerHTML = `<pre>${escapeHtml(a.content)}</pre>`;
     }
   } else if (a.kind === 'html') {
-    // Render HTML as text — we don't want arbitrary page scripts or
-    // styles to run in the browser context. If the user wants to see
-    // it rendered, they can download it and open locally.
-    body.innerHTML = `<pre>${escapeHtml(a.content)}</pre>`;
+    // Render HTML in a sandboxed iframe.
+    body.innerHTML = `<iframe id="sandbox-frame" src="sandbox.html" style="width:100%; height:500px; border:none;"></iframe>`;
+    const iframe = document.getElementById('sandbox-frame') as HTMLIFrameElement;
+    iframe.onload = () => {
+      iframe.contentWindow?.postMessage({ type: 'render', html: a.content }, '*');
+    };
   } else {
     body.innerHTML = `<pre>${escapeHtml(a.content)}</pre>`;
   }
@@ -372,6 +374,12 @@ function slug(s: string): string {
 async function refresh(): Promise<void> {
   await loadIndex();
   render();
+
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id');
+  if (id) {
+    void openViewer(id);
+  }
 }
 
 function wireFilters(): void {

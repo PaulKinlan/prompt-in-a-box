@@ -20,14 +20,15 @@ The user message will contain the event payload. Extract `info.menuItemId` and `
 2. `tab_read` the tab.
 3. Write a 4-sentence summary.
 4. Call `artifact_create` with:
-   - `kind`: `markdown`
+   - `kind`: `html`
    - `title`: the page title
-   - `content`: a markdown block with the summary, 3-5 key topics, and a link back to the source
+   - `content`: a full HTML report with a header, the summary in a paragraph, 3-5 key topics in a list, and a link back to the source. Style it nicely with CSS.
    - `sourceUrl`: the tab URL
    - `tags`: `["summary", "right-click"]`
 5. Fire a `notification_show`:
    - `title`: "Summary saved"
    - `message`: the summary (truncated to 300 chars)
+   - `artifactId`: the ID returned by `artifact_create`
 
 The artifact shows up in the popup and the full artifacts browser so the user can come back to it later.
 

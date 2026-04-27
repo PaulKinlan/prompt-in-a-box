@@ -75,6 +75,7 @@ const entries = [
   { in: 'src/options.ts', out: 'dist/options.js' },
   { in: 'src/offscreen.ts', out: 'dist/offscreen.js' },
   { in: 'src/artifacts-browser.ts', out: 'dist/artifacts-browser.js' },
+  { in: 'src/sandbox.ts', out: 'dist/sandbox.js' },
 ];
 
 async function run() {
@@ -84,6 +85,7 @@ async function run() {
   cpSync('src/options.html', 'dist/options.html');
   cpSync('src/offscreen.html', 'dist/offscreen.html');
   cpSync('src/artifacts.html', 'dist/artifacts.html');
+  cpSync('src/sandbox.html', 'dist/sandbox.html');
 
   if (watch) {
     for (const e of entries) {
