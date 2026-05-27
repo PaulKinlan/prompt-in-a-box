@@ -56,6 +56,94 @@ const tools = {
   file_write: fileWrite,
 };
 
+// ─── Dynamic Tool Registry Scanner ──────────────────────────────────
+
+function generateToolReference() {
+  const toolsDir = path.join(process.cwd(), 'src/tools');
+  const indexFile = path.join(toolsDir, 'index.ts');
+  
+  if (!fs.existsSync(indexFile)) {
+    return 'No tool reference available.';
+  }
+
+  try {
+    const indexContent = fs.readFileSync(indexFile, 'utf-8');
+    const toolsToPermission = {};
+
+    // 1. Parse TOOLS_BY_PERMISSION mapping inside src/tools/index.ts
+    const blockRegex = /(\w+|__always__):\s*\{([\s\S]*?)\}/g;
+    let match;
+    while ((match = blockRegex.exec(indexContent)) !== null) {
+      const permission = match[1];
+      const toolsBlock = match[2];
+      const toolRegex = /(\w+):\s*\w+/g;
+      let toolMatch;
+      while ((toolMatch = toolRegex.exec(toolsBlock)) !== null) {
+        const toolName = toolMatch[1];
+        toolsToPermission[toolName] = permission === '__always__' ? 'None (Always available)' : permission;
+      }
+    }
+
+    // 2. Scan src/tools directory for individual tool files
+    const files = fs.readdirSync(toolsDir)
+      .filter(file => file.endsWith('.ts') && file !== 'index.ts' && file !== 'provider-tools.ts');
+
+    let referenceText = '# Extension Tool Registry Reference\n\n';
+    referenceText += 'Below is a comprehensive catalogue of every tool defined in `src/tools/` mapped to its corresponding Chrome permission and Zod parameter schema. When designing the system prompt (`prompt.md`) for the new extension, you **must only reference these exact tools and parameter names**.\n\n';
+    referenceText += '| Tool Name | Required Permission | Description |\n';
+    referenceText += '|---|---|---|\n';
+
+    const toolDetails = [];
+
+    for (const file of files) {
+      const filePath = path.join(toolsDir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      
+      const kebabName = file.replace('.ts', '');
+      const toolName = kebabName.replace(/-/g, '_');
+      const permission = toolsToPermission[toolName] || 'None (Always available)';
+
+      // Extract description
+      const descMatch = content.match(/description:\s*['"`]([\s\S]*?)['"`]/);
+      const description = descMatch ? descMatch[1].trim().replace(/\s+/g, ' ') : 'No description provided.';
+
+      // Append row to the summary table
+      referenceText += `| \`${toolName}\` | \`${permission}\` | ${description} |\n`;
+
+      // Extract Zod inputSchema
+      const schemaMatch = content.match(/inputSchema:\s*(?:z|external_exports2)\.object\(\{([\s\S]*?)\}\)/);
+      let parametersStr = 'No parameters';
+      if (schemaMatch) {
+        parametersStr = schemaMatch[1].trim()
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0)
+          .join('\n    ');
+      }
+
+      toolDetails.push({
+        name: toolName,
+        permission,
+        description,
+        parameters: parametersStr
+      });
+    }
+
+    referenceText += '\n### Detailed Tool Specifications\n\n';
+    for (const t of toolDetails) {
+      referenceText += `#### \`${t.name}\`\n`;
+      referenceText += `- **Required Chrome Permission**: \`${t.permission}\`\n`;
+      referenceText += `- **Description**: ${t.description}\n`;
+      referenceText += `- **Zod Parameters Schema**:\n  \`\`\`typescript\n  ${t.parameters}\n  \`\`\`\n\n`;
+    }
+
+    return referenceText;
+  } catch (err) {
+    console.warn('Warning: Could not dynamically scan tool files for catalogue.', err.message);
+    return 'No tool reference available.';
+  }
+}
+
 // ─── Main ──────────────────────────────────────────────────────────
 
 async function getStdin() {
@@ -113,17 +201,21 @@ Idea: "${initialPrompt}"`,
   console.log(`  Description: ${metadata.description}`);
   console.log(`  Permissions: ${metadata.permissions.join(', ') || 'none'}\n`);
 
-  console.log(`Creating demo for: "${metadata.name}"`);
+  const toolReference = generateToolReference();
 
   const systemPrompt = `
 You are an expert Chrome Extension developer and prompt engineer.
 Your task is to create a new demo folder in the \`examples/\` directory based on the user's description.
 
+${toolReference}
+
 Workflow:
 1.  **Plan**: Use the \`file_read\` tool to read the main \`manifest.json\` and \`prompt.md\` in the project root to understand the project structure, permissions, and style.
 2.  **Generate**: Design the new demo. You need to produce:
     *   \`prompt.md\`: The core logic instructions for the agent running in the extension. It should be thorough, cover edge cases, and follow the style of the reference prompt.
+        *IMPORTANT*: Your generated \`prompt.md\` must only utilize the exact tools listed in the Extension Tool Registry Reference above, and it must describe their usage and parameters exactly as defined. Never invent tools or parameters.
     *   \`README.md\`: A summary of the demo (Trigger, Required permissions, Writes, Side effects).
+        *IMPORTANT*: The required permissions in your README must match the exact permissions mapped to the tools used in your prompt.
     *   \`manifest.json\`: A suggested manifest for this specific demo indicating required permissions.
 3.  **Write**: Use the \`file_write\` tool to create the files in a new directory under \`examples/\` (use a URL-safe slug derived from the demo title).
 
