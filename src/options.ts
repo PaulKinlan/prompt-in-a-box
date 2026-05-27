@@ -25,6 +25,10 @@ let currentConfig: Config;
 let currentProvider: Provider = 'anthropic';
 
 async function loadUI(): Promise<void> {
+  const manifest = chrome.runtime.getManifest();
+  document.title = `${manifest.name} — settings & audit`;
+  $('extName').textContent = manifest.name;
+
   currentConfig = await getConfig();
   currentProvider = currentConfig.provider;
 

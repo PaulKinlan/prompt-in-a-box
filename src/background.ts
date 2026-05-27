@@ -219,10 +219,11 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
   try {
     const model = pickModel(cfg.provider, cfg.model, apiKey);
     const userMessage = await composeUserMessage(trigger);
+    const manifest = chrome.runtime.getManifest();
     const result = await runAgentLoop(
       {
-        id: 'prompt-in-a-box',
-        name: 'Prompt in a Box',
+        id: manifest.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        name: manifest.name,
         model,
         systemPrompt: prompt,
         tools,
@@ -405,5 +406,5 @@ async function loadPrompt(): Promise<string> {
 }
 
 function log(...args: unknown[]): void {
-  console.log('[prompt-in-a-box]', ...args);
+  console.log(`[${chrome.runtime.getManifest().name}]`, ...args);
 }

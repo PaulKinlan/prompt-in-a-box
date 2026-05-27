@@ -428,6 +428,7 @@ function wireButtons(): void {
   });
 }
 
+document.title = `${chrome.runtime.getManifest().name} — artifacts`;
 wireFilters();
 wireButtons();
 void refresh();

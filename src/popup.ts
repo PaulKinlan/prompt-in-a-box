@@ -39,7 +39,10 @@ function kindBadgeClass(kind: ArtifactKind): string {
 
 async function loadSummary(): Promise<void> {
   const cfg = await getConfig();
-  $('version').textContent = 'v' + chrome.runtime.getManifest().version;
+  const manifest = chrome.runtime.getManifest();
+  document.title = manifest.name;
+  $('extName').textContent = manifest.name;
+  $('version').textContent = 'v' + manifest.version;
   $('summaryProvider').textContent = PROVIDER_LABELS[cfg.provider];
   const hasKey = Boolean(activeKey(cfg));
   const metaParts = [
