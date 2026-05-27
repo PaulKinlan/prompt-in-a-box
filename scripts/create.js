@@ -1,8 +1,9 @@
-import { generateText } from 'ai';
+import { runAgentLoop } from 'agent-do';
+import { tool, generateObject } from 'ai';
+import { z } from 'zod';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -14,137 +15,152 @@ if (!apiKey) {
 const google = createGoogleGenerativeAI({ apiKey });
 const model = google('gemini-3.1-pro-preview');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
+// ─── Local File System Tools ───────────────────────────────────────
+
+const fileRead = tool({
+  description: 'Read the content of a local file relative to the project root.',
+  inputSchema: z.object({
+    filePath: z.string().describe('Path to the file relative to project root (e.g., "manifest.json")'),
+  }),
+  execute: async ({ filePath }) => {
+    try {
+      const fullPath = path.join(process.cwd(), filePath);
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      return { ok: true, content };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
 });
 
-const ask = (query) => new Promise((resolve) => rl.question(query, resolve));
+const fileWrite = tool({
+  description: 'Write content to a local file relative to the project root. Parent directories will be created if needed.',
+  inputSchema: z.object({
+    filePath: z.string().describe('Path to the file relative to project root (e.g., "examples/my-demo/prompt.md")'),
+    content: z.string().describe('The content to write to the file.'),
+  }),
+  execute: async ({ filePath, content }) => {
+    try {
+      const fullPath = path.join(process.cwd(), filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content, 'utf-8');
+      return { ok: true, path: fullPath };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+});
+
+const tools = {
+  file_read: fileRead,
+  file_write: fileWrite,
+};
+
+// ─── Main ──────────────────────────────────────────────────────────
+
+async function getStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.on('data', chunk => {
+      data += chunk;
+    });
+    process.stdin.on('end', () => {
+      resolve(data.trim());
+    });
+  });
+}
 
 async function main() {
-  const initialPrompt = process.argv[2];
+  let initialPrompt = process.argv[2];
+  if (!initialPrompt && !process.stdin.isTTY) {
+    initialPrompt = await getStdin();
+  }
+
   if (!initialPrompt) {
     console.error("Error: Please provide an initial prompt description.");
-    console.error("Usage: npm run create \"Your prompt idea here\"");
+    console.error("Usage: npm run create \"Your prompt idea here\" or pipe to it.");
     process.exit(1);
   }
 
-  console.log(`Initial idea: "${initialPrompt}"`);
+  console.log(`Analyzing idea: "${initialPrompt}"...`);
 
-  // Read references
-  const rootDir = process.cwd();
-  const manifestPath = path.join(rootDir, 'manifest.json');
-  const promptPath = path.join(rootDir, 'prompt.md');
+  const extensionMetadataSchema = z.object({
+    name: z.string().describe('A concise, catchy, and professional name for the Chrome Extension (e.g., "Tab Summarizer", "Auto Form Filler")'),
+    description: z.string().describe('A clear, 1-2 sentence description of what the extension does.'),
+    permissions: z.array(z.string()).describe('A list of standard Chrome Extension permissions required for this extension (e.g., "activeTab", "storage", "alarms", "scripting", "contextMenus", "tabs", "<all_urls>")'),
+  });
 
-  const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
-  const promptContent = fs.readFileSync(promptPath, 'utf-8');
-
-  // Create backups/templates folder as requested
-  const templatesDir = path.join(rootDir, 'scripts', 'templates');
-  fs.mkdirSync(templatesDir, { recursive: true });
-  fs.writeFileSync(path.join(templatesDir, 'manifest.json'), manifestContent);
-  fs.writeFileSync(path.join(templatesDir, 'prompt.md'), promptContent);
-  console.log(`Backed up current manifest.json and prompt.md to ${templatesDir}`);
-
-  let currentDescription = initialPrompt;
-  let generatedPrompt = '';
-  let generatedReadme = '';
-  let generatedManifest = '';
-
-  while (true) {
-    console.log("\nGenerating/Refining prompt with Gemini...");
-
-    const systemInstruction = `
-You are an expert Chrome Extension developer and prompt engineer.
-You are helping design a new demo for the 'Prompt in a Box' project.
-In this project, the entire logic of the extension is driven by a 'prompt.md' file.
-The extension wakes up on alarms or events and executes the instructions in 'prompt.md'.
-
-I will provide you with:
-1. The current main 'manifest.json' of the project (as reference for available permissions and structure).
-2. The current main 'prompt.md' (as reference for style and structure).
-3. A description of the new demo prompt to create.
-
-Your task is to generate 3 files for the new demo:
-1. 'prompt.md': The core logic instructions for the agent. It should be thorough, cover edge cases, and follow the style of the reference prompt.
-2. 'README.md': A summary of the demo (Trigger, Required permissions, Writes, Side effects).
-3. 'manifest.json': A suggested manifest for this specific demo if it were to be run as a standalone extension or to indicate required permissions.
-
-Return the output in a structured JSON format with keys: 'prompt', 'readme', 'manifest'.
-`;
-
-    const prompt = `
-Reference Manifest:
-\`\`\`json
-${manifestContent}
-\`\`\`
-
-Reference Prompt:
-\`\`\`markdown
-${promptContent}
-\`\`\`
-
-New Demo Description: "${currentDescription}"
-
-Generate the files.
-`;
-
-    try {
-      const { text } = await generateText({
-        model,
-        systemInstruction,
-        prompt,
-      });
-
-      // Assume the model returns JSON or we need to parse it.
-      // Let's try to parse it. If it fails, we might need to adjust the prompt to ensure clean JSON.
-      try {
-        // Find the JSON block in the response if the model wrapped it in markdown
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        const data = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-        
-        generatedPrompt = data.prompt;
-        generatedReadme = data.readme;
-        generatedManifest = typeof data.manifest === 'object' ? JSON.stringify(data.manifest, null, 2) : data.manifest;
-        
-        console.log("\n--- Generated prompt.md Preview ---");
-        console.log(generatedPrompt.slice(0, 500) + "...\n(truncated)");
-        
-      } catch (parseError) {
-        console.error("Failed to parse Gemini response as JSON. Raw response:");
-        console.log(text);
-        rl.close();
-        process.exit(1);
-      }
-
-    } catch (err) {
-      console.error("Error calling Gemini:", err);
-      rl.close();
-      process.exit(1);
-    }
-
-    const action = await ask("\nDo you want to (a)ccept, (r)efine, or (q)uit? ");
-    
-    if (action.toLowerCase() === 'a') {
-      const slug = currentDescription.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
-      const outputDir = path.join(rootDir, 'examples', slug);
-      
-      fs.mkdirSync(outputDir, { recursive: true });
-      fs.writeFileSync(path.join(outputDir, 'prompt.md'), generatedPrompt);
-      fs.writeFileSync(path.join(outputDir, 'README.md'), generatedReadme);
-      fs.writeFileSync(path.join(outputDir, 'manifest.json'), generatedManifest);
-      
-      console.log(`\nSuccess! Created demo in ${outputDir}`);
-      break;
-    } else if (action.toLowerCase() === 'r') {
-      currentDescription = await ask("How should we refine it? ");
-    } else {
-      console.log("Aborted.");
-      break;
-    }
+  let metadata;
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: extensionMetadataSchema,
+      prompt: `Analyze this Chrome Extension idea and infer a professional extension name, a clear description, and any appropriate Chrome Extension permissions needed to implement it.
+Idea: "${initialPrompt}"`,
+    });
+    metadata = object;
+  } catch (err) {
+    console.warn("Warning: Could not infer extension metadata automatically.", err);
+    metadata = {
+      name: "Prompt in a Box Demo",
+      description: initialPrompt,
+      permissions: ["activeTab", "storage", "alarms"]
+    };
   }
 
-  rl.close();
+  console.log(`\nInferred Extension Metadata:`);
+  console.log(`  Name:        ${metadata.name}`);
+  console.log(`  Description: ${metadata.description}`);
+  console.log(`  Permissions: ${metadata.permissions.join(', ') || 'none'}\n`);
+
+  console.log(`Creating demo for: "${metadata.name}"`);
+
+  const systemPrompt = `
+You are an expert Chrome Extension developer and prompt engineer.
+Your task is to create a new demo folder in the \`examples/\` directory based on the user's description.
+
+Workflow:
+1.  **Plan**: Use the \`file_read\` tool to read the main \`manifest.json\` and \`prompt.md\` in the project root to understand the project structure, permissions, and style.
+2.  **Generate**: Design the new demo. You need to produce:
+    *   \`prompt.md\`: The core logic instructions for the agent running in the extension. It should be thorough, cover edge cases, and follow the style of the reference prompt.
+    *   \`README.md\`: A summary of the demo (Trigger, Required permissions, Writes, Side effects).
+    *   \`manifest.json\`: A suggested manifest for this specific demo indicating required permissions.
+3.  **Write**: Use the \`file_write\` tool to create the files in a new directory under \`examples/\` (use a URL-safe slug derived from the demo title).
+
+You MUST use the tools to read the references and write the output files. Do not just output the file contents in your chat response. Cover edge cases for the project in the generated prompt.
+
+When you are done writing all files, provide a brief summary of what you created.
+`;
+
+  try {
+    const result = await runAgentLoop(
+      {
+        id: 'create-demo-agent',
+        name: 'Create Demo Agent',
+        model,
+        systemPrompt,
+        tools,
+        maxIterations: 15, // Allow enough steps for planning, reading, and writing
+        usage: { enabled: true },
+      },
+      `Create a new demo using the following inferred metadata:
+Name: "${metadata.name}"
+Description: "${metadata.description}"
+Required Permissions: [${metadata.permissions.map(p => `"${p}"`).join(', ')}]
+
+Please create this demo in a folder slug matching the extension name.`,
+    );
+
+    console.log("\nAgent Output:");
+    console.log(result.text);
+
+    if (result.usage) {
+      console.log(`\nTokens used: Input ${result.usage.totalInputTokens}, Output ${result.usage.totalOutputTokens}`);
+    }
+
+  } catch (err) {
+    console.error("Error running agent loop:", err);
+  }
 }
 
 main().catch(console.error);
