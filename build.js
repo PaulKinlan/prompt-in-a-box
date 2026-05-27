@@ -54,15 +54,44 @@ if (exampleName) {
     process.exit(1);
   }
 
-  // Ensure manifest.json exists, otherwise generate/copy customized baseline
-  const exampleManifest = join(exampleDir, 'manifest.json');
-  if (!existsSync(exampleManifest)) {
-    const defaultManifestPath = resolve('scripts/templates/manifest.json');
-    if (existsSync(defaultManifestPath)) {
-      try {
-        const manifestContent = JSON.parse(readFileSync(defaultManifestPath, 'utf8'));
+  // Ensure manifest.json exists, and merge it with the baseline template
+  const defaultManifestPath = resolve('scripts/templates/manifest.json');
+  if (existsSync(defaultManifestPath)) {
+    try {
+      const manifestContent = JSON.parse(readFileSync(defaultManifestPath, 'utf8'));
+      const exampleManifest = join(exampleDir, 'manifest.json');
+      
+      if (existsSync(exampleManifest)) {
+        const exampleContent = JSON.parse(readFileSync(exampleManifest, 'utf8'));
         
-        // Convert to Title Case for name
+        if (exampleContent.name) manifestContent.name = exampleContent.name;
+        if (exampleContent.version) manifestContent.version = exampleContent.version;
+        if (exampleContent.description) manifestContent.description = exampleContent.description;
+        
+        if (exampleContent.prompt_in_a_box) {
+          manifestContent.prompt_in_a_box = {
+            ...manifestContent.prompt_in_a_box,
+            ...exampleContent.prompt_in_a_box
+          };
+        }
+        
+        if (exampleContent.permissions) {
+          const mergedPerms = new Set([...manifestContent.permissions, ...exampleContent.permissions]);
+          manifestContent.permissions = Array.from(mergedPerms);
+        }
+        
+        if (exampleContent.host_permissions) {
+          const mergedHosts = new Set([...manifestContent.host_permissions, ...exampleContent.host_permissions]);
+          manifestContent.host_permissions = Array.from(mergedHosts);
+        }
+
+        if (exampleContent.optional_permissions) {
+          const mergedOptPerms = new Set([...(manifestContent.optional_permissions || []), ...exampleContent.optional_permissions]);
+          manifestContent.optional_permissions = Array.from(mergedOptPerms);
+        }
+        
+        console.log(`📋 Merging custom manifest settings for ${exampleName}...`);
+      } else {
         const titleCaseName = exampleName
           .split('-')
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -72,13 +101,15 @@ if (exampleName) {
         manifestContent.description = `Standalone ${titleCaseName} Chrome Extension built with prompt-in-a-box.`;
         manifestContent.action = manifestContent.action || {};
         manifestContent.action.default_title = titleCaseName;
-
-        writeFileSync(exampleManifest, JSON.stringify(manifestContent, null, 2), 'utf8');
-        console.log(`📋 Created custom manifest at ${exampleManifest}`);
-      } catch (err) {
-        console.warn(`⚠️ Warning: Could not customize manifest. json. Copying baseline instead.`, err.message);
-        cpSync(defaultManifestPath, exampleManifest);
+        
+        console.log(`📋 Generating default standalone manifest for ${exampleName}...`);
       }
+      
+      writeFileSync(exampleManifest, JSON.stringify(manifestContent, null, 2), 'utf8');
+      console.log(`✨ Manifest written successfully to ${exampleManifest}`);
+    } catch (err) {
+      console.error(`❌ Error building manifest for example:`, err.message);
+      process.exit(1);
     }
   }
 

@@ -1,0 +1,75 @@
+{
+  "manifest_version": 3,
+  "name": "Focus Mode",
+  "version": "0.6.0",
+  "description": "Standalone Focus Mode Chrome Extension built with prompt-in-a-box.",
+  "prompt_in_a_box": {
+    "prompt": "prompt.md",
+    "alarm_minutes": 30,
+    "default_provider": "anthropic",
+    "default_model": "claude-sonnet-4-6"
+  },
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "dist/popup.html",
+    "default_title": "Focus Mode",
+    "default_icon": {
+      "32": "icon.png"
+    }
+  },
+  "icons": {
+    "32": "icon.png"
+  },
+  "options_ui": {
+    "page": "dist/options.html",
+    "open_in_tab": true
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "tabs",
+    "offscreen"
+  ],
+  "optional_permissions": [
+    "bookmarks",
+    "history",
+    "downloads",
+    "clipboardWrite",
+    "scripting",
+    "contextMenus",
+    "idle",
+    "readingList",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "prompt.md",
+        "icon.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "sandbox": {
+    "pages": [
+      "dist/sandbox.html"
+    ]
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com;"
+  }
+}
