@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "pack": "node scripts/pack.js",
     "release": "npm run build && npm run pack",
-    "create": "node scripts/create.js"
+    "create": "node scripts/create.js",
+    "use": "node scripts/use.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.71",

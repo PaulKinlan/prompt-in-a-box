@@ -69,7 +69,25 @@ To produce a distributable zip instead:
 npm run release   # build + pack in one step
 ```
 
-Produces `prompt-in-a-box.zip` containing only what Chrome needs at runtime (`manifest.json`, `prompt.md`, `icon.png`, `dist/*.{js,html}`). The `examples/` folder and all source files are excluded.
+Produces `prompt-in-a-box.zip` containing only what Chrome needs at runtime. The `examples/` folder and all source files are excluded.
+
+### Working with Examples as Standalone Extensions
+
+You can build and package any example directly inside its own folder under `examples/` without modifying your active workspace root. Each example becomes a fully functioning, self-contained, unpacked extension!
+
+* **Build a specific example**:
+  ```sh
+  npm run build <example-slug>
+  ```
+  *(Example: `npm run build focus-mode`)*
+  This compiles and builds all required extension files directly into `examples/<example-slug>/dist/`. If the example folder does not have an `icon.png` or `manifest.json`, the build tool automatically copies/generates them (customizing the manifest name/description to match the example). You can load the directory `examples/<example-slug>/` *directly* in Chrome under **Developer mode (Load unpacked)**!
+
+* **Build and package an example directly**:
+  ```sh
+  npm run pack <example-slug>
+  ```
+  *(Example: `npm run pack focus-mode`)*
+  This automatically compiles the example and packages it into a standalone ZIP file located *inside* the example directory: `examples/<example-slug>/<example-slug>.zip`!
 3. The options page opens automatically on first install. Pick a provider (Anthropic, Google, or OpenAI), paste the API key, click **Test** to verify, then **Save**.
 4. Click the toolbar icon → **Run now**.
 5. If you have more than 20 tabs open, you should see a desktop notification within a few seconds.
@@ -188,11 +206,9 @@ If a new prompt wants additional capabilities (history, scripting, downloads, cl
 
 ## Examples
 
-`examples/` has 27 demo prompts, each in its own folder with a `prompt.md` and a short `README.md` listing the permissions it needs and what it does. They cover the surface — right-click summarisers, tab hygiene variants, focus mode, auto-reading-list, omnibox answers, meeting-prep templates, hourly tab-screenshot diaries, bookmark cleaners, and more.
+`examples/` has 29 demo prompts, each in its own folder with a `prompt.md` and a short `README.md` listing the permissions it needs and what it does. They cover the surface — right-click summarisers, tab hygiene variants, focus mode, auto-reading-list, omnibox answers, meeting-prep templates, hourly tab-screenshot diaries, bookmark cleaners, and more.
 
-Try one by copying its `prompt.md` over the root `prompt.md` (and granting the permissions its README lists), then `npm run build`. See [`examples/README.md`](examples/README.md) for full instructions.
-
-Examples are **not** shipped in the zip — `npm run pack` only includes the root `prompt.md`.
+Try one easily using the `npm run use <example-name>` tool, or package it directly into a ZIP file with `npm run pack <example-name>`. See [`examples/README.md`](examples/README.md) for full instructions.
 
 ## Security notes
 

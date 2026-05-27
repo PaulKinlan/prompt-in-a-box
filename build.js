@@ -2,28 +2,95 @@
 /**
  * esbuild driver for the extension.
  *
- * Three entry points land in dist/:
- *   - dist/background.js  (service worker)
- *   - dist/popup.js       (popup UI)
- *   - dist/offscreen.js   (reserved for future offscreen document work)
+ * Supports building a specific example as a standalone unpacked extension:
+ *   npm run build <example-name>
+ *   npm run build -- --example=<example-name>
  *
- * agent-do + @ai-sdk/anthropic + ai + zod all get bundled in. The
- * service worker's module-level imports mean we need `format: 'esm'`
- * plus a single self-contained output per entry — no code-splitting,
- * chrome can't resolve chunks from the extension origin outside the
- * zip.
- *
- * CSP note: agent-do's current build uses no `eval`. The only runtime
- * requiring `wasm-unsafe-eval` would be a provider that ships WASM
- * tokenisers; we don't include those. Plain 'self' for script-src
- * is enough.
+ * Default built files go to dist/.
+ * Standalone example files go to examples/<example-name>/dist/.
  */
 import { build, context } from 'esbuild';
-import { cpSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { cpSync, mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 
 const watch = process.argv.includes('--watch');
 const prod = process.argv.includes('--prod');
+
+// Parse target example
+const args = process.argv.slice(2);
+let exampleName = null;
+for (const arg of args) {
+  if (arg.startsWith('--example=')) {
+    exampleName = arg.split('=')[1];
+  } else if (!arg.startsWith('-') && arg !== 'default') {
+    exampleName = arg;
+  }
+}
+
+let outDir = 'dist';
+
+if (exampleName) {
+  const examplesDir = resolve('examples');
+  const examples = readdirSync(examplesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.'))
+    .map(dirent => dirent.name);
+
+  if (!examples.includes(exampleName)) {
+    console.error(`\n❌ Error: Example "${exampleName}" not found.\n`);
+    console.error('Available examples:');
+    for (const ex of examples) {
+      console.error(`  - ${ex}`);
+    }
+    process.exit(1);
+  }
+
+  const exampleDir = join('examples', exampleName);
+  outDir = join(exampleDir, 'dist');
+  console.log(`🔨 Building standalone example "${exampleName}" → ${outDir}...`);
+
+  // Ensure prompt.md exists in the example folder (must)
+  if (!existsSync(join(exampleDir, 'prompt.md'))) {
+    console.error(`❌ Error: Example "${exampleName}" is missing "prompt.md".`);
+    process.exit(1);
+  }
+
+  // Ensure manifest.json exists, otherwise generate/copy customized baseline
+  const exampleManifest = join(exampleDir, 'manifest.json');
+  if (!existsSync(exampleManifest)) {
+    const defaultManifestPath = resolve('scripts/templates/manifest.json');
+    if (existsSync(defaultManifestPath)) {
+      try {
+        const manifestContent = JSON.parse(readFileSync(defaultManifestPath, 'utf8'));
+        
+        // Convert to Title Case for name
+        const titleCaseName = exampleName
+          .split('-')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        
+        manifestContent.name = titleCaseName;
+        manifestContent.description = `Standalone ${titleCaseName} Chrome Extension built with prompt-in-a-box.`;
+        manifestContent.action = manifestContent.action || {};
+        manifestContent.action.default_title = titleCaseName;
+
+        writeFileSync(exampleManifest, JSON.stringify(manifestContent, null, 2), 'utf8');
+        console.log(`📋 Created custom manifest at ${exampleManifest}`);
+      } catch (err) {
+        console.warn(`⚠️ Warning: Could not customize manifest. json. Copying baseline instead.`, err.message);
+        cpSync(defaultManifestPath, exampleManifest);
+      }
+    }
+  }
+
+  // Ensure icon.png exists, otherwise copy from root
+  const exampleIcon = join(exampleDir, 'icon.png');
+  if (!existsSync(exampleIcon) && existsSync('icon.png')) {
+    cpSync('icon.png', exampleIcon);
+    console.log(`🎨 Copied icon.png to ${exampleIcon}`);
+  }
+} else {
+  console.log('🔨 Building default workspace extension → dist/...');
+}
 
 const MCP_STUB = resolve('src/stubs/mcp-sdk.ts');
 const NODE_MODULE_STUB = resolve('src/stubs/node-module.ts');
@@ -31,14 +98,7 @@ const NODE_BUILTIN_STUB = resolve('src/stubs/node-only.ts');
 
 /**
  * esbuild plugin: redirect agent-do's node-only imports to SW-safe
- * stubs. agent-do's barrel re-exports several modules that statically
- * import `@modelcontextprotocol/sdk`, `node:fs`, `node:path`,
- * `node:module`, etc. We never take those code paths in the extension,
- * but esbuild still has to resolve them at bundle time.
- *
- * All node:* imports go to a single generic stub that throws if
- * actually invoked. All @modelcontextprotocol/sdk/* imports go to the
- * MCP-specific stub.
+ * stubs.
  */
 const stubNodeOnlyImports = {
   name: 'stub-node-only-imports',
@@ -70,22 +130,22 @@ const common = {
 };
 
 const entries = [
-  { in: 'src/background.ts', out: 'dist/background.js' },
-  { in: 'src/popup.ts', out: 'dist/popup.js' },
-  { in: 'src/options.ts', out: 'dist/options.js' },
-  { in: 'src/offscreen.ts', out: 'dist/offscreen.js' },
-  { in: 'src/artifacts-browser.ts', out: 'dist/artifacts-browser.js' },
-  { in: 'src/sandbox.ts', out: 'dist/sandbox.js' },
+  { in: 'src/background.ts', out: join(outDir, 'background.js') },
+  { in: 'src/popup.ts', out: join(outDir, 'popup.js') },
+  { in: 'src/options.ts', out: join(outDir, 'options.js') },
+  { in: 'src/offscreen.ts', out: join(outDir, 'offscreen.js') },
+  { in: 'src/artifacts-browser.ts', out: join(outDir, 'artifacts-browser.js') },
+  { in: 'src/sandbox.ts', out: join(outDir, 'sandbox.js') },
 ];
 
 async function run() {
-  mkdirSync('dist', { recursive: true });
+  mkdirSync(outDir, { recursive: true });
   // Copy static assets that aren't TS sources.
-  cpSync('src/popup.html', 'dist/popup.html');
-  cpSync('src/options.html', 'dist/options.html');
-  cpSync('src/offscreen.html', 'dist/offscreen.html');
-  cpSync('src/artifacts.html', 'dist/artifacts.html');
-  cpSync('src/sandbox.html', 'dist/sandbox.html');
+  cpSync('src/popup.html', join(outDir, 'popup.html'));
+  cpSync('src/options.html', join(outDir, 'options.html'));
+  cpSync('src/offscreen.html', join(outDir, 'offscreen.html'));
+  cpSync('src/artifacts.html', join(outDir, 'artifacts.html'));
+  cpSync('src/sandbox.html', join(outDir, 'sandbox.html'));
 
   if (watch) {
     for (const e of entries) {
