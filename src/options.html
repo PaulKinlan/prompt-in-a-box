@@ -220,8 +220,9 @@
           </div>
           <div>
             <label for="model">Model</label>
-            <input id="model" placeholder="" />
-            <div class="hint">Any model ID the SDK accepts. Default is tracked in <code>config.ts</code>.</div>
+            <input id="model" list="modelOptions" placeholder="" autocomplete="off" />
+            <datalist id="modelOptions"></datalist>
+            <div class="hint">Pick a recent model from the list, or type any model ID the SDK accepts. Defaults are tracked in <code>config.ts</code>.</div>
           </div>
         </div>
       </div>

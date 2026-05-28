@@ -43,13 +43,51 @@ export const PROVIDER_DEFAULTS: Record<Provider, { model: string; hint: string }
     hint: 'Get a key at https://console.anthropic.com/ (format: sk-ant-…)',
   },
   google: {
-    model: 'gemini-3.1-pro-preview',
+    model: 'gemini-3.5-flash',
     hint: 'Get a key at https://aistudio.google.com/ (use GOOGLE_GENERATIVE_AI_API_KEY-style key)',
   },
   openai: {
     model: 'gpt-5.4',
     hint: 'Get a key at https://platform.openai.com/api-keys (format: sk-…)',
   },
+};
+
+/**
+ * Curated model IDs surfaced in the options-page model picker (a
+ * `<datalist>`), per provider, newest / most capable first. This is a
+ * convenience for quick selection — the field stays free-text, so any
+ * model ID the SDK accepts still works.
+ *
+ * Keep this list trimmed to the current generation; retired models only
+ * add noise. Last reviewed 2026-05-28 against each provider's docs:
+ *   - Anthropic: platform.claude.com/docs/en/about-claude/models/overview
+ *   - Google:    ai.google.dev/gemini-api/docs/models
+ *   - OpenAI:    developers.openai.com/api/docs/models
+ */
+export const PROVIDER_MODELS: Record<Provider, string[]> = {
+  anthropic: [
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
+  ],
+  google: [
+    'gemini-3.5-flash',
+    'gemini-3.1-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+  ],
+  openai: [
+    'gpt-5.5',
+    'gpt-5.5-pro',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.4-nano',
+    'gpt-5.3-codex',
+  ],
 };
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
