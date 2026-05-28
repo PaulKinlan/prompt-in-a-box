@@ -131,6 +131,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       } else if (msg?.type === 'clear-artifacts') {
         await clearArtifacts();
         sendResponse({ ok: true });
+      } else if (msg?.type === 'ui-opened') {
+        const userMsg = `The user has opened the dynamic UI view: '${msg.view}'. Inspect the current state of the browser, bookmarks, tabs, or whatever is relevant, and define the layout, styling, and action triggers by calling the ui_update tool.`;
+        sendResponse(await run('manual', userMsg));
+      } else if (msg?.type === 'ui-interaction') {
+        const userMsg = `The user interacted with the dynamic UI element.\n- Component ID: '${msg.componentId}'\n- Action: '${msg.action}'\n- Payload: ${JSON.stringify(msg.payload ?? {})}\nExecute the requested tasks (calling any necessary Chrome API tools) and then update the UI view by calling the ui_update tool with the new state.`;
+        sendResponse(await run('manual', userMsg));
       } else if (msg?.type === 'reschedule-alarm') {
         const cfg = await getConfig();
         await chrome.alarms.create(ALARM_NAME, {
@@ -152,7 +158,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // ─── Main loop ─────────────────────────────────────────────────────
 
-async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
+async function run(
+  trigger: AuditEntry['trigger'],
+  customUserMessage?: string,
+): Promise<AuditEntry> {
   const runId = newRunId();
   const startedAt = Date.now();
   const cfg = await getConfig();
@@ -218,7 +227,7 @@ async function run(trigger: AuditEntry['trigger']): Promise<AuditEntry> {
 
   try {
     const model = pickModel(cfg.provider, cfg.model, apiKey);
-    const userMessage = await composeUserMessage(trigger);
+    const userMessage = customUserMessage || await composeUserMessage(trigger);
     const manifest = chrome.runtime.getManifest();
     const result = await runAgentLoop(
       {

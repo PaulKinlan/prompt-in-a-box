@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;" />
+    <title>Agent Sidepanel</title>
+    <link rel="stylesheet" href="ui-renderer.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f8fafc;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #090d16;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app-root"></div>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

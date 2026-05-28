@@ -53,6 +53,7 @@ import { readingListAdd } from './reading-list-add';
 import { readingListQuery } from './reading-list-query';
 import { clipboardWrite } from './clipboard-write';
 import { artifactCreate } from './artifact-create';
+import { uiUpdate } from './ui-update';
 
 /**
  * Map Chrome permission → tools it unlocks.
@@ -70,6 +71,7 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
     opfs_write: opfsWrite,
     opfs_list: opfsList,
     artifact_create: artifactCreate,
+    ui_update: uiUpdate,
     window_list: windowList,
     window_create: windowCreate,
     window_close: windowClose,

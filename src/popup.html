@@ -3,8 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;" />
     <title>Prompt in a Box</title>
+    <link rel="stylesheet" href="ui-renderer.css" />
     <style>
       :root { color-scheme: light dark; }
       * { box-sizing: border-box; }
@@ -95,21 +96,37 @@
     </style>
   </head>
   <body>
-    <h1><span id="extName">Prompt in a Box</span> <small id="version"></small></h1>
-    <p class="summary-meta"><span id="summaryProvider">—</span><span id="summaryMeta"></span></p>
-
-    <div class="row">
-      <button id="runNow" class="primary">Run now</button>
+    <!-- Toggle tab to switch to dynamic view if present -->
+    <div id="dynamicViewToggle" style="display: none; padding: 6px 12px; font-size: 11px; background: rgba(59, 130, 246, 0.08); text-align: center; border-bottom: 1px solid var(--color-border); font-family: 'Outfit', sans-serif;">
+      🤖 <a href="#" id="switchToDynamic" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Switch to Agent Interactive View</a>
     </div>
-    <div class="status" id="status"></div>
-
-    <h2>Recent artifacts</h2>
-    <div id="artifactList"><div class="empty">Nothing yet — artifacts appear here once the agent creates some.</div></div>
-
-    <div class="links">
-      <a id="openArtifacts">Browse all →</a>
-      <a id="openOptions">Settings &amp; audit</a>
+    <div id="standardViewToggle" style="display: none; padding: 6px 12px; font-size: 11px; background: rgba(59, 130, 246, 0.08); text-align: center; border-bottom: 1px solid var(--color-border); font-family: 'Outfit', sans-serif;">
+      📊 <a href="#" id="switchToStandard" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Switch to Admin Dashboard</a>
     </div>
+
+    <!-- Standard Admin Panel View -->
+    <div id="standardPopup">
+      <div style="padding: 14px;">
+        <h1><span id="extName">Prompt in a Box</span> <small id="version"></small></h1>
+        <p class="summary-meta"><span id="summaryProvider">—</span><span id="summaryMeta"></span></p>
+
+        <div class="row">
+          <button id="runNow" class="primary">Run now</button>
+        </div>
+        <div class="status" id="status"></div>
+
+        <h2>Recent artifacts</h2>
+        <div id="artifactList"><div class="empty">Nothing yet — artifacts appear here once the agent creates some.</div></div>
+
+        <div class="links">
+          <a id="openArtifacts">Browse all →</a>
+          <a id="openOptions">Settings &amp; audit</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dynamic Agent-Driven UI View -->
+    <div id="dynamicPopup" style="display: none;"></div>
 
     <script type="module" src="popup.js"></script>
   </body>

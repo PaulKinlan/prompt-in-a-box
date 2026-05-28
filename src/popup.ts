@@ -7,6 +7,7 @@
 import { getConfig, activeKey, PROVIDER_LABELS } from './config';
 import type { AuditEntry } from './audit';
 import type { ArtifactIndexEntry, ArtifactKind } from './artifacts';
+import { UIRenderer } from './ui-renderer';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
@@ -117,5 +118,65 @@ $('openArtifacts').addEventListener('click', () => {
   });
 });
 
+// ─── Dynamic View Toggle Controller ─────────────────────────────────
+const dynamicContainer = $('dynamicPopup');
+const standardContainer = $('standardPopup');
+const dynamicToggle = $('dynamicViewToggle');
+const standardToggle = $('standardViewToggle');
+const renderer = new UIRenderer(dynamicContainer, 'popup');
+
+async function checkDynamicUI() {
+  const data = await chrome.storage.local.get('__pib_dynamic_ui');
+  const spec = data.__pib_dynamic_ui;
+  
+  if (spec && spec.components && spec.components.length > 0) {
+    dynamicToggle.style.display = 'block';
+    const activeView = (await chrome.storage.local.get('__pib_active_view')).__pib_active_view || 'dynamic';
+    if (activeView === 'dynamic') {
+      showDynamic();
+    } else {
+      showStandard();
+    }
+  } else {
+    showStandard();
+    dynamicToggle.style.display = 'none';
+  }
+}
+
+function showDynamic() {
+  dynamicContainer.style.display = 'block';
+  standardContainer.style.display = 'none';
+  dynamicToggle.style.display = 'none';
+  standardToggle.style.display = 'block';
+  void chrome.storage.local.set({ __pib_active_view: 'dynamic' });
+  void renderer.loadAndRender();
+}
+
+function showStandard() {
+  dynamicContainer.style.display = 'none';
+  standardContainer.style.display = 'block';
+  dynamicToggle.style.display = 'block';
+  standardToggle.style.display = 'none';
+  void chrome.storage.local.set({ __pib_active_view: 'standard' });
+}
+
+$('switchToDynamic').addEventListener('click', (e) => {
+  e.preventDefault();
+  showDynamic();
+});
+
+$('switchToStandard').addEventListener('click', (e) => {
+  e.preventDefault();
+  showStandard();
+});
+
+// Catch UI state changes pushed by background agent in real-time
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'ui-state-updated') {
+    void checkDynamicUI();
+  }
+});
+
 void loadSummary();
 void loadArtifacts();
+void checkDynamicUI();

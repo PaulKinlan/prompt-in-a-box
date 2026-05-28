@@ -163,6 +163,7 @@ const common = {
 const entries = [
   { in: 'src/background.ts', out: join(outDir, 'background.js') },
   { in: 'src/popup.ts', out: join(outDir, 'popup.js') },
+  { in: 'src/sidepanel.ts', out: join(outDir, 'sidepanel.js') },
   { in: 'src/options.ts', out: join(outDir, 'options.js') },
   { in: 'src/offscreen.ts', out: join(outDir, 'offscreen.js') },
   { in: 'src/artifacts-browser.ts', out: join(outDir, 'artifacts-browser.js') },
@@ -173,6 +174,8 @@ async function run() {
   mkdirSync(outDir, { recursive: true });
   // Copy static assets that aren't TS sources.
   cpSync('src/popup.html', join(outDir, 'popup.html'));
+  cpSync('src/sidepanel.html', join(outDir, 'sidepanel.html'));
+  cpSync('src/ui-renderer.css', join(outDir, 'ui-renderer.css'));
   cpSync('src/options.html', join(outDir, 'options.html'));
   cpSync('src/offscreen.html', join(outDir, 'offscreen.html'));
   cpSync('src/artifacts.html', join(outDir, 'artifacts.html'));
