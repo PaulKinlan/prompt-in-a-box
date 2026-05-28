@@ -175,7 +175,10 @@ async function main() {
   const extensionMetadataSchema = z.object({
     name: z.string().describe('A concise, catchy, and professional name for the Chrome Extension (e.g., "Tab Summarizer", "Auto Form Filler")'),
     description: z.string().describe('A clear, 1-2 sentence description of what the extension does.'),
-    permissions: z.array(z.string()).describe('A list of standard Chrome Extension permissions required for this extension (e.g., "activeTab", "storage", "alarms", "scripting", "contextMenus", "tabs", "<all_urls>")'),
+    permissions: z.array(z.string()).describe('Required Chrome permissions (e.g., "storage", "alarms", "offscreen"). Keep this list as small as possible.'),
+    optional_permissions: z.array(z.string()).describe('Optional Chrome permissions. Place as many requested permissions here as possible (e.g., "tabs", "bookmarks", "history", "downloads", "clipboardWrite", "scripting", "contextMenus", "idle", "readingList", "webNavigation").'),
+    host_permissions: z.array(z.string()).describe('Required host permissions (like API endpoints).'),
+    optional_host_permissions: z.array(z.string()).describe('Optional host permissions (like "<all_urls>" or specific websites the extension reads/modifies at runtime). Prefer optional host permissions whenever accessing arbitrary sites.'),
   });
 
   let metadata;
@@ -183,7 +186,8 @@ async function main() {
     const { object } = await generateObject({
       model,
       schema: extensionMetadataSchema,
-      prompt: `Analyze this Chrome Extension idea and infer a professional extension name, a clear description, and any appropriate Chrome Extension permissions needed to implement it.
+      prompt: `Analyze this Chrome Extension idea and infer a professional extension name, a clear description, and appropriate Chrome Extension permissions needed to implement it.
+IMPORTANT: Prioritize optional permissions (optional_permissions/optional_host_permissions) as much as possible to follow Manifest V3 security best practices. Only include absolutely essential permissions under required permissions (permissions/host_permissions).
 Idea: "${initialPrompt}"`,
     });
     metadata = object;
@@ -192,14 +196,20 @@ Idea: "${initialPrompt}"`,
     metadata = {
       name: "Prompt in a Box Demo",
       description: initialPrompt,
-      permissions: ["activeTab", "storage", "alarms"]
+      permissions: ["storage", "alarms", "offscreen"],
+      optional_permissions: ["tabs"],
+      host_permissions: [],
+      optional_host_permissions: ["<all_urls>"]
     };
   }
 
   console.log(`\nInferred Extension Metadata:`);
-  console.log(`  Name:        ${metadata.name}`);
-  console.log(`  Description: ${metadata.description}`);
-  console.log(`  Permissions: ${metadata.permissions.join(', ') || 'none'}\n`);
+  console.log(`  Name:                       ${metadata.name}`);
+  console.log(`  Description:                ${metadata.description}`);
+  console.log(`  Required Permissions:       ${(metadata.permissions || []).join(', ') || 'none'}`);
+  console.log(`  Optional Permissions:       ${(metadata.optional_permissions || []).join(', ') || 'none'}`);
+  console.log(`  Required Host Permissions:  ${(metadata.host_permissions || []).join(', ') || 'none'}`);
+  console.log(`  Optional Host Permissions:  ${(metadata.optional_host_permissions || []).join(', ') || 'none'}\n`);
 
   const toolReference = generateToolReference();
 
@@ -216,7 +226,7 @@ Workflow:
         *IMPORTANT*: Your generated \`prompt.md\` must only utilize the exact tools listed in the Extension Tool Registry Reference above, and it must describe their usage and parameters exactly as defined. Never invent tools or parameters.
     *   \`README.md\`: A summary of the demo (Trigger, Required permissions, Writes, Side effects).
         *IMPORTANT*: The required permissions in your README must match the exact permissions mapped to the tools used in your prompt.
-    *   \`manifest.json\`: A suggested manifest for this specific demo indicating required permissions.
+    *   \`manifest.json\`: A suggested manifest for this specific demo indicating required and optional permissions.
 3.  **Write**: Use the \`file_write\` tool to create the files in a new directory under \`examples/\` (use a URL-safe slug derived from the demo title).
 
 You MUST use the tools to read the references and write the output files. Do not just output the file contents in your chat response. Cover edge cases for the project in the generated prompt.
@@ -238,7 +248,10 @@ When you are done writing all files, provide a brief summary of what you created
       `Create a new demo using the following inferred metadata:
 Name: "${metadata.name}"
 Description: "${metadata.description}"
-Required Permissions: [${metadata.permissions.map(p => `"${p}"`).join(', ')}]
+Required Permissions: [${(metadata.permissions || []).map(p => `"${p}"`).join(', ')}]
+Optional Permissions: [${(metadata.optional_permissions || []).map(p => `"${p}"`).join(', ')}]
+Required Host Permissions: [${(metadata.host_permissions || []).map(p => `"${p}"`).join(', ')}]
+Optional Host Permissions: [${(metadata.optional_host_permissions || []).map(p => `"${p}"`).join(', ')}]
 
 Please create this demo in a folder slug matching the extension name.`,
     );

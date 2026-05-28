@@ -129,11 +129,26 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
 };
 
 export async function buildToolSet(): Promise<ToolSet> {
-  const granted = await listGrantedPermissions();
-  const tools: ToolSet = { ...TOOLS_BY_PERMISSION.__always__ };
-  for (const perm of granted) {
-    const bucket = TOOLS_BY_PERMISSION[perm];
-    if (bucket) Object.assign(tools, bucket);
+  const granted = new Set(await listGrantedPermissions());
+  const tools: ToolSet = {};
+
+  for (const [perm, bucket] of Object.entries(TOOLS_BY_PERMISSION)) {
+    const isGranted = perm === '__always__' || granted.has(perm);
+    for (const [toolName, toolObj] of Object.entries(bucket)) {
+      if (isGranted) {
+        tools[toolName] = toolObj;
+      } else {
+        tools[toolName] = {
+          ...toolObj,
+          execute: async () => {
+            return {
+              ok: false,
+              error: `The tool '${toolName}' requires the optional Chrome permission '${perm}' which is not currently granted. Please explain to the user why you need this permission and ask them to enable it in the extension settings (Options page).`,
+            };
+          },
+        };
+      }
+    }
   }
   return tools;
 }

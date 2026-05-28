@@ -233,6 +233,19 @@
       <div id="providerToolsGrid" class="provider-tools-grid"></div>
     </fieldset>
 
+    <fieldset id="permissionsFieldset" hidden>
+      <legend>Permissions Manager</legend>
+      <div class="hint" style="margin-bottom: 12px;">This extension specifies optional capabilities to prioritize user privacy. Enable the features and origins below to unlock the corresponding tools for the agent loop.</div>
+      <div id="permissionsLoading" style="opacity: 0.6; font-size: 13px;">Scanning permissions...</div>
+      <div id="permissionsSection" style="display: flex; flex-direction: column; gap: 14px;">
+        <div id="apiPermissionsContainer" class="provider-tools-grid"></div>
+        <div id="hostPermissionsSection" style="margin-top: 6px; display: none;">
+          <h3 style="margin: 0 0 8px; font-size: 13px; opacity: 0.85;">Host / Domain Permissions</h3>
+          <div id="hostPermissionsContainer" class="provider-tools-grid"></div>
+        </div>
+      </div>
+    </fieldset>
+
     <fieldset>
       <legend>Schedule</legend>
       <label for="alarmMinutes">Run the prompt every</label>

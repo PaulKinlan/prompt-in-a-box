@@ -42,6 +42,181 @@ async function loadUI(): Promise<void> {
   ($('alarmMinutes') as HTMLInputElement).value = String(currentConfig.alarmMinutes);
 
   await refreshAudit();
+  await renderOptionalPermissions();
+}
+
+// ─── Optional Permissions Manager ───────────────────────────────────
+
+const PERMISSION_DESCRIPTIONS: Record<string, { label: string; desc: string }> = {
+  tabs: { label: 'Tabs Management', desc: 'Interact with open browser tabs, query/group/move them.' },
+  scripting: { label: 'Tab Scripting & Screenshot', desc: 'Read page text and capture DOM screenshots.' },
+  bookmarks: { label: 'Bookmarks', desc: 'Search, create, list, and delete browser bookmarks.' },
+  history: { label: 'History', desc: 'Search user browser history.' },
+  downloads: { label: 'Downloads', desc: 'Download files and search download history.' },
+  contextMenus: { label: 'Context Menus', desc: 'Create and respond to right-click menu items.' },
+  idle: { label: 'Idle State', desc: 'Detect when the system/browser is idle.' },
+  readingList: { label: 'Reading List', desc: 'Add pages to or query the browser Reading List.' },
+  webNavigation: { label: 'Web Navigation', desc: 'Receive navigation events inside tabs.' },
+  clipboardWrite: { label: 'Clipboard Write', desc: 'Copy text to the clipboard in the background.' },
+};
+
+function getHostPermissionDef(origin: string): { label: string; desc: string } {
+  if (origin === '<all_urls>') {
+    return { label: 'All Websites', desc: 'Allows the agent to read/act on any website you navigate to.' };
+  }
+  return { label: origin, desc: `Access and script pages on ${origin}.` };
+}
+
+function checkPermission(perm: string, isHost: boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    chrome.permissions.contains(
+      isHost ? { origins: [perm] } : { permissions: [perm] },
+      (result) => resolve(result)
+    );
+  });
+}
+
+function requestPermission(perm: string, isHost: boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    chrome.permissions.request(
+      isHost ? { origins: [perm] } : { permissions: [perm] },
+      (result) => resolve(result)
+    );
+  });
+}
+
+function removePermission(perm: string, isHost: boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    chrome.permissions.remove(
+      isHost ? { origins: [perm] } : { permissions: [perm] },
+      (result) => resolve(result)
+    );
+  });
+}
+
+async function renderOptionalPermissions(): Promise<void> {
+  const manifest = chrome.runtime.getManifest();
+  const optionalPermissions = manifest.optional_permissions || [];
+  const optionalHostPermissions = manifest.optional_host_permissions || [];
+
+  const hasOptional = optionalPermissions.length > 0 || optionalHostPermissions.length > 0;
+  if (!hasOptional) {
+    $('permissionsFieldset').hidden = true;
+    return;
+  }
+
+  $('permissionsFieldset').hidden = false;
+  $('permissionsLoading').style.display = 'none';
+
+  const apiContainer = $('apiPermissionsContainer');
+  apiContainer.innerHTML = '';
+
+  for (const perm of optionalPermissions) {
+    const def = PERMISSION_DESCRIPTIONS[perm] || { label: perm, desc: `Enables tools using the '${perm}' permission.` };
+    const granted = await checkPermission(perm, false);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'provider-tool';
+    
+    const id = `perm-${perm}`;
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = id;
+    input.checked = granted;
+
+    input.addEventListener('change', async () => {
+      if (input.checked) {
+        const ok = await requestPermission(perm, false);
+        if (ok) {
+          toast(`Granted ${def.label} permission`);
+          await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
+        } else {
+          input.checked = false;
+          toast(`Failed to grant ${def.label} permission`, 'error');
+        }
+      } else {
+        const ok = await removePermission(perm, false);
+        if (ok) {
+          toast(`Removed ${def.label} permission`);
+          await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
+        } else {
+          input.checked = true;
+          toast(`Failed to remove ${def.label} permission`, 'error');
+        }
+      }
+    });
+
+    const label = document.createElement('label');
+    label.setAttribute('for', id);
+    label.textContent = def.label;
+
+    const desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = def.desc;
+
+    label.appendChild(desc);
+    wrap.appendChild(input);
+    wrap.appendChild(label);
+    apiContainer.appendChild(wrap);
+  }
+
+  const hostContainer = $('hostPermissionsContainer');
+  hostContainer.innerHTML = '';
+  
+  if (optionalHostPermissions.length > 0) {
+    $('hostPermissionsSection').style.display = 'block';
+    
+    for (const host of optionalHostPermissions) {
+      const def = getHostPermissionDef(host);
+      const granted = await checkPermission(host, true);
+
+      const wrap = document.createElement('div');
+      wrap.className = 'provider-tool';
+      
+      const id = `host-${host.replace(/[^a-zA-Z0-9]/g, '-')}`;
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.id = id;
+      input.checked = granted;
+
+      input.addEventListener('change', async () => {
+        if (input.checked) {
+          const ok = await requestPermission(host, true);
+          if (ok) {
+            toast(`Granted ${def.label} permission`);
+            await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
+          } else {
+            input.checked = false;
+            toast(`Failed to grant ${def.label} permission`, 'error');
+          }
+        } else {
+          const ok = await removePermission(host, true);
+          if (ok) {
+            toast(`Removed ${def.label} permission`);
+            await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
+          } else {
+            input.checked = true;
+            toast(`Failed to remove ${def.label} permission`, 'error');
+          }
+        }
+      });
+
+      const label = document.createElement('label');
+      label.setAttribute('for', id);
+      label.textContent = def.label;
+
+      const desc = document.createElement('div');
+      desc.className = 'desc';
+      desc.textContent = def.desc;
+
+      label.appendChild(desc);
+      wrap.appendChild(input);
+      wrap.appendChild(label);
+      hostContainer.appendChild(wrap);
+    }
+  } else {
+    $('hostPermissionsSection').style.display = 'none';
+  }
 }
 
 // ─── Provider-native tools ────────────────────────────────────────
