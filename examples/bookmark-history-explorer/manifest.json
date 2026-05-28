@@ -1,0 +1,16 @@
+{
+  "name": "Bookmark & History Explorer",
+  "description": "Easily search through your saved bookmarks and browsing history to quickly find the exact pages you are looking for.",
+  "prompt_in_a_box": {
+    "prompt": "prompt.md"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "optional_permissions": [
+    "bookmarks",
+    "history"
+  ],
+  "host_permissions": [],
+  "optional_host_permissions": []
+}
