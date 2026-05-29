@@ -11,6 +11,7 @@ import {
   setConfig,
   activeKey,
   PROVIDER_DEFAULTS,
+  PROVIDER_MODELS,
   PROVIDER_LABELS,
   PROVIDER_ENDPOINTS,
   type Config,
@@ -303,8 +304,19 @@ function renderProviderGrid(): void {
   }
 }
 
+function renderModelOptions(): void {
+  const datalist = $('modelOptions') as HTMLDataListElement;
+  datalist.innerHTML = '';
+  for (const model of PROVIDER_MODELS[currentProvider]) {
+    const opt = document.createElement('option');
+    opt.value = model;
+    datalist.appendChild(opt);
+  }
+}
+
 function renderActiveProvider(): void {
   ($('apiKey') as HTMLInputElement).value = currentConfig.keys[currentProvider] ?? '';
+  renderModelOptions();
   const currentModel =
     currentProvider === currentConfig.provider
       ? currentConfig.model
