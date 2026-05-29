@@ -16,9 +16,9 @@
   "action": {
     "default_popup": "dist/popup.html",
     "default_title": "Prompt in a Box",
-    "default_icon": { "32": "icon.png" }
+    "default_icon": { "16": "icon-16.png", "32": "icon-32.png" }
   },
-  "icons": { "32": "icon.png" },
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" },
   "options_ui": {
     "page": "dist/options.html",
     "open_in_tab": true
@@ -51,7 +51,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["prompt.md", "icon.png"],
+      "resources": ["prompt.md", "icon.png", "icon-16.png", "icon-32.png", "icon-48.png", "icon-128.png"],
       "matches": ["<all_urls>"]
     }
   ],

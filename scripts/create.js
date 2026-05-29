@@ -4,6 +4,17 @@ import { z } from 'zod';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import * as fs from 'fs';
 import * as path from 'path';
+import { generateIcons } from './lib/icons.js';
+
+/** List example subdirectories (used to detect the folder the agent created). */
+function listExampleDirs() {
+  const examplesDir = path.join(process.cwd(), 'examples');
+  if (!fs.existsSync(examplesDir)) return [];
+  return fs
+    .readdirSync(examplesDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+    .map((d) => d.name);
+}
 
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
@@ -234,6 +245,8 @@ You MUST use the tools to read the references and write the output files. Do not
 When you are done writing all files, provide a brief summary of what you created.
 `;
 
+  const dirsBefore = new Set(listExampleDirs());
+
   try {
     const result = await runAgentLoop(
       {
@@ -261,6 +274,29 @@ Please create this demo in a folder slug matching the extension name.`,
 
     if (result.usage) {
       console.log(`\nTokens used: Input ${result.usage.totalInputTokens}, Output ${result.usage.totalOutputTokens}`);
+    }
+
+    // Generate a beautiful icon for whichever example folder the agent created.
+    const created = listExampleDirs().filter((d) => !dirsBefore.has(d));
+    const iconTargets = created.length ? created : [];
+    if (iconTargets.length === 0) {
+      console.warn('\n⚠️  Could not detect a new example folder; skipping icon generation.');
+      console.warn('   Run `npm run icons` to generate icons once the folder exists.');
+    }
+    for (const slug of iconTargets) {
+      const destDir = path.join(process.cwd(), 'examples', slug);
+      console.log(`\n🎨 Generating icon for examples/${slug}…`);
+      try {
+        const iconResult = await generateIcons({
+          name: metadata.name,
+          description: metadata.description,
+          destDir,
+          log: (m) => console.log(m),
+        });
+        console.log(`  ✓ ${iconResult.source} icon written (${iconResult.files.length} files)`);
+      } catch (iconErr) {
+        console.warn(`  ⚠️  Icon generation failed: ${iconErr.message}`);
+      }
     }
 
   } catch (err) {

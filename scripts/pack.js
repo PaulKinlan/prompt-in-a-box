@@ -77,6 +77,10 @@ if (exampleName) {
     'manifest.json',
     'prompt.md',
     'icon.png',
+    'icon-16.png',
+    'icon-32.png',
+    'icon-48.png',
+    'icon-128.png',
     'dist/background.js',
     'dist/popup.js',
     'dist/popup.html',
@@ -140,7 +144,8 @@ if (exampleName) {
     'dist/artifacts-browser.js',
   ];
 
-  const missing = [...REQUIRED_DIST, 'icon.png', 'prompt.md', 'manifest.json'].filter((f) => !existsSync(f));
+  const ICON_FILES = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png'];
+  const missing = [...REQUIRED_DIST, ...ICON_FILES, 'prompt.md', 'manifest.json'].filter((f) => !existsSync(f));
   if (missing.length) {
     console.error('\n❌ Error: Missing required files for default pack.');
     for (const f of missing) console.error('  -', f);
@@ -159,7 +164,9 @@ if (exampleName) {
   // Copy files to staging
   cpSync('prompt.md', join(STAGING_DIR, 'prompt.md'));
   cpSync('manifest.json', join(STAGING_DIR, 'manifest.json'));
-  cpSync('icon.png', join(STAGING_DIR, 'icon.png'));
+  for (const f of ICON_FILES) {
+    cpSync(f, join(STAGING_DIR, f));
+  }
 
   // Copy dist files
   for (const f of REQUIRED_DIST) {

@@ -11,7 +11,7 @@ This repo is a working minimum of that pattern. It uses [agent-do](https://www.n
 ```
 manifest.json           – permissions, host_permissions, CSP, alarm defaults
 prompt.md               – the program. swap this for a different behaviour.
-icon.png                – placeholder icon
+icon.png / icon-*.png   – extension icon (16/32/48/128); regenerate with `npm run icons`
 src/
   background.ts         – MV3 service worker: alarm wiring, popup/options RPC, loop driver, audit capture
   popup.ts / popup.html – quick-glance runner: current provider, "Run now", link to options
@@ -49,6 +49,10 @@ src/
     node-only.ts
     node-module.ts
 build.js                – esbuild driver → dist/background.js, dist/popup.js, dist/options.js, dist/offscreen.js
+scripts/
+  create.js             – `npm run create`: scaffold a new example from a one-line idea (also generates its icon)
+  gen-icons.js          – `npm run icons`: generate icons for the root + every example
+  lib/icons.js          – icon engine: AI image generation with a procedural glyph fallback
 dist/                   – bundled output (gitignored)
 ```
 
@@ -88,6 +92,25 @@ You can build and package any example directly inside its own folder under `exam
   ```
   *(Example: `npm run pack focus-mode`)*
   This automatically compiles the example and packages it into a standalone ZIP file located *inside* the example directory: `examples/<example-slug>/<example-slug>.zip`!
+
+### Icons
+
+Every extension gets an icon that reflects what it does, at the four sizes Chrome wants (`icon-16/32/48/128.png`, plus a `icon.png` for backward compatibility).
+
+```sh
+npm run icons                      # root + every example (skips ones that already have icons)
+npm run icons -- --force           # regenerate everything
+npm run icons -- --only=focus-mode # just one example
+npm run icons -- --no-ai           # skip the image model, use the procedural glyphs
+```
+
+There are two ways an icon gets made:
+
+* **AI generation (preferred).** If `GEMINI_API_KEY` (or `OPENAI_API_KEY`) is set, an image model draws a bespoke icon from the extension's name and description. Override the model with `ICON_MODEL` or force a provider with `ICON_PROVIDER=google|openai|none`.
+* **Procedural fallback.** With no key, a clean flat icon is composed from a per-extension gradient and a hand-drawn glyph matched to the extension's intent (a funnel for "organizer", a bookmark ribbon for bookmark tools, a camera for "screenshot", and so on). No network required.
+
+`npm run create` generates an icon for the new example automatically as the final step.
+
 3. The options page opens automatically on first install. Pick a provider (Anthropic, Google, or OpenAI), paste the API key, click **Test** to verify, then **Save**.
 4. Click the toolbar icon → **Run now**.
 5. If you have more than 20 tabs open, you should see a desktop notification within a few seconds.
