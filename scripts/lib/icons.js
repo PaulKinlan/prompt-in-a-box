@@ -199,7 +199,10 @@ const GLYPHS = {
  */
 function matchGlyph(text) {
   const t = text.toLowerCase();
-  const has = (...kw) => kw.some((k) => t.includes(k));
+  // Match each keyword only at a word start, so short keywords like "hat"
+  // don't fire on "what"/"chat" while intentional stems ("summar", "organi")
+  // still match "summarize"/"organizer".
+  const has = (...kw) => kw.some((k) => new RegExp(`\\b${k}`).test(t));
 
   if (has('translate', 'translation', 'language')) return 'globe';
   if (has('screenshot', 'camera', 'capture')) return 'camera';
