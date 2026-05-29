@@ -113,11 +113,14 @@ if (exampleName) {
     }
   }
 
-  // Ensure icon.png exists, otherwise copy from root
-  const exampleIcon = join(exampleDir, 'icon.png');
-  if (!existsSync(exampleIcon) && existsSync('icon.png')) {
-    cpSync('icon.png', exampleIcon);
-    console.log(`🎨 Copied icon.png to ${exampleIcon}`);
+  // Ensure the icon set exists, otherwise copy each missing size from root.
+  const iconFiles = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png'];
+  for (const iconFile of iconFiles) {
+    const exampleIcon = join(exampleDir, iconFile);
+    if (!existsSync(exampleIcon) && existsSync(iconFile)) {
+      cpSync(iconFile, exampleIcon);
+      console.log(`🎨 Copied ${iconFile} to ${exampleIcon}`);
+    }
   }
 } else {
   console.log('🔨 Building default workspace extension → dist/...');
