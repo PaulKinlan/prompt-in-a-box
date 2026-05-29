@@ -68,31 +68,63 @@ function getHostPermissionDef(origin: string): { label: string; desc: string } {
   return { label: origin, desc: `Access and script pages on ${origin}.` };
 }
 
+/** Result of a permission mutation: whether it took effect, and why not if it didn't. */
+interface PermissionResult {
+  ok: boolean;
+  error?: string;
+}
+
 function checkPermission(perm: string, isHost: boolean): Promise<boolean> {
   return new Promise((resolve) => {
     chrome.permissions.contains(
       isHost ? { origins: [perm] } : { permissions: [perm] },
-      (result) => resolve(result)
+      (result) => {
+        // Consume lastError so Chrome doesn't log an "Unchecked" warning.
+        void chrome.runtime.lastError;
+        resolve(Boolean(result));
+      }
     );
   });
 }
 
-function requestPermission(perm: string, isHost: boolean): Promise<boolean> {
+function requestPermission(perm: string, isHost: boolean): Promise<PermissionResult> {
   return new Promise((resolve) => {
     chrome.permissions.request(
       isHost ? { origins: [perm] } : { permissions: [perm] },
-      (result) => resolve(result)
+      (granted) => {
+        const err = chrome.runtime.lastError;
+        resolve({ ok: Boolean(granted), error: err?.message });
+      }
     );
   });
 }
 
-function removePermission(perm: string, isHost: boolean): Promise<boolean> {
+function removePermission(perm: string, isHost: boolean): Promise<PermissionResult> {
   return new Promise((resolve) => {
     chrome.permissions.remove(
       isHost ? { origins: [perm] } : { permissions: [perm] },
-      (result) => resolve(result)
+      (removed) => {
+        const err = chrome.runtime.lastError;
+        resolve({ ok: Boolean(removed), error: err?.message });
+      }
     );
   });
+}
+
+/**
+ * Build a user-facing toast for a failed permission toggle. Chrome surfaces the
+ * actual reason in `chrome.runtime.lastError`; when there's no message (the user
+ * dismissed the prompt, or the API silently refused), fall back to a hint.
+ */
+function permissionErrorText(
+  action: 'grant' | 'remove',
+  label: string,
+  error?: string
+): string {
+  if (error) return `Couldn't ${action} ${label}: ${error}`;
+  return action === 'grant'
+    ? `${label} permission request was dismissed`
+    : `Couldn't remove ${label} — Chrome declined (it may be required by another granted permission)`;
 }
 
 async function renderOptionalPermissions(): Promise<void> {
@@ -127,22 +159,22 @@ async function renderOptionalPermissions(): Promise<void> {
 
     input.addEventListener('change', async () => {
       if (input.checked) {
-        const ok = await requestPermission(perm, false);
-        if (ok) {
+        const res = await requestPermission(perm, false);
+        if (res.ok) {
           toast(`Granted ${def.label} permission`);
           await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
         } else {
           input.checked = false;
-          toast(`Failed to grant ${def.label} permission`, 'error');
+          toast(permissionErrorText('grant', def.label, res.error), 'error');
         }
       } else {
-        const ok = await removePermission(perm, false);
-        if (ok) {
+        const res = await removePermission(perm, false);
+        if (res.ok) {
           toast(`Removed ${def.label} permission`);
           await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
         } else {
           input.checked = true;
-          toast(`Failed to remove ${def.label} permission`, 'error');
+          toast(permissionErrorText('remove', def.label, res.error), 'error');
         }
       }
     });
@@ -182,22 +214,22 @@ async function renderOptionalPermissions(): Promise<void> {
 
       input.addEventListener('change', async () => {
         if (input.checked) {
-          const ok = await requestPermission(host, true);
-          if (ok) {
+          const res = await requestPermission(host, true);
+          if (res.ok) {
             toast(`Granted ${def.label} permission`);
             await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
           } else {
             input.checked = false;
-            toast(`Failed to grant ${def.label} permission`, 'error');
+            toast(permissionErrorText('grant', def.label, res.error), 'error');
           }
         } else {
-          const ok = await removePermission(host, true);
-          if (ok) {
+          const res = await removePermission(host, true);
+          if (res.ok) {
             toast(`Removed ${def.label} permission`);
             await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
           } else {
             input.checked = true;
-            toast(`Failed to remove ${def.label} permission`, 'error');
+            toast(permissionErrorText('remove', def.label, res.error), 'error');
           }
         }
       });
