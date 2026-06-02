@@ -170,7 +170,7 @@ function renderList(): void {
           (a) => `
             <div class="artifact" data-id="${a.artifactId}">
               <span class="kind-badge ${kindBadgeClass(a.kind)}">${a.kind}</span>
-              <div>
+              <div class="details">
                 <div class="title">${escapeHtml(a.title)}</div>
                 ${a.preview ? `<div class="preview">${escapeHtml(a.preview)}</div>` : ''}
               </div>

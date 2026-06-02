@@ -82,7 +82,7 @@
         margin-bottom: 8px;
         cursor: pointer;
         display: grid;
-        grid-template-columns: auto 1fr auto auto;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
         gap: 12px;
         align-items: center;
       }
@@ -96,10 +96,14 @@
         border-radius: 3px;
         background: rgba(47,111,225,0.12);
         color: #2f6fe1;
+        white-space: nowrap;
       }
       .artifact .kind-image { background: rgba(200,130,30,0.14); color: #c8821e; }
       .artifact .kind-html { background: rgba(200,30,130,0.12); color: #c81e82; }
       .artifact .kind-json { background: rgba(130,200,30,0.14); color: #4a8a16; }
+      .artifact .details {
+        min-width: 0;
+      }
       .artifact .title {
         font-weight: 500;
         margin: 0;
@@ -116,17 +120,21 @@
         white-space: nowrap;
       }
       .artifact .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
         font-size: 11px;
         opacity: 0.7;
       }
       .artifact .tags span {
         display: inline-block;
-        margin-right: 4px;
         padding: 1px 5px;
         background: rgba(128,128,128,0.12);
         border-radius: 3px;
+        white-space: nowrap;
       }
-      .artifact .time { font-size: 11px; opacity: 0.6; font-family: ui-monospace, monospace; }
+      .artifact .time { font-size: 11px; opacity: 0.6; font-family: ui-monospace, monospace; white-space: nowrap; }
 
       /* Viewer */
       .viewer {
