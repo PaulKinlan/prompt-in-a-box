@@ -206,7 +206,17 @@ export class UIRenderer {
 
           try {
             if (comp.action === 'chrome-api' && comp.apiMethod) {
-              await this.executeChromeAPI(comp.apiMethod, comp.apiArgs || []);
+              const parsedArgs = (comp.apiArgs || []).map((arg) => {
+                if (typeof arg === 'string') {
+                  try {
+                    return JSON.parse(arg);
+                  } catch {
+                    return arg;
+                  }
+                }
+                return arg;
+              });
+              await this.executeChromeAPI(comp.apiMethod, parsedArgs);
             } else if (comp.action === 'trigger-run') {
               // Combine default payload with dynamic inputs
               const payload = {

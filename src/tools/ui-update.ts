@@ -17,7 +17,7 @@ export const uiUpdate = tool({
         intent: z.enum(['info', 'success', 'warning', 'danger']).optional().describe('Styling intent for alerts or buttons.'),
         action: z.enum(['trigger-run', 'chrome-api', 'none']).optional().describe('Behavior on click: "trigger-run" alerts the agent loop, "chrome-api" directly runs a client-side Chrome API, "none" is static.'),
         apiMethod: z.string().optional().describe('The chrome API method name if action is chrome-api (e.g. "tabs.create" or "tabs.remove").'),
-        apiArgs: z.array(z.any()).optional().describe('The arguments to pass to the chrome API method (e.g., [{ "url": "https://google.com" }]).'),
+        apiArgs: z.array(z.string()).optional().describe('The arguments to pass to the chrome API method. For complex objects or non-string arguments, pass them as a JSON-stringified string (e.g., ["{\\"url\\": \\"https://google.com\\"}"]).'),
         placeholder: z.string().optional().describe('Placeholder text for input components.'),
         items: z.array(z.string()).optional().describe('Array of items to display when type is "list".'),
         payload: z.any().optional().describe('Custom state or data payload to pass back to the agent on interaction click events.')
