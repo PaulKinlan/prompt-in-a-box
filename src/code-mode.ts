@@ -435,8 +435,8 @@ export async function executeCodeMode(options: ExecuteCodeModeOptions): Promise<
 
   const runId = activeRunContext?.runId || `run_${Date.now()}`;
   const tools = activeRunContext?.tools || {};
-  const maxToolCalls = Math.min(Math.max(options.maxToolCalls || 50, 1), 100);
-  const timeoutMs = Math.min(Math.max(options.timeoutMs || 30_000, 1000), 120_000);
+  const maxToolCalls = Math.min(Math.max(options.maxToolCalls || 100, 1), 250);
+  const timeoutMs = Math.min(Math.max(options.timeoutMs || 60_000, 1000), 180_000);
 
   const execId = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const nonce = `nonce_${Math.random().toString(36).slice(2, 10)}`;

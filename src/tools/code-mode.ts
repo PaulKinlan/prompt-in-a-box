@@ -38,11 +38,11 @@ export const codeMode = tool({
     timeoutMs: z
       .number()
       .optional()
-      .describe('Execution timeout in milliseconds (default 30000, max 120000).'),
+      .describe('Execution timeout in milliseconds (default 60000, max 180000).'),
     maxToolCalls: z
       .number()
       .optional()
-      .describe('Maximum number of inner tool calls permitted (default 50, max 100).'),
+      .describe('Maximum number of inner tool calls permitted (default 100, max 250).'),
   }),
   execute: async ({ code, input, saveAs, scriptName, timeoutMs, maxToolCalls }) => {
     return await executeCodeMode({

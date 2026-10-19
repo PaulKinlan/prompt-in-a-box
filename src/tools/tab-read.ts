@@ -55,8 +55,28 @@ export const tabRead = tool({
     const targetTabId = gate.tab.id!;
     const charCap = maxChars ?? maxLength ?? 30_000;
 
+    // Discarded background tabs have no live DOM in memory; fast return metadata
+    if (gate.tab.discarded) {
+      return {
+        id: targetTabId,
+        tabId: targetTabId,
+        title: gate.tab.title || '',
+        url: gate.url || '',
+        description: '',
+        metaDescription: '',
+        headings: [],
+        headingTexts: [],
+        markdown: '',
+        content: '',
+        excerpt: '',
+        discarded: true,
+      };
+    }
+
+    const SCRIPT_TIMEOUT_MS = 4000;
+
     try {
-      const [injectionResult] = await chrome.scripting.executeScript({
+      const injectionPromise = chrome.scripting.executeScript({
         target: { tabId: targetTabId },
         world: 'ISOLATED',
         func: () => {
@@ -90,6 +110,12 @@ export const tabRead = tool({
           };
         },
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Script injection timed out after ${SCRIPT_TIMEOUT_MS}ms`)), SCRIPT_TIMEOUT_MS),
+      );
+
+      const [injectionResult] = await Promise.race([injectionPromise, timeoutPromise]);
 
       const raw = injectionResult?.result;
       if (!raw) {
@@ -164,6 +190,7 @@ export const tabRead = tool({
         excerpt: '',
         error: `Failed to read tab content: ${(err as Error).message}`,
         blocked: String(err).includes('ExtensionsSettings policy'),
+        timedOut: String(err).includes('timed out'),
       };
     }
   },
@@ -198,8 +225,24 @@ export const capturePage = tool({
     const targetTabId = gate.tab.id!;
     const charCap = maxChars ?? 50_000;
 
+    if (gate.tab.discarded) {
+      return {
+        tabId: targetTabId,
+        url: gate.url,
+        title: gate.tab.title || '',
+        byline: undefined,
+        published: undefined,
+        wordCount: 0,
+        markdown: '',
+        links: [],
+        discarded: true,
+      };
+    }
+
+    const SCRIPT_TIMEOUT_MS = 4000;
+
     try {
-      const [injectionResult] = await chrome.scripting.executeScript({
+      const injectionPromise = chrome.scripting.executeScript({
         target: { tabId: targetTabId },
         world: 'ISOLATED',
         func: () => {
@@ -215,6 +258,12 @@ export const capturePage = tool({
           };
         },
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Script injection timed out after ${SCRIPT_TIMEOUT_MS}ms`)), SCRIPT_TIMEOUT_MS),
+      );
+
+      const [injectionResult] = await Promise.race([injectionPromise, timeoutPromise]);
 
       const raw = injectionResult?.result;
       if (!raw) {

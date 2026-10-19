@@ -36,7 +36,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         case 'execute-sandbox-code': {
           const { execId, nonce, code, input, toolNames } = msg;
-          const timeoutMs = Math.min(Math.max(Number(msg.timeoutMs) || 30_000, 1000), 120_000);
+          const timeoutMs = Math.min(Math.max(Number(msg.timeoutMs) || 60_000, 1000), 180_000);
           const outcome = await executeCodeInSandbox({
             execId,
             nonce,
@@ -182,6 +182,11 @@ function executeCodeInSandbox(opts: SandboxRunOptions): Promise<{
           break;
         }
 
+        case 'pib:sandbox-ready': {
+          sendExecute();
+          break;
+        }
+
         case 'pib:code-result': {
           settle({ ok: true, result: data.result });
           break;
@@ -214,6 +219,5 @@ function executeCodeInSandbox(opts: SandboxRunOptions): Promise<{
     };
 
     iframe.addEventListener('load', sendExecute);
-    setTimeout(sendExecute, 50);
   });
 }

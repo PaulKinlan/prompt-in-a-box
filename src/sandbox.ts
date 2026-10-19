@@ -297,3 +297,12 @@ window.addEventListener('message', async (event) => {
     }
   }
 });
+
+// Signal to the parent host that the sandbox listener is attached and ready
+try {
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'pib:sandbox-ready' }, '*');
+  }
+} catch {
+  // ignore
+}
