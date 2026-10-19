@@ -12,6 +12,7 @@ export const tabGroupList = tool({
     if (windowId !== undefined) query.windowId = windowId;
     const groups = await chrome.tabGroups.query(query);
     return groups.map((g) => ({
+      id: g.id,
       groupId: g.id,
       title: g.title ?? '',
       color: g.color,

@@ -81,6 +81,7 @@ import {
   clearActiveRunToolContext,
   handleCodeModeToolCall,
   handleCodeModeLog,
+  buildRuntimeCodeModePrompt,
 } from './code-mode';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
@@ -274,7 +275,7 @@ async function run(
     return entry;
   }
 
-  const prompt = await loadPrompt();
+  const basePrompt = await loadPrompt();
   const customTools = await buildToolSet();
   const providerTools = filterProviderTools(
     getProviderTools(cfg.provider, apiKey),
@@ -284,6 +285,8 @@ async function run(
   // be deterministic if anthropic ever ships a tool named the same as
   // one of ours).
   const tools = { ...providerTools, ...customTools };
+  const codeModePrompt = await buildRuntimeCodeModePrompt(tools);
+  const prompt = codeModePrompt ? `${basePrompt}\n\n${codeModePrompt}` : basePrompt;
   const toolCalls: AuditToolCall[] = [];
   const pendingByName = new Map<string, { at: number; args: unknown }>();
   let tokens = { input: 0, output: 0, estimatedCost: 0 };
@@ -694,11 +697,7 @@ async function loadPrompt(): Promise<string> {
   const url = chrome.runtime.getURL('prompt.md');
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load prompt.md: ${res.status}`);
-  let text = await res.text();
-  if (!text.includes('code_mode')) {
-    text += `\n\n## Performance & Batch Optimization (code_mode)\nWhen you need to execute multi-step operations (such as inspecting multiple tabs in parallel, fetching and filtering data across tools, or batching multiple changes like tab groups, storage, and toasts), call the \`code_mode\` tool. Inside \`code_mode\`, you can run async JavaScript using \`await tools.<toolName>(args)\` or \`await callTool(name, args)\` with Promise.all to drastically reduce latency and server round-trips.\n`;
-  }
-  return text;
+  return await res.text();
 }
 
 function log(...args: unknown[]): void {

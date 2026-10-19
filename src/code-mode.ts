@@ -527,3 +527,110 @@ export async function executeCodeMode(options: ExecuteCodeModeOptions): Promise<
     activeSessions.delete(execId);
   }
 }
+
+// ─── Dynamic Runtime Code Mode Prompt Generator ───────────────────────
+
+/**
+ * Dynamically synthesizes runtime code_mode guidance and API signatures based on
+ * the active tools granted to this run, ensuring the model knows how to batch
+ * operations dynamically without requiring hardcoded code in prompt.md.
+ */
+export async function buildRuntimeCodeModePrompt(availableTools: ToolSet): Promise<string> {
+  const toolNames = Object.keys(availableTools).filter(
+    (name) => name !== 'code_mode' && name !== 'run_code' && name !== 'code_scripts',
+  );
+
+  if (toolNames.length === 0) {
+    return '';
+  }
+
+  // Common signatures and return shapes for known extension tools
+  const KNOWN_DOCS: Record<string, string> = {
+    tab_list:
+      'await tools.tab_list({ query?: string }) → returns Array<{ id: number, tabId: number, title: string, url: string, active: boolean, pinned: boolean, groupId: number, index: number, windowId: number }>',
+    tab_read:
+      'await tools.tab_read({ tabId: number, maxLength?: number, maxChars?: number, format?: "markdown"|"text"|"both" }) → returns { id: number, tabId: number, title: string, url: string, description: string, metaDescription: string|null, meta: { description: string, byline?: string, published?: string }, headings: Array<{ level: number, text: string }>, headingTexts: string[], excerpt: string, markdown: string, content: string, blocked?: boolean, error?: string }',
+    tab_group_list:
+      'await tools.tab_group_list({ windowId?: number }) → returns Array<{ id: number, groupId: number, title: string, color: string, collapsed: boolean, windowId: number }>',
+    tab_group:
+      'await tools.tab_group({ tabIds: number[], title?: string, color?: "grey"|"blue"|"red"|"yellow"|"green"|"pink"|"purple"|"cyan"|"orange", groupId?: number, collapsed?: boolean }) → returns { id: number, groupId: number, title?: string, color?: string, collapsed: boolean, tabCount: number }',
+    tab_ungroup:
+      'await tools.tab_ungroup({ tabIds: number[] }) → ungroups specified tabs',
+    tab_close:
+      'await tools.tab_close({ tabIds: number[] }) → closes specified tabs',
+    tab_open:
+      'await tools.tab_open({ url: string, active?: boolean }) → creates new tab',
+    tab_focus:
+      'await tools.tab_focus({ tabId: number }) → focuses the specified tab',
+    storage_get:
+      'await tools.storage_get({ key: string }) → returns stored JSON value or null (shorthand: tools.storage_get("key"))',
+    storage_set:
+      'await tools.storage_set({ key: string, value: any }) → saves JSON-serializable state',
+    action_toast:
+      'await tools.action_toast({ message: string, undoLabel?: string, badgeText?: string, openPopup?: boolean }) → sets extension icon badge and shows undo prompt',
+    action_history:
+      'await tools.action_history({ limit?: number }) → returns recent tool actions journal',
+    action_undo:
+      'await tools.action_undo({ actionId?: string }) → reverses a recent action',
+    ui_update:
+      'await tools.ui_update({ schema: object }) → updates the dynamic UI components',
+    bookmark_search:
+      'await tools.bookmark_search({ query: string }) → searches bookmarks',
+    history_search:
+      'await tools.history_search({ query?: string, maxResults?: number }) → searches browsing history',
+    idle_query:
+      'await tools.idle_query({ thresholdSeconds?: number }) → returns { state: "active"|"idle"|"locked" }',
+  };
+
+  const toolLines: string[] = [];
+  const documented = new Set<string>();
+
+  for (const name of toolNames) {
+    if (KNOWN_DOCS[name]) {
+      toolLines.push(`  - \`${name}\`: ${KNOWN_DOCS[name]}`);
+      documented.add(name);
+    }
+  }
+
+  // Include any other active tools not in the known docs table
+  for (const name of toolNames) {
+    if (!documented.has(name)) {
+      const desc = (availableTools[name] as any)?.description || 'Granted extension tool';
+      toolLines.push(`  - \`tools.${name}(args)\`: ${desc}`);
+    }
+  }
+
+  // Check for saved scripts in storage
+  let savedScriptsSection = '';
+  try {
+    const saved = await listSavedScripts();
+    if (saved.length > 0) {
+      savedScriptsSection =
+        '\n\n### Available Saved Routines\nYou previously saved the following reusable scripts in extension storage. You can run them directly via `code_mode({ scriptName: "<name>", input: { ... } })`:\n' +
+        saved.map((s) => `- \`${s.name}\`${s.description ? `: ${s.description}` : ''}`).join('\n');
+    }
+  } catch {
+    // Ignore storage errors
+  }
+
+  return `
+## Dynamic Sandboxed Code Execution (\`code_mode\`)
+
+When your task requires inspecting multiple items (e.g. reading 10–30 tabs, filtering bookmarks, checking history), joining data across multiple tools, or performing a batch of updates (e.g. tab grouping, saving state, displaying an undo toast, and updating UI), **do not make dozens of separate LLM round-trips**.
+
+Instead, **generate and execute an async JavaScript routine dynamically at runtime using the \`code_mode\` tool**.
+
+### Sandboxed Environment & Best Practices:
+1. **Parallel Execution**: Use \`Promise.all(items.map(async item => { ... }))\` to inspect dozens of tabs or data points concurrently in a single turn.
+2. **Error Resilience**: Always wrap individual item reads inside \`try { ... } catch {}\` inside your \`Promise.all\` mapper so enterprise-blocked or restricted pages (e.g. chrome:// or corporate intranet) do not fail the overall batch.
+3. **Data Distillation**: Return a clean, compact JavaScript summary object or array at the end of your script containing only the distilled information you need for subsequent steps.
+4. **Conveniences**:
+   - Both \`tools.<snake_case>(args)\` and \`tools.<camelCase>(args)\` are supported (e.g. \`tools.tab_list()\` or \`tools.tabList()\`).
+   - Single-primitive shorthand is normalized automatically (e.g. \`tools.tab_read(tab.id)\` and \`tools.storage_get("key")\`).
+   - Both \`.id\` and \`.tabId\` are populated on tab and group objects.
+5. **Reusable Routines**: You can optionally pass \`saveAs: "routine_name"\` to save your generated script in storage so future runs can execute it with zero code generation via \`scriptName: "routine_name"\`.
+
+### Currently Granted Runtime Tools inside \`code_mode\`:
+${toolLines.join('\n')}${savedScriptsSection}
+`.trim();
+}
