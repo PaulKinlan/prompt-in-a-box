@@ -8,6 +8,13 @@
  */
 
 import { listActionHistory, type ActionHistoryEntry } from './action-history';
+import {
+  printAgentLogToConsole,
+  getLiveLogs,
+  clearLiveLogs,
+  type AgentLogEvent,
+  type RunLiveStatus,
+} from './logger';
 
 export interface UIComponent {
   type:
@@ -93,11 +100,72 @@ export class UIRenderer {
   private formValues: Record<string, any> = {};
   private viewName: string;
   private listeningForHistory = false;
+  private listeningForLogs = false;
+  private logs: AgentLogEvent[] = [];
+  private liveStatus: RunLiveStatus = {
+    active: false,
+    runId: '',
+    statusText: 'Idle',
+    updatedAt: Date.now(),
+  };
+  private consoleDrawerEl: HTMLElement | null = null;
+  private consoleLogListEl: HTMLElement | null = null;
+  private consoleStreamingBoxEl: HTMLElement | null = null;
+  private consoleStatusTextEl: HTMLElement | null = null;
+  private consoleDotEl: HTMLElement | null = null;
+  private consoleCountBadgeEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement, viewName: string) {
     this.container = container;
     this.viewName = viewName;
     this.setupHistoryListener();
+    this.setupLogListener();
+  }
+
+  private setupLogListener(): void {
+    if (this.listeningForLogs) return;
+    this.listeningForLogs = true;
+    try {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg?.type === 'agent-log' && msg.event) {
+          // Print directly to console for DevTools inspect
+          printAgentLogToConsole(msg.event);
+
+          this.appendLogEntry(msg.event);
+
+          if (msg.status) {
+            this.updateLiveStatus(msg.status);
+          }
+
+          if (msg.event.channel === 'run-start' && this.consoleDrawerEl) {
+            this.consoleDrawerEl.classList.add('expanded');
+          }
+        } else if (msg?.type === 'agent-stream-delta') {
+          if (this.consoleStreamingBoxEl) {
+            this.consoleStreamingBoxEl.classList.add('visible');
+            const prefix = msg.kind === 'reasoning' ? '🧠 Thinking: ' : '✍️ Output: ';
+            this.consoleStreamingBoxEl.textContent = prefix + msg.fullText;
+            this.consoleStreamingBoxEl.scrollTop = this.consoleStreamingBoxEl.scrollHeight;
+          }
+        }
+      });
+    } catch {
+      // Ignored
+    }
+  }
+
+  private updateLiveStatus(status: RunLiveStatus): void {
+    this.liveStatus = status;
+    if (this.consoleStatusTextEl) {
+      this.consoleStatusTextEl.textContent = status.statusText || (status.active ? 'Running...' : 'Idle');
+    }
+    if (this.consoleDotEl) {
+      if (status.active) {
+        this.consoleDotEl.classList.add('active');
+      } else {
+        this.consoleDotEl.classList.remove('active');
+      }
+    }
   }
 
   private setupHistoryListener(): void {
@@ -148,6 +216,16 @@ export class UIRenderer {
     }
 
     this.render(spec);
+
+    try {
+      const { logs, status } = await getLiveLogs();
+      this.logs = logs || [];
+      if (status) this.liveStatus = status;
+      this.populateLiveLogs();
+      if (this.liveStatus) this.updateLiveStatus(this.liveStatus);
+    } catch {
+      // ignore
+    }
   }
 
   /**
@@ -188,6 +266,8 @@ export class UIRenderer {
         }
       });
     }
+
+    this.container.appendChild(this.createLiveConsoleDrawer());
   }
 
   /**
@@ -218,6 +298,9 @@ export class UIRenderer {
     }
 
     this.container.appendChild(componentWrapper);
+
+    // 3. Render Live Console Drawer
+    this.container.appendChild(this.createLiveConsoleDrawer());
   }
 
   /**
@@ -439,6 +522,15 @@ export class UIRenderer {
               });
               await this.executeChromeAPI(comp.apiMethod, parsedArgs);
             } else if (comp.action === 'trigger-run') {
+              if (this.consoleDrawerEl) {
+                this.consoleDrawerEl.classList.add('expanded');
+              }
+              this.updateLiveStatus({
+                active: true,
+                runId: '',
+                statusText: 'Triggering agent run...',
+                updatedAt: Date.now(),
+              });
               // Combine default payload with dynamic inputs
               const payload = {
                 ...comp.payload,
@@ -716,5 +808,180 @@ export class UIRenderer {
       default:
         return '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg>';
     }
+  }
+
+  // ─── Live Console Drawer Construction ───────────────────────────────
+
+  private createLiveConsoleDrawer(): HTMLElement {
+    const drawer = document.createElement('div');
+    drawer.className = 'ui-live-console-drawer';
+    this.consoleDrawerEl = drawer;
+
+    const header = document.createElement('div');
+    header.className = 'ui-console-header';
+
+    const left = document.createElement('div');
+    left.className = 'ui-console-status-left';
+
+    const dot = document.createElement('span');
+    dot.className = `ui-console-dot ${this.liveStatus.active ? 'active' : ''}`;
+    this.consoleDotEl = dot;
+    left.appendChild(dot);
+
+    const statusText = document.createElement('span');
+    statusText.className = 'ui-console-status-text';
+    statusText.textContent = this.liveStatus.statusText || 'Idle';
+    this.consoleStatusTextEl = statusText;
+    left.appendChild(statusText);
+
+    const countBadge = document.createElement('span');
+    countBadge.className = 'ui-console-count-badge';
+    countBadge.textContent = `${this.logs.length} logs`;
+    this.consoleCountBadgeEl = countBadge;
+    left.appendChild(countBadge);
+
+    header.appendChild(left);
+
+    const right = document.createElement('div');
+    right.className = 'ui-console-header-actions';
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'ui-console-btn';
+    clearBtn.textContent = 'Clear';
+    clearBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await clearLiveLogs();
+      this.logs = [];
+      if (this.consoleLogListEl) this.consoleLogListEl.innerHTML = '';
+      if (this.consoleStreamingBoxEl) {
+        this.consoleStreamingBoxEl.textContent = '';
+        this.consoleStreamingBoxEl.classList.remove('visible');
+      }
+      if (this.consoleCountBadgeEl) this.consoleCountBadgeEl.textContent = '0 logs';
+    });
+    right.appendChild(clearBtn);
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'ui-console-btn';
+    toggleBtn.textContent = 'Logs ▾';
+    right.appendChild(toggleBtn);
+
+    header.appendChild(right);
+
+    header.addEventListener('click', () => {
+      drawer.classList.toggle('expanded');
+    });
+
+    drawer.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'ui-console-body';
+
+    const streamingBox = document.createElement('div');
+    streamingBox.className = 'ui-console-streaming-box';
+    this.consoleStreamingBoxEl = streamingBox;
+    body.appendChild(streamingBox);
+
+    const logList = document.createElement('div');
+    logList.className = 'ui-console-log-list';
+    this.consoleLogListEl = logList;
+    body.appendChild(logList);
+
+    drawer.appendChild(body);
+
+    this.populateLiveLogs();
+
+    return drawer;
+  }
+
+  private appendLogEntry(ev: AgentLogEvent): void {
+    this.logs.push(ev);
+    if (this.logs.length > 100) this.logs.shift();
+    if (this.consoleCountBadgeEl) {
+      this.consoleCountBadgeEl.textContent = `${this.logs.length} log${this.logs.length === 1 ? '' : 's'}`;
+    }
+
+    if (!this.consoleLogListEl) return;
+
+    const row = this.createLogRow(ev);
+    this.consoleLogListEl.appendChild(row);
+    this.consoleLogListEl.scrollTop = this.consoleLogListEl.scrollHeight;
+
+    if (ev.channel === 'step-start' || ev.channel === 'tool-call' || ev.channel === 'run-complete') {
+      if (this.consoleStreamingBoxEl) {
+        this.consoleStreamingBoxEl.textContent = '';
+        this.consoleStreamingBoxEl.classList.remove('visible');
+      }
+    }
+  }
+
+  private populateLiveLogs(): void {
+    if (!this.consoleLogListEl) return;
+    this.consoleLogListEl.innerHTML = '';
+    for (const ev of this.logs) {
+      this.consoleLogListEl.appendChild(this.createLogRow(ev));
+    }
+    this.consoleLogListEl.scrollTop = this.consoleLogListEl.scrollHeight;
+    if (this.consoleCountBadgeEl) {
+      this.consoleCountBadgeEl.textContent = `${this.logs.length} log${this.logs.length === 1 ? '' : 's'}`;
+    }
+  }
+
+  private createLogRow(ev: AgentLogEvent): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'ui-console-log-item';
+
+    const meta = document.createElement('div');
+    meta.className = 'ui-console-log-meta';
+
+    const badge = document.createElement('span');
+    badge.className = `ui-channel-badge ${ev.channel}`;
+    badge.textContent = ev.channel;
+    meta.appendChild(badge);
+
+    if (ev.step !== undefined) {
+      const stepSpan = document.createElement('span');
+      stepSpan.className = 'ui-console-log-step';
+      stepSpan.textContent = `[s${ev.step + 1}]`;
+      meta.appendChild(stepSpan);
+    }
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'ui-console-log-time';
+    timeSpan.textContent = new Date(ev.timestamp).toLocaleTimeString();
+    meta.appendChild(timeSpan);
+
+    if (ev.durationMs !== undefined) {
+      const dur = document.createElement('span');
+      dur.className = 'ui-console-log-time';
+      dur.textContent = `${ev.durationMs}ms`;
+      meta.appendChild(dur);
+    }
+
+    item.appendChild(meta);
+
+    const title = document.createElement('div');
+    title.className = 'ui-console-log-title';
+    title.textContent = ev.title;
+    item.appendChild(title);
+
+    if (ev.body || ev.data !== undefined) {
+      const details = document.createElement('details');
+      details.className = 'ui-console-log-details';
+
+      const summary = document.createElement('summary');
+      summary.textContent = ev.body ? 'View Details' : 'View Payload';
+      details.appendChild(summary);
+
+      const pre = document.createElement('pre');
+      pre.textContent = ev.body
+        ? ev.body + (ev.data !== undefined ? '\n\n' + JSON.stringify(ev.data, null, 2) : '')
+        : JSON.stringify(ev.data, null, 2);
+      details.appendChild(pre);
+
+      item.appendChild(details);
+    }
+
+    return item;
   }
 }

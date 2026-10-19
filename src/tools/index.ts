@@ -85,12 +85,16 @@ import {
   systemStorageInfo,
   systemDisplayInfo,
 } from './browser-extra';
+import { codeMode, codeScripts } from './code-mode';
 
 /**
  * Map Chrome permission → tools it unlocks.
  */
 const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   __always__: {
+    code_mode: codeMode,
+    run_code: codeMode,
+    code_scripts: codeScripts,
     storage_get: storageGet,
     storage_set: storageSet,
     get_state: storageGet,

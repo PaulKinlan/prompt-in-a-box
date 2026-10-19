@@ -1,4 +1,5 @@
 import { UIRenderer } from './ui-renderer';
+import { printAgentLogToConsole } from './logger';
 import {
   getConfig,
   getStaticConfig,
@@ -70,10 +71,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initial render of saved or welcoming state
   void renderer.loadAndRender();
 
-  // 2. Listen for push updates from background SW when the agent outputs a new UI
+  // 2. Listen for push updates from background SW when the agent outputs a new UI or logs
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'ui-state-updated' && msg.ui) {
       renderer.render(msg.ui);
+    } else if (msg?.type === 'agent-log' && msg.event) {
+      printAgentLogToConsole(msg.event);
+      if (msg.status?.active) {
+        showStatus(msg.status.statusText, 'info');
+      } else if (msg.event.channel === 'run-complete') {
+        showStatus(msg.event.title, 'ok');
+      } else if (msg.event.channel === 'error') {
+        showStatus(msg.event.title, 'error');
+      }
     }
   });
 

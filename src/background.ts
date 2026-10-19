@@ -70,6 +70,18 @@ import {
   undoLastRun,
   listActionHistory,
 } from './action-history';
+import {
+  emitAgentLog,
+  createRunStreamLogger,
+  getLiveLogs,
+  clearLiveLogs,
+} from './logger';
+import {
+  setActiveRunToolContext,
+  clearActiveRunToolContext,
+  handleCodeModeToolCall,
+  handleCodeModeLog,
+} from './code-mode';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
 
@@ -205,6 +217,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // ignore
         }
         sendResponse({ ok: true });
+      } else if (msg?.type === 'get-live-logs') {
+        sendResponse(await getLiveLogs());
+      } else if (msg?.type === 'clear-live-logs') {
+        await clearLiveLogs();
+        sendResponse({ ok: true });
+      } else if (msg?.type === 'code-mode-tool-call') {
+        sendResponse(await handleCodeModeToolCall(msg));
+      } else if (msg?.type === 'code-mode-log') {
+        sendResponse(await handleCodeModeLog(msg));
       } else {
         sendResponse({ error: `unknown message type: ${msg?.type}` });
       }
@@ -241,6 +262,15 @@ async function run(
       tokens: { input: 0, output: 0, estimatedCost: 0 },
     };
     await writeAudit(entry);
+    void emitAgentLog(
+      {
+        runId,
+        channel: 'error',
+        title: `Run skipped: No ${cfg.provider} API key configured`,
+        body: 'Please open extension settings to configure an API key.',
+      },
+      'Missing API key',
+    );
     return entry;
   }
 
@@ -258,15 +288,48 @@ async function run(
   const pendingByName = new Map<string, { at: number; args: unknown }>();
   let tokens = { input: 0, output: 0, estimatedCost: 0 };
 
+  setActiveRunToolContext({
+    runId,
+    tools,
+    recordToolCall: (call) => toolCalls.push(call),
+  });
+
+  const streamLogger = createRunStreamLogger(runId);
+
   const hooks: AgentHooks = {
+    onStepStart: async (event) => {
+      streamLogger.setStep(event.step);
+      void emitAgentLog(
+        {
+          runId,
+          channel: 'step-start',
+          step: event.step,
+          title: `Starting step ${event.step + 1} (tokens: ${event.tokensSoFar})`,
+          data: event,
+        },
+        `Step ${event.step + 1} running...`,
+      );
+    },
     onPreToolUse: async (event) => {
+      streamLogger.flush();
       pendingByName.set(`${event.step}:${event.toolName}`, {
         at: Date.now(),
         args: event.args,
       });
+      void emitAgentLog(
+        {
+          runId,
+          channel: 'tool-call',
+          step: event.step,
+          title: `Calling tool: ${event.toolName}`,
+          data: event.args,
+        },
+        `Executing ${event.toolName}...`,
+      );
       return { decision: 'allow' };
     },
     onPostToolUse: async (event) => {
+      streamLogger.flush();
       const key = `${event.step}:${event.toolName}`;
       const pending = pendingByName.get(key);
       pendingByName.delete(key);
@@ -277,17 +340,66 @@ async function run(
         durationMs: event.durationMs,
         result: event.result,
       });
+      void emitAgentLog(
+        {
+          runId,
+          channel: 'tool-result',
+          step: event.step,
+          title: `Tool completed: ${event.toolName} (${event.durationMs}ms)`,
+          data: event.result,
+          durationMs: event.durationMs,
+        },
+        `Completed ${event.toolName}`,
+      );
     },
     onUsage: async (record) => {
       tokens.input += record.inputTokens;
       tokens.output += record.outputTokens;
       tokens.estimatedCost += record.estimatedCost;
+      void emitAgentLog({
+        runId,
+        channel: 'usage',
+        title: `Usage: +${record.inputTokens} in / +${record.outputTokens} out ($${record.estimatedCost.toFixed(4)})`,
+        data: record,
+      });
+    },
+    onComplete: async (event) => {
+      streamLogger.flush();
+      const totalTokens = (event.usage?.totalInputTokens ?? 0) + (event.usage?.totalOutputTokens ?? 0);
+      void emitAgentLog(
+        {
+          runId,
+          channel: 'run-complete',
+          title: `Run complete in ${event.totalSteps} steps (${totalTokens} tokens)`,
+          body: event.result,
+          data: event.usage,
+        },
+        'Complete',
+      );
     },
   };
 
   try {
+    void emitAgentLog(
+      {
+        runId,
+        channel: 'run-start',
+        title: `Agent run started (${trigger})`,
+        body: `Model: ${cfg.model} (${cfg.provider})`,
+        data: { trigger, provider: cfg.provider, model: cfg.model },
+      },
+      'Starting agent run...',
+    );
+
     const model = pickModel(cfg.provider, cfg.model, apiKey);
-    const userMessage = customUserMessage || await composeUserMessage(trigger);
+    const userMessage = await composeUserMessage(trigger, customUserMessage);
+    void emitAgentLog({
+      runId,
+      channel: 'user-prompt',
+      title: `User prompt (${userMessage.length} chars)`,
+      body: userMessage,
+    });
+
     const manifest = chrome.runtime.getManifest();
     const result = await runAgentLoop(
       {
@@ -296,9 +408,15 @@ async function run(
         model,
         systemPrompt: prompt,
         tools,
-        maxIterations: 8,
+        maxIterations: 12,
         hooks,
         usage: { enabled: true, pricing: RUNTIME_PRICING },
+        debug: {
+          all: true,
+          traceResponseParts: true,
+          maxBodyBytes: 64 * 1024,
+          sink: streamLogger.onDebugEvent,
+        },
       },
       userMessage,
     );
@@ -337,6 +455,17 @@ async function run(
     log('run complete:', { runId, steps: entry.steps, toolCalls: entry.toolCalls.length, cost: entry.tokens.estimatedCost });
     return entry;
   } catch (err) {
+    streamLogger.flush();
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    void emitAgentLog(
+      {
+        runId,
+        channel: 'error',
+        title: `Run error: ${errorMsg}`,
+        body: err instanceof Error ? err.stack : undefined,
+      },
+      'Failed',
+    );
     const entry: AuditEntry = {
       runId,
       startedAt,
@@ -345,7 +474,7 @@ async function run(
       status: 'error',
       provider: cfg.provider,
       model: cfg.model,
-      summary: err instanceof Error ? err.message : String(err),
+      summary: errorMsg,
       error: err instanceof Error ? err.stack ?? err.message : String(err),
       toolCalls,
       tokens,
@@ -353,6 +482,8 @@ async function run(
     await writeAudit(entry);
     log('run failed:', err);
     return entry;
+  } finally {
+    clearActiveRunToolContext();
   }
 }
 
@@ -436,13 +567,10 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
 
 async function composeUserMessage(
   trigger: AuditEntry['trigger'],
+  customUserMessage?: string,
 ): Promise<string> {
   const cfg = await getConfig();
 
-  // Bootstrap triggers get an explicit hint so the prompt can perform
-  // one-shot setup (context menus, seeded defaults, etc.). The event
-  // queue is still drained and appended, so setup + event handling can
-  // happen in the same run if events queued between sessions.
   const bootstrapHint =
     trigger === 'install'
       ? 'The extension was just installed. Perform any one-time bootstrap steps (create context menus, seed default state in storage, etc.) — idempotent by design.'
@@ -455,7 +583,11 @@ async function composeUserMessage(
   const events = await drainEvents();
 
   const parts: string[] = [];
-  if (bootstrapHint) parts.push(bootstrapHint);
+  if (customUserMessage) {
+    parts.push(customUserMessage);
+  } else if (bootstrapHint) {
+    parts.push(bootstrapHint);
+  }
 
   // Inject user-configured agent settings if declared
   if (cfg.agentSettings?.fields && cfg.agentSettings.fields.length > 0) {
@@ -562,7 +694,11 @@ async function loadPrompt(): Promise<string> {
   const url = chrome.runtime.getURL('prompt.md');
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load prompt.md: ${res.status}`);
-  return await res.text();
+  let text = await res.text();
+  if (!text.includes('code_mode')) {
+    text += `\n\n## Performance & Batch Optimization (code_mode)\nWhen you need to execute multi-step operations (such as inspecting multiple tabs in parallel, fetching and filtering data across tools, or batching multiple changes like tab groups, storage, and toasts), call the \`code_mode\` tool. Inside \`code_mode\`, you can run async JavaScript using \`await tools.<toolName>(args)\` or \`await callTool(name, args)\` with Promise.all to drastically reduce latency and server round-trips.\n`;
+  }
+  return text;
 }
 
 function log(...args: unknown[]): void {

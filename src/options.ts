@@ -28,6 +28,7 @@ import {
   removeCapability,
 } from './capabilities';
 import type { AuditEntry, AuditIndexEntry } from './audit';
+import { printAgentLogToConsole } from './logger';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
@@ -809,3 +810,9 @@ function escapeHtml(s: string): string {
 }
 
 void loadUI();
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'agent-log' && msg.event) {
+    printAgentLogToConsole(msg.event);
+  }
+});

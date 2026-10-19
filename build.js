@@ -102,6 +102,11 @@ if (exampleName) {
           manifestContent.optional_host_permissions = manifestContent.optional_host_permissions.filter(h => !reqHostSet.has(h));
         }
         
+        // Ensure standard sandbox and content_security_policy from template are applied
+        const baseTmpl = JSON.parse(readFileSync(defaultManifestPath, 'utf8'));
+        if (baseTmpl.sandbox) manifestContent.sandbox = baseTmpl.sandbox;
+        if (baseTmpl.content_security_policy) manifestContent.content_security_policy = baseTmpl.content_security_policy;
+
         console.log(`📋 Merging custom manifest settings for ${exampleName}...`);
       } else {
         const titleCaseName = exampleName

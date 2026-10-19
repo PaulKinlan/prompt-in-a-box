@@ -39,7 +39,7 @@ export async function ensureOffscreen(
 
 export interface OffscreenMessage {
   target: 'offscreen';
-  kind: 'clipboard-write-text' | 'parse-html';
+  kind: 'clipboard-write-text' | 'parse-html' | 'execute-sandbox-code';
   [key: string]: unknown;
 }
 

@@ -6,6 +6,7 @@ import { getConfig, activeKey, PROVIDER_LABELS, getStaticConfig } from './config
 import type { AuditEntry } from './audit';
 import type { ArtifactIndexEntry, ArtifactKind } from './artifacts';
 import { UIRenderer, loadPromptUIBlock, type UISchema } from './ui-renderer';
+import { printAgentLogToConsole } from './logger';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
@@ -415,6 +416,15 @@ dynamicTab.addEventListener('click', (e) => {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'ui-state-updated') {
     void checkDynamicUI();
+  } else if (msg?.type === 'agent-log' && msg.event) {
+    printAgentLogToConsole(msg.event);
+    if (msg.status?.active) {
+      showStatus(msg.status.statusText, 'info');
+    } else if (msg.event.channel === 'run-complete') {
+      showStatus(msg.event.title, 'ok');
+    } else if (msg.event.channel === 'error') {
+      showStatus(msg.event.title, 'error');
+    }
   }
 });
 
