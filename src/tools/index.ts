@@ -9,6 +9,7 @@
  */
 
 import type { ToolSet } from 'ai';
+import { getStaticConfig } from '../config';
 import { tabList } from './tab-list';
 import { tabClose } from './tab-close';
 import { tabOpen } from './tab-open';
@@ -224,24 +225,60 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   },
 };
 
+function isApiAvailable(perm: string): boolean {
+  if (perm === '__always__') return true;
+  const parts = perm.split('.');
+  let obj: any = chrome;
+  for (const part of parts) {
+    if (!obj || typeof obj !== 'object' || !(part in obj) || obj[part] === undefined) {
+      return false;
+    }
+    obj = obj[part];
+  }
+  return true;
+}
+
 export async function buildToolSet(): Promise<ToolSet> {
   const granted = new Set(await listGrantedPermissions());
+  const staticCfg = await getStaticConfig().catch(() => null);
+  const blockedPerms = new Set(staticCfg?.permissions?.blocked || []);
+  const allowedPerms = staticCfg?.permissions?.allowed ? new Set(staticCfg.permissions.allowed) : null;
+
   const tools: ToolSet = {};
 
   for (const [perm, bucket] of Object.entries(TOOLS_BY_PERMISSION)) {
-    const isGranted = perm === '__always__' || granted.has(perm);
+    const isPolicyBlocked = blockedPerms.has(perm) || (allowedPerms !== null && perm !== '__always__' && !allowedPerms.has(perm));
+    const isGranted = !isPolicyBlocked && (perm === '__always__' || granted.has(perm));
+    const isAvailable = isApiAvailable(perm);
+
     for (const [toolName, toolObj] of Object.entries(bucket)) {
-      if (isGranted) {
-        tools[toolName] = toolObj;
-      } else {
+      if (isGranted && isAvailable) {
         tools[toolName] = {
           ...toolObj,
-          execute: async () => {
-            return {
-              ok: false,
-              error: `The tool '${toolName}' requires the optional Chrome permission '${perm}' which is not currently granted. Please explain to the user why you need this permission and ask them to enable it in the extension settings (Options page).`,
-            };
+          execute: async (args: any, options: any) => {
+            try {
+              return await (toolObj.execute as any)(args, options);
+            } catch (err: any) {
+              return {
+                ok: false,
+                error: err instanceof Error ? err.message : String(err),
+              };
+            }
           },
+        };
+      } else {
+        const errorReason = isPolicyBlocked
+          ? `The tool '${toolName}' is blocked by extension configuration policy (${perm}).`
+          : !isAvailable
+          ? `The tool '${toolName}' is not currently available because the Chrome API for '${perm}' is not present or supported in this browser environment.`
+          : `The tool '${toolName}' requires the optional Chrome permission '${perm}' which is not currently granted. Please explain to the user why you need this permission and ask them to enable it in the extension settings (Options page).`;
+
+        tools[toolName] = {
+          ...toolObj,
+          execute: async () => ({
+            ok: false,
+            error: errorReason,
+          }),
         };
       }
     }

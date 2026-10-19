@@ -89,6 +89,18 @@ if (exampleName) {
           const mergedOptPerms = new Set([...(manifestContent.optional_permissions || []), ...exampleContent.optional_permissions]);
           manifestContent.optional_permissions = Array.from(mergedOptPerms);
         }
+
+        // Deduplicate: optional permissions must never contain required permissions
+        if (manifestContent.optional_permissions && manifestContent.permissions) {
+          const reqSet = new Set(manifestContent.permissions);
+          manifestContent.optional_permissions = manifestContent.optional_permissions.filter(p => !reqSet.has(p));
+        }
+
+        // Deduplicate: optional host permissions must never contain required host permissions
+        if (manifestContent.optional_host_permissions && manifestContent.host_permissions) {
+          const reqHostSet = new Set(manifestContent.host_permissions);
+          manifestContent.optional_host_permissions = manifestContent.optional_host_permissions.filter(h => !reqHostSet.has(h));
+        }
         
         console.log(`📋 Merging custom manifest settings for ${exampleName}...`);
       } else {

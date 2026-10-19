@@ -76,6 +76,7 @@ const ALARM_NAME = 'prompt-in-a-box-tick';
 async function ensureScheduled(alarmMinutes?: number): Promise<void> {
   const cfg = await getConfig();
   const minutes = alarmMinutes !== undefined ? alarmMinutes : cfg.alarmMinutes;
+  if (!chrome.alarms) return;
   if (minutes <= 0) {
     await chrome.alarms.clear(ALARM_NAME);
     log('alarm disabled (never)');
@@ -114,7 +115,7 @@ chrome.runtime.onStartup.addListener(async () => {
   await run('startup').catch((err) => console.warn('[prompt-in-a-box] startup run failed:', err));
 });
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+chrome.alarms?.onAlarm?.addListener(async (alarm) => {
   if (alarm.name === ALARM_NAME) {
     await run('alarm');
   } else {
@@ -125,7 +126,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
-chrome.notifications.onClicked.addListener((notificationId) => {
+chrome.notifications?.onClicked?.addListener((notificationId) => {
   console.log('[prompt-in-a-box] Notification clicked:', notificationId);
   if (notificationId.startsWith('artifact-')) {
     const artifactId = notificationId.replace('artifact-', '');

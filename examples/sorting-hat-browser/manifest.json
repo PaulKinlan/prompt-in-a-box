@@ -54,9 +54,7 @@
     "tts",
     "declarativeNetRequest",
     "bookmarks",
-    "contextMenus",
     "downloads",
-    "history",
     "sessions",
     "webNavigation",
     "cookies",
@@ -76,11 +74,7 @@
     "webRequest",
     "userScripts",
     "clipboardWrite",
-    "nativeMessaging",
-    "tabGroups",
-    "activeTab",
-    "scripting",
-    "idle"
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>",
@@ -88,9 +82,7 @@
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*"
   ],
-  "optional_host_permissions": [
-    "<all_urls>"
-  ],
+  "optional_host_permissions": [],
   "web_accessible_resources": [
     {
       "resources": [

@@ -74,9 +74,7 @@
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*"
   ],
-  "optional_host_permissions": [
-    "<all_urls>"
-  ],
+  "optional_host_permissions": [],
   "web_accessible_resources": [
     {
       "resources": ["config.json", "prompt.md", "icon.png", "icon-16.png", "icon-32.png", "icon-48.png", "icon-128.png"],

@@ -162,6 +162,10 @@ export interface StaticConfig {
     disabledByDefault?: string[];
     lockProviderTools?: boolean;
   };
+  permissions?: {
+    allowed?: string[];
+    blocked?: string[];
+  };
   ui?: Partial<UIConfig>;
   agentSettings?: AgentSettingsConfig | null;
   features?: {
@@ -266,6 +270,10 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<StaticConfig, 'agentSettings'>
   providerTools: {
     disabledByDefault: [],
     lockProviderTools: false,
+  },
+  permissions: {
+    allowed: undefined,
+    blocked: [],
   },
   ui: DEFAULT_UI_CONFIG,
   agentSettings: null,

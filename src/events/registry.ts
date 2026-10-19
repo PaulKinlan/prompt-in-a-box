@@ -7,21 +7,16 @@
  *   permission    — which manifest permission gates it (null if always-on)
  *   triggersRun   — true if the event should wake an agent run NOW;
  *                   false means it queues for the next scheduled tick
+ *   isAvailable   — checks whether the underlying Chrome API namespace and event exist
  *   subscribe     — attaches the real Chrome listener, given a dispatch
  *                   callback. Returns an unsubscribe function.
  *
- * Immediate-trigger events are ones where the user expects the agent
- * to act in response to a specific action they just took (a context-
- * menu click, a keyboard shortcut, a notification click, an omnibox
- * command). Queued events are ambient world-state changes the agent
- * should know about on its next run (new tab opened, bookmark added,
- * download finished, history entry created).
+ * Safe-by-default: If an API is not available (optional permission ungranted or blocked),
+ * isAvailable returns false and subscribe returns a no-op function without throwing.
  */
 
 export type DispatchFn = (event: { source: string; triggersRun: boolean; payload: unknown }) => void;
 
-// chrome.readingList is shipped at runtime but missing from the version
-// of @types/chrome we depend on. Duck-type what we actually use.
 interface ReadingListEntry {
   url: string;
   title: string;
@@ -46,22 +41,40 @@ export interface EventSource {
   id: string;
   permission: string | null;
   triggersRun: boolean;
+  isAvailable: () => boolean;
   subscribe: (dispatch: DispatchFn) => () => void;
 }
 
-/** Helper: build an EventSource declaratively. */
+/** Helper: build a guarded EventSource declaratively. */
 function source(
   id: string,
   permission: string | null,
   triggersRun: boolean,
+  getEventObj: () => { addListener: (...args: any[]) => void; removeListener: (...args: any[]) => void } | undefined,
   install: (emit: (payload: unknown) => void) => () => void,
 ): EventSource {
   return {
     id,
     permission,
     triggersRun,
+    isAvailable: () => {
+      try {
+        const ev = getEventObj();
+        return Boolean(ev && typeof ev.addListener === 'function');
+      } catch {
+        return false;
+      }
+    },
     subscribe(dispatch) {
-      return install((payload) => dispatch({ source: id, triggersRun, payload }));
+      try {
+        const ev = getEventObj();
+        if (!ev || typeof ev.addListener !== 'function') {
+          return () => {};
+        }
+        return install((payload) => dispatch({ source: id, triggersRun, payload }));
+      } catch {
+        return () => {};
+      }
     },
   };
 }
@@ -69,205 +82,479 @@ function source(
 // ─── Immediate-trigger sources ─────────────────────────────────────
 
 export const IMMEDIATE_SOURCES: EventSource[] = [
-  source('contextMenus.onClicked', 'contextMenus', true, (emit) => {
-    const h = (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) =>
-      emit({ info, tab: tab ? { id: tab.id, url: tab.url, title: tab.title } : null });
-    chrome.contextMenus.onClicked.addListener(h);
-    return () => chrome.contextMenus.onClicked.removeListener(h);
-  }),
-  source('notifications.onClicked', 'notifications', true, (emit) => {
-    const h = (id: string) => emit({ notificationId: id });
-    chrome.notifications.onClicked.addListener(h);
-    return () => chrome.notifications.onClicked.removeListener(h);
-  }),
-  source('notifications.onButtonClicked', 'notifications', true, (emit) => {
-    const h = (id: string, buttonIndex: number) => emit({ notificationId: id, buttonIndex });
-    chrome.notifications.onButtonClicked.addListener(h);
-    return () => chrome.notifications.onButtonClicked.removeListener(h);
-  }),
-  source('commands.onCommand', null, true, (emit) => {
-    // chrome.commands is always available if declared in manifest's
-    // `commands` block (which we don't currently ship but can add).
-    // Guard so subscribing is a no-op if it's not present.
-    const api = (chrome as unknown as { commands?: typeof chrome.commands }).commands;
-    if (!api) return () => {};
-    const h = (command: string) => emit({ command });
-    api.onCommand.addListener(h);
-    return () => api.onCommand.removeListener(h);
-  }),
-  source('omnibox.onInputEntered', null, true, (emit) => {
-    const api = (chrome as unknown as { omnibox?: typeof chrome.omnibox }).omnibox;
-    if (!api) return () => {};
-    const h = (text: string, disposition: `${chrome.omnibox.OnInputEnteredDisposition}`) =>
-      emit({ text, disposition });
-    api.onInputEntered.addListener(h);
-    return () => api.onInputEntered.removeListener(h);
-  }),
+  source(
+    'contextMenus.onClicked',
+    'contextMenus',
+    true,
+    () => chrome.contextMenus?.onClicked,
+    (emit) => {
+      const h = (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) =>
+        emit({ info, tab: tab ? { id: tab.id, url: tab.url, title: tab.title } : null });
+      chrome.contextMenus?.onClicked?.addListener(h);
+      return () => {
+        try {
+          chrome.contextMenus?.onClicked?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'notifications.onClicked',
+    'notifications',
+    true,
+    () => chrome.notifications?.onClicked,
+    (emit) => {
+      const h = (id: string) => emit({ notificationId: id });
+      chrome.notifications?.onClicked?.addListener(h);
+      return () => {
+        try {
+          chrome.notifications?.onClicked?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'notifications.onButtonClicked',
+    'notifications',
+    true,
+    () => chrome.notifications?.onButtonClicked,
+    (emit) => {
+      const h = (id: string, buttonIndex: number) => emit({ notificationId: id, buttonIndex });
+      chrome.notifications?.onButtonClicked?.addListener(h);
+      return () => {
+        try {
+          chrome.notifications?.onButtonClicked?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'commands.onCommand',
+    null,
+    true,
+    () => (chrome as unknown as { commands?: typeof chrome.commands }).commands?.onCommand,
+    (emit) => {
+      const api = (chrome as unknown as { commands?: typeof chrome.commands }).commands;
+      if (!api?.onCommand) return () => {};
+      const h = (command: string) => emit({ command });
+      api.onCommand.addListener(h);
+      return () => {
+        try {
+          api.onCommand?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'omnibox.onInputEntered',
+    null,
+    true,
+    () => (chrome as unknown as { omnibox?: typeof chrome.omnibox }).omnibox?.onInputEntered,
+    (emit) => {
+      const api = (chrome as unknown as { omnibox?: typeof chrome.omnibox }).omnibox;
+      if (!api?.onInputEntered) return () => {};
+      const h = (text: string, disposition: `${chrome.omnibox.OnInputEnteredDisposition}`) =>
+        emit({ text, disposition });
+      api.onInputEntered.addListener(h);
+      return () => {
+        try {
+          api.onInputEntered?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
 ];
 
 // ─── Queued sources ────────────────────────────────────────────────
 
 export const QUEUED_SOURCES: EventSource[] = [
-  source('tabs.onCreated', 'tabs', false, (emit) => {
-    const h = (tab: chrome.tabs.Tab) => emit({ tabId: tab.id, url: tab.url, title: tab.title, windowId: tab.windowId });
-    chrome.tabs.onCreated.addListener(h);
-    return () => chrome.tabs.onCreated.removeListener(h);
-  }),
-  source('tabs.onUpdated', 'tabs', false, (emit) => {
-    const h = (tabId: number, info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
-      // Filter out the chatty status='loading' churn.
-      if (info.status && info.status !== 'complete') return;
-      emit({ tabId, url: tab.url, title: tab.title, status: info.status });
-    };
-    chrome.tabs.onUpdated.addListener(h);
-    return () => chrome.tabs.onUpdated.removeListener(h);
-  }),
-  source('tabs.onRemoved', 'tabs', false, (emit) => {
-    const h = (tabId: number, info: chrome.tabs.OnRemovedInfo) =>
-      emit({ tabId, windowId: info.windowId, isWindowClosing: info.isWindowClosing });
-    chrome.tabs.onRemoved.addListener(h);
-    return () => chrome.tabs.onRemoved.removeListener(h);
-  }),
-  source('tabs.onActivated', 'tabs', false, (emit) => {
-    const h = (info: chrome.tabs.OnActivatedInfo) => emit({ tabId: info.tabId, windowId: info.windowId });
-    chrome.tabs.onActivated.addListener(h);
-    return () => chrome.tabs.onActivated.removeListener(h);
-  }),
-  source('bookmarks.onCreated', 'bookmarks', false, (emit) => {
-    const h = (id: string, node: chrome.bookmarks.BookmarkTreeNode) =>
-      emit({ id, title: node.title, url: node.url ?? null, parentId: node.parentId ?? null });
-    chrome.bookmarks.onCreated.addListener(h);
-    return () => chrome.bookmarks.onCreated.removeListener(h);
-  }),
-  source('bookmarks.onChanged', 'bookmarks', false, (emit) => {
-    const h = (id: string, info: { title: string; url?: string }) => emit({ id, ...info });
-    chrome.bookmarks.onChanged.addListener(h);
-    return () => chrome.bookmarks.onChanged.removeListener(h);
-  }),
-  source('bookmarks.onRemoved', 'bookmarks', false, (emit) => {
-    const h = (id: string, info: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) =>
-      emit({ id, parentId: info.parentId, index: info.index });
-    chrome.bookmarks.onRemoved.addListener(h);
-    return () => chrome.bookmarks.onRemoved.removeListener(h);
-  }),
-  source('history.onVisited', 'history', false, (emit) => {
-    const h = (item: chrome.history.HistoryItem) =>
-      emit({ url: item.url, title: item.title, lastVisitTime: item.lastVisitTime });
-    chrome.history.onVisited.addListener(h);
-    return () => chrome.history.onVisited.removeListener(h);
-  }),
-  source('history.onVisitRemoved', 'history', false, (emit) => {
-    const h = (removed: chrome.history.RemovedResult) =>
-      emit({ allHistory: removed.allHistory, urls: removed.urls });
-    chrome.history.onVisitRemoved.addListener(h);
-    return () => chrome.history.onVisitRemoved.removeListener(h);
-  }),
-  source('downloads.onCreated', 'downloads', false, (emit) => {
-    const h = (d: chrome.downloads.DownloadItem) =>
-      emit({ downloadId: d.id, url: d.url, filename: d.filename, mime: d.mime });
-    chrome.downloads.onCreated.addListener(h);
-    return () => chrome.downloads.onCreated.removeListener(h);
-  }),
-  source('downloads.onChanged', 'downloads', false, (emit) => {
-    const h = (delta: chrome.downloads.DownloadDelta) =>
-      emit({ downloadId: delta.id, ...delta });
-    chrome.downloads.onChanged.addListener(h);
-    return () => chrome.downloads.onChanged.removeListener(h);
-  }),
-  source('downloads.onErased', 'downloads', false, (emit) => {
-    const h = (id: number) => emit({ downloadId: id });
-    chrome.downloads.onErased.addListener(h);
-    return () => chrome.downloads.onErased.removeListener(h);
-  }),
-  source('windows.onCreated', null, false, (emit) => {
-    const h = (w: chrome.windows.Window) =>
-      emit({ windowId: w.id, type: w.type, incognito: w.incognito });
-    chrome.windows.onCreated.addListener(h);
-    return () => chrome.windows.onCreated.removeListener(h);
-  }),
-  source('windows.onRemoved', null, false, (emit) => {
-    const h = (id: number) => emit({ windowId: id });
-    chrome.windows.onRemoved.addListener(h);
-    return () => chrome.windows.onRemoved.removeListener(h);
-  }),
-  source('windows.onFocusChanged', null, false, (emit) => {
-    const h = (id: number) => emit({ windowId: id });
-    chrome.windows.onFocusChanged.addListener(h);
-    return () => chrome.windows.onFocusChanged.removeListener(h);
-  }),
-  source('webNavigation.onCompleted', 'webNavigation', false, (emit) => {
-    // Types are awkward here; fall through to the real API at runtime.
-    const real = (chrome as unknown as { webNavigation?: { onCompleted: chrome.events.Event<(d: unknown) => void> } }).webNavigation;
-    if (!real) return () => {};
-    const h = (d: unknown) => {
-      const details = d as { tabId?: number; url?: string; frameId?: number };
-      if (details.frameId !== 0) return; // main frame only
-      emit({ tabId: details.tabId, url: details.url });
-    };
-    real.onCompleted.addListener(h);
-    return () => real.onCompleted.removeListener(h);
-  }),
-  source('idle.onStateChanged', 'idle', true, (emit) => {
-    const api = (chrome as unknown as { idle?: typeof chrome.idle }).idle;
-    if (!api) return () => {};
-    try {
-      api.setDetectionInterval?.(60);
-    } catch {
-      // ignore
-    }
-    const h = (state: `${chrome.idle.IdleState}`) => {
-      emit({ state, isIdleWake: state === 'idle' });
-    };
-    api.onStateChanged.addListener(h);
-    return () => api.onStateChanged.removeListener(h);
-  }),
-  source('readingList.onEntryAdded', 'readingList', false, (emit) => {
-    const listener = readingListApi()?.onEntryAdded;
-    if (!listener) return () => {};
-    const h = (entry: ReadingListEntry) =>
-      emit({ url: entry.url, title: entry.title, hasBeenRead: entry.hasBeenRead });
-    listener.addListener(h);
-    return () => listener.removeListener(h);
-  }),
-  source('readingList.onEntryUpdated', 'readingList', false, (emit) => {
-    const listener = readingListApi()?.onEntryUpdated;
-    if (!listener) return () => {};
-    const h = (entry: ReadingListEntry) =>
-      emit({ url: entry.url, title: entry.title, hasBeenRead: entry.hasBeenRead });
-    listener.addListener(h);
-    return () => listener.removeListener(h);
-  }),
-  source('readingList.onEntryRemoved', 'readingList', false, (emit) => {
-    const listener = readingListApi()?.onEntryRemoved;
-    if (!listener) return () => {};
-    const h = (entry: ReadingListEntry) =>
-      emit({ url: entry.url, title: entry.title });
-    listener.addListener(h);
-    return () => listener.removeListener(h);
-  }),
-  source('tabGroups.onCreated', null, false, (emit) => {
-    const api = (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
-    if (!api?.onCreated) return () => {};
-    const h = (g: chrome.tabGroups.TabGroup) =>
-      emit({ groupId: g.id, title: g.title, color: g.color, windowId: g.windowId });
-    api.onCreated.addListener(h);
-    return () => api.onCreated.removeListener(h);
-  }),
-  source('tabGroups.onUpdated', null, false, (emit) => {
-    const api = (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
-    if (!api?.onUpdated) return () => {};
-    const h = (g: chrome.tabGroups.TabGroup) =>
-      emit({ groupId: g.id, title: g.title, color: g.color, collapsed: g.collapsed });
-    api.onUpdated.addListener(h);
-    return () => api.onUpdated.removeListener(h);
-  }),
-  source('tabGroups.onRemoved', null, false, (emit) => {
-    const api = (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
-    if (!api?.onRemoved) return () => {};
-    const h = (g: chrome.tabGroups.TabGroup) => emit({ groupId: g.id });
-    api.onRemoved.addListener(h);
-    return () => api.onRemoved.removeListener(h);
-  }),
+  source(
+    'tabs.onCreated',
+    'tabs',
+    false,
+    () => chrome.tabs?.onCreated,
+    (emit) => {
+      const h = (tab: chrome.tabs.Tab) =>
+        emit({ tabId: tab.id, url: tab.url, title: tab.title, windowId: tab.windowId });
+      chrome.tabs?.onCreated?.addListener(h);
+      return () => {
+        try {
+          chrome.tabs?.onCreated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'tabs.onUpdated',
+    'tabs',
+    false,
+    () => chrome.tabs?.onUpdated,
+    (emit) => {
+      const h = (tabId: number, info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
+        if (info.status && info.status !== 'complete') return;
+        emit({ tabId, url: tab.url, title: tab.title, status: info.status });
+      };
+      chrome.tabs?.onUpdated?.addListener(h);
+      return () => {
+        try {
+          chrome.tabs?.onUpdated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'tabs.onRemoved',
+    'tabs',
+    false,
+    () => chrome.tabs?.onRemoved,
+    (emit) => {
+      const h = (tabId: number, info: chrome.tabs.OnRemovedInfo) =>
+        emit({ tabId, windowId: info.windowId, isWindowClosing: info.isWindowClosing });
+      chrome.tabs?.onRemoved?.addListener(h);
+      return () => {
+        try {
+          chrome.tabs?.onRemoved?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'tabs.onActivated',
+    'tabs',
+    false,
+    () => chrome.tabs?.onActivated,
+    (emit) => {
+      const h = (info: chrome.tabs.OnActivatedInfo) => emit({ tabId: info.tabId, windowId: info.windowId });
+      chrome.tabs?.onActivated?.addListener(h);
+      return () => {
+        try {
+          chrome.tabs?.onActivated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'bookmarks.onCreated',
+    'bookmarks',
+    false,
+    () => chrome.bookmarks?.onCreated,
+    (emit) => {
+      const h = (id: string, node: chrome.bookmarks.BookmarkTreeNode) =>
+        emit({ id, title: node.title, url: node.url ?? null, parentId: node.parentId ?? null });
+      chrome.bookmarks?.onCreated?.addListener(h);
+      return () => {
+        try {
+          chrome.bookmarks?.onCreated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'bookmarks.onChanged',
+    'bookmarks',
+    false,
+    () => chrome.bookmarks?.onChanged,
+    (emit) => {
+      const h = (id: string, info: { title: string; url?: string }) => emit({ id, ...info });
+      chrome.bookmarks?.onChanged?.addListener(h);
+      return () => {
+        try {
+          chrome.bookmarks?.onChanged?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'bookmarks.onRemoved',
+    'bookmarks',
+    false,
+    () => chrome.bookmarks?.onRemoved,
+    (emit) => {
+      const h = (id: string, info: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) =>
+        emit({ id, parentId: info.parentId, index: info.index });
+      chrome.bookmarks?.onRemoved?.addListener(h);
+      return () => {
+        try {
+          chrome.bookmarks?.onRemoved?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'history.onVisited',
+    'history',
+    false,
+    () => chrome.history?.onVisited,
+    (emit) => {
+      const h = (item: chrome.history.HistoryItem) =>
+        emit({ url: item.url, title: item.title, lastVisitTime: item.lastVisitTime });
+      chrome.history?.onVisited?.addListener(h);
+      return () => {
+        try {
+          chrome.history?.onVisited?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'history.onVisitRemoved',
+    'history',
+    false,
+    () => chrome.history?.onVisitRemoved,
+    (emit) => {
+      const h = (removed: chrome.history.RemovedResult) =>
+        emit({ allHistory: removed.allHistory, urls: removed.urls });
+      chrome.history?.onVisitRemoved?.addListener(h);
+      return () => {
+        try {
+          chrome.history?.onVisitRemoved?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'downloads.onCreated',
+    'downloads',
+    false,
+    () => chrome.downloads?.onCreated,
+    (emit) => {
+      const h = (d: chrome.downloads.DownloadItem) =>
+        emit({ downloadId: d.id, url: d.url, filename: d.filename, mime: d.mime });
+      chrome.downloads?.onCreated?.addListener(h);
+      return () => {
+        try {
+          chrome.downloads?.onCreated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'downloads.onChanged',
+    'downloads',
+    false,
+    () => chrome.downloads?.onChanged,
+    (emit) => {
+      const h = (delta: chrome.downloads.DownloadDelta) => emit({ downloadId: delta.id, ...delta });
+      chrome.downloads?.onChanged?.addListener(h);
+      return () => {
+        try {
+          chrome.downloads?.onChanged?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'downloads.onErased',
+    'downloads',
+    false,
+    () => chrome.downloads?.onErased,
+    (emit) => {
+      const h = (id: number) => emit({ downloadId: id });
+      chrome.downloads?.onErased?.addListener(h);
+      return () => {
+        try {
+          chrome.downloads?.onErased?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'windows.onCreated',
+    null,
+    false,
+    () => chrome.windows?.onCreated,
+    (emit) => {
+      const h = (w: chrome.windows.Window) =>
+        emit({ windowId: w.id, type: w.type, incognito: w.incognito });
+      chrome.windows?.onCreated?.addListener(h);
+      return () => {
+        try {
+          chrome.windows?.onCreated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'windows.onRemoved',
+    null,
+    false,
+    () => chrome.windows?.onRemoved,
+    (emit) => {
+      const h = (id: number) => emit({ windowId: id });
+      chrome.windows?.onRemoved?.addListener(h);
+      return () => {
+        try {
+          chrome.windows?.onRemoved?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'windows.onFocusChanged',
+    null,
+    false,
+    () => chrome.windows?.onFocusChanged,
+    (emit) => {
+      const h = (id: number) => emit({ windowId: id });
+      chrome.windows?.onFocusChanged?.addListener(h);
+      return () => {
+        try {
+          chrome.windows?.onFocusChanged?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'webNavigation.onCompleted',
+    'webNavigation',
+    false,
+    () => (chrome as unknown as { webNavigation?: { onCompleted: chrome.events.Event<(d: unknown) => void> } }).webNavigation?.onCompleted,
+    (emit) => {
+      const real = (chrome as unknown as { webNavigation?: { onCompleted: chrome.events.Event<(d: unknown) => void> } }).webNavigation;
+      if (!real?.onCompleted) return () => {};
+      const h = (d: unknown) => {
+        const details = d as { tabId?: number; url?: string; frameId?: number };
+        if (details.frameId !== 0) return;
+        emit({ tabId: details.tabId, url: details.url });
+      };
+      real.onCompleted.addListener(h);
+      return () => {
+        try {
+          real.onCompleted?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'idle.onStateChanged',
+    'idle',
+    true,
+    () => (chrome as unknown as { idle?: typeof chrome.idle }).idle?.onStateChanged,
+    (emit) => {
+      const api = (chrome as unknown as { idle?: typeof chrome.idle }).idle;
+      if (!api?.onStateChanged) return () => {};
+      try {
+        api.setDetectionInterval?.(60);
+      } catch {
+        // ignore
+      }
+      const h = (state: `${chrome.idle.IdleState}`) => {
+        emit({ state, isIdleWake: state === 'idle' });
+      };
+      api.onStateChanged.addListener(h);
+      return () => {
+        try {
+          api.onStateChanged?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'readingList.onEntryAdded',
+    'readingList',
+    false,
+    () => readingListApi()?.onEntryAdded,
+    (emit) => {
+      const listener = readingListApi()?.onEntryAdded;
+      if (!listener) return () => {};
+      const h = (entry: ReadingListEntry) =>
+        emit({ url: entry.url, title: entry.title, hasBeenRead: entry.hasBeenRead });
+      listener.addListener(h);
+      return () => {
+        try {
+          listener.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'readingList.onEntryUpdated',
+    'readingList',
+    false,
+    () => readingListApi()?.onEntryUpdated,
+    (emit) => {
+      const listener = readingListApi()?.onEntryUpdated;
+      if (!listener) return () => {};
+      const h = (entry: ReadingListEntry) =>
+        emit({ url: entry.url, title: entry.title, hasBeenRead: entry.hasBeenRead });
+      listener.addListener(h);
+      return () => {
+        try {
+          listener.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'readingList.onEntryRemoved',
+    'readingList',
+    false,
+    () => readingListApi()?.onEntryRemoved,
+    (emit) => {
+      const listener = readingListApi()?.onEntryRemoved;
+      if (!listener) return () => {};
+      const h = (entry: ReadingListEntry) => emit({ url: entry.url, title: entry.title });
+      listener.addListener(h);
+      return () => {
+        try {
+          listener.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'tabGroups.onCreated',
+    'tabGroups',
+    false,
+    () => (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups?.onCreated,
+    (emit) => {
+      const api = (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
+      if (!api?.onCreated) return () => {};
+      const h = (g: chrome.tabGroups.TabGroup) =>
+        emit({ groupId: g.id, title: g.title, color: g.color, windowId: g.windowId });
+      api.onCreated.addListener(h);
+      return () => {
+        try {
+          api.onCreated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'tabGroups.onUpdated',
+    'tabGroups',
+    false,
+    () => (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups?.onUpdated,
+    (emit) => {
+      const api = (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
+      if (!api?.onUpdated) return () => {};
+      const h = (g: chrome.tabGroups.TabGroup) =>
+        emit({ groupId: g.id, title: g.title, color: g.color, collapsed: g.collapsed });
+      api.onUpdated.addListener(h);
+      return () => {
+        try {
+          api.onUpdated?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
+  source(
+    'tabGroups.onRemoved',
+    'tabGroups',
+    false,
+    () => (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups?.onRemoved,
+    (emit) => {
+      const api = (chrome as unknown as { tabGroups?: typeof chrome.tabGroups }).tabGroups;
+      if (!api?.onRemoved) return () => {};
+      const h = (g: chrome.tabGroups.TabGroup) => emit({ groupId: g.id });
+      api.onRemoved.addListener(h);
+      return () => {
+        try {
+          api.onRemoved?.removeListener(h);
+        } catch {}
+      };
+    },
+  ),
 ];
 
 export const ALL_SOURCES: EventSource[] = [...IMMEDIATE_SOURCES, ...QUEUED_SOURCES];
