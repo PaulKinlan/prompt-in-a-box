@@ -507,15 +507,15 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
 
     const tabs = snapshot.tabs;
     const ungroupTabIds: number[] = [];
-    const groupMap = new Map<number, number[]>();
+    const groupMap = new Map<number, { tabIds: number[]; windowId?: number }>();
 
     for (const t of tabs) {
       if (t.groupId === -1 || t.groupId === undefined) {
         ungroupTabIds.push(t.id);
       } else {
-        const list = groupMap.get(t.groupId) || [];
-        list.push(t.id);
-        groupMap.set(t.groupId, list);
+        const entry = groupMap.get(t.groupId) || { tabIds: [], windowId: t.windowId };
+        entry.tabIds.push(t.id);
+        groupMap.set(t.groupId, entry);
       }
     }
 
@@ -533,10 +533,14 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
       metaById.set(g.id, g);
     }
 
-    for (const [oldGroupId, tabIds] of groupMap.entries()) {
-      if (tabIds.length === 0) continue;
+    for (const [oldGroupId, groupInfo] of groupMap.entries()) {
+      if (groupInfo.tabIds.length === 0) continue;
       try {
-        const newGroupId = await chrome.tabs.group({ tabIds: tabIds as [number, ...number[]] });
+        const createProps = groupInfo.windowId !== undefined ? { windowId: groupInfo.windowId } : undefined;
+        const newGroupId = await chrome.tabs.group({
+          tabIds: groupInfo.tabIds as [number, ...number[]],
+          createProperties: createProps,
+        } as any);
         const meta = metaById.get(oldGroupId);
         if (meta) {
           await chrome.tabGroups.update(newGroupId, {
@@ -545,6 +549,16 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
             collapsed: meta.collapsed,
           });
         }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Restore exact tab index positions per window
+    const sortedTabs = [...tabs].sort((a, b) => a.index - b.index);
+    for (const t of sortedTabs) {
+      try {
+        await chrome.tabs.move(t.id, { index: t.index });
       } catch {
         // ignore
       }
@@ -559,8 +573,25 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
       // ignore
     }
 
-    // Trigger an agent run to update state.json and UI card
-    await run('manual', 'The user clicked Undo on the tab sorting action. Verify that tabs have been restored, clear any lastSort state in storage/state.json, and refresh the UI card.');
+    // Reset lastSort timestamp in storage
+    try {
+      const storedState = await chrome.storage.local.get('state:sorting_hat_state');
+      const val = storedState['state:sorting_hat_state'];
+      if (val && typeof val === 'object') {
+        delete (val as any).lastSort;
+        delete (val as any).lastSortTimestamp;
+        await chrome.storage.local.set({ 'state:sorting_hat_state': val });
+      }
+    } catch {
+      // ignore
+    }
+
+    // Broadcast instant update to open views
+    try {
+      chrome.runtime.sendMessage({ type: 'action-history-updated' }).catch(() => {});
+    } catch {
+      // ignore
+    }
 
     return { ok: true, restoredTabs: tabs.length };
   } catch (err) {

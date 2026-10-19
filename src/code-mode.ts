@@ -547,13 +547,13 @@ export async function buildRuntimeCodeModePrompt(availableTools: ToolSet): Promi
   // Common signatures and return shapes for known extension tools
   const KNOWN_DOCS: Record<string, string> = {
     tab_list:
-      'await tools.tab_list({ query?: string }) → returns Array<{ id: number, tabId: number, title: string, url: string, active: boolean, pinned: boolean, groupId: number, index: number, windowId: number }>',
+      'await tools.tab_list({ query?: string, windowId?: number, currentWindow?: boolean, ungroupedOnly?: boolean, includePinned?: boolean }) → returns Array<{ id: number, tabId: number, title: string, url: string, domain: string, protocol: string, canScript: boolean, active: boolean, pinned: boolean, discarded: boolean, audible: boolean, groupId: number, index: number, windowId: number }>',
     tab_read:
-      'await tools.tab_read({ tabId: number, maxLength?: number, maxChars?: number, format?: "markdown"|"text"|"both" }) → returns { id: number, tabId: number, title: string, url: string, description: string, metaDescription: string|null, meta: { description: string, byline?: string, published?: string }, headings: Array<{ level: number, text: string }>, headingTexts: string[], excerpt: string, markdown: string, content: string, blocked?: boolean, error?: string }',
+      'await tools.tab_read({ tabId: number, maxLength?: number, maxChars?: number, format?: "markdown"|"text"|"both" }) → returns { id: number, tabId: number, title: string, url: string, description: string, metaDescription: string|null, meta: { description: string }, headings: Array<{ level: string, text: string }>, headingTexts: string[], excerpt: string, markdown: string, content: string, blocked?: boolean, discarded?: boolean, timedOut?: boolean, error?: string }',
     tab_group_list:
       'await tools.tab_group_list({ windowId?: number }) → returns Array<{ id: number, groupId: number, title: string, color: string, collapsed: boolean, windowId: number }>',
     tab_group:
-      'await tools.tab_group({ tabIds: number[], title?: string, color?: "grey"|"blue"|"red"|"yellow"|"green"|"pink"|"purple"|"cyan"|"orange", groupId?: number, collapsed?: boolean }) → returns { id: number, groupId: number, title?: string, color?: string, collapsed: boolean, tabCount: number }',
+      'await tools.tab_group({ tabIds: number[], title?: string, color?: "grey"|"blue"|"red"|"yellow"|"green"|"pink"|"purple"|"cyan"|"orange", groupId?: number, windowId?: number, collapsed?: boolean, includePinned?: boolean }) → groups tabs safely per-window, auto-reuses matching group titles, and preserves collapsed state. Returns { id: number, groupId: number, windowId: number, title?: string, color?: string, collapsed: boolean, tabCount: number }',
     tab_ungroup:
       'await tools.tab_ungroup({ tabIds: number[] }) → ungroups specified tabs',
     tab_close:
@@ -563,7 +563,7 @@ export async function buildRuntimeCodeModePrompt(availableTools: ToolSet): Promi
     tab_focus:
       'await tools.tab_focus({ tabId: number }) → focuses the specified tab',
     storage_get:
-      'await tools.storage_get({ key: string }) → returns stored JSON value or null (shorthand: tools.storage_get("key"))',
+      'await tools.storage_get({ key?: string }) → returns stored JSON value or null (shorthand: tools.storage_get("key"))',
     storage_set:
       'await tools.storage_set({ key: string, value: any }) → saves JSON-serializable state',
     action_toast:
@@ -622,13 +622,20 @@ Instead, **generate and execute an async JavaScript routine dynamically at runti
 
 ### Sandboxed Environment & Best Practices:
 1. **Parallel Execution**: Use \`Promise.all(items.map(async item => { ... }))\` to inspect dozens of tabs or data points concurrently in a single turn.
-2. **Error Resilience**: Always wrap individual item reads inside \`try { ... } catch {}\` inside your \`Promise.all\` mapper so enterprise-blocked or restricted pages (e.g. chrome:// or corporate intranet) do not fail the overall batch.
-3. **Data Distillation**: Return a clean, compact JavaScript summary object or array at the end of your script containing only the distilled information you need for subsequent steps.
-4. **Conveniences**:
+2. **Selective Page Inspection**: Do NOT call \`tab_read\` on every tab blindly. Check \`tab.canScript\` from \`tab_list\` first:
+   - If \`tab.canScript === false\` (discarded, chrome://, or internal pages), skip \`tab_read\` and classify by \`tab.domain\` and \`tab.title\`.
+   - If \`tab.domain\` is unambiguous (e.g. YouTube, GitHub, Google Drive/Mail, Figma), classify directly from domain/title without calling \`tab_read\`.
+   - Only call \`tab_read\` (with \`maxLength: 500\`) on ambiguous or generic web pages where content inspection adds value.
+3. **Multi-Window & Group Etiquette**:
+   - Organize tabs within their respective window (\`tab.windowId\`).
+   - \`tools.tab_group\` automatically groups tabs in their window, safely ignores pinned tabs, and reuses existing groups with matching titles in the same window.
+   - Never collapse a group containing the window's active tab.
+4. **Data Distillation**: Return a clean, compact JavaScript summary object or array at the end of your script containing only the distilled information you need for subsequent steps.
+5. **Conveniences**:
    - Both \`tools.<snake_case>(args)\` and \`tools.<camelCase>(args)\` are supported (e.g. \`tools.tab_list()\` or \`tools.tabList()\`).
    - Single-primitive shorthand is normalized automatically (e.g. \`tools.tab_read(tab.id)\` and \`tools.storage_get("key")\`).
    - Both \`.id\` and \`.tabId\` are populated on tab and group objects.
-5. **Reusable Routines**: You can optionally pass \`saveAs: "routine_name"\` to save your generated script in storage so future runs can execute it with zero code generation via \`scriptName: "routine_name"\`.
+6. **Reusable Routines**: You can optionally pass \`saveAs: "routine_name"\` to save your generated script in storage so future runs can execute it with zero code generation via \`scriptName: "routine_name"\`.
 
 ### Currently Granted Runtime Tools inside \`code_mode\`:
 ${toolLines.join('\n')}${savedScriptsSection}

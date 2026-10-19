@@ -278,15 +278,31 @@ async function executeInverse(undo: UndoPayload): Promise<void> {
     case 'tab_group': {
       // Restore previous group assignments
       const ungroupTabIds: number[] = [];
-      const regroupMap = new Map<number, number[]>();
+      interface RegroupEntry {
+        tabIds: number[];
+        windowId?: number;
+        title?: string;
+        color?: TabGroupColor;
+        collapsed?: boolean;
+      }
+      const regroupMap = new Map<number, RegroupEntry>();
 
-      for (const t of undo.previousTabs) {
+      for (const t of undo.previousTabs as any[]) {
         if (t.groupId === -1 || t.groupId === undefined) {
           ungroupTabIds.push(t.tabId);
         } else {
-          const list = regroupMap.get(t.groupId) || [];
-          list.push(t.tabId);
-          regroupMap.set(t.groupId, list);
+          let entry = regroupMap.get(t.groupId);
+          if (!entry) {
+            entry = {
+              tabIds: [],
+              windowId: t.windowId,
+              title: t.groupTitle,
+              color: t.groupColor,
+              collapsed: t.groupCollapsed,
+            };
+            regroupMap.set(t.groupId, entry);
+          }
+          entry.tabIds.push(t.tabId);
         }
       }
 
@@ -298,15 +314,41 @@ async function executeInverse(undo: UndoPayload): Promise<void> {
         }
       }
 
-      for (const [prevGroupId, tabIds] of regroupMap.entries()) {
+      for (const [prevGroupId, groupInfo] of regroupMap.entries()) {
         try {
-          // If group exists, regroup into it, otherwise form a new group
+          // Try adding back to original group ID
           await chrome.tabs.group({
-            tabIds: tabIds as [number, ...number[]],
+            tabIds: groupInfo.tabIds as [number, ...number[]],
             groupId: prevGroupId > 0 ? prevGroupId : undefined,
           });
         } catch {
-          // Best effort
+          // Original group ID was destroyed; recreate group
+          try {
+            const createProps = groupInfo.windowId !== undefined ? { windowId: groupInfo.windowId } : undefined;
+            const newGid = await chrome.tabs.group({
+              tabIds: groupInfo.tabIds as [number, ...number[]],
+              createProperties: createProps,
+            } as any);
+            if (groupInfo.title || groupInfo.color || groupInfo.collapsed !== undefined) {
+              await chrome.tabGroups.update(newGid, {
+                title: groupInfo.title,
+                color: groupInfo.color,
+                collapsed: groupInfo.collapsed,
+              });
+            }
+          } catch {
+            // best effort
+          }
+        }
+      }
+
+      // Restore original tab indices if available
+      const orderedTabs = [...undo.previousTabs].filter((t: any) => typeof t.index === 'number').sort((a: any, b: any) => a.index - b.index);
+      for (const t of orderedTabs as any[]) {
+        try {
+          await chrome.tabs.move(t.tabId, { index: t.index });
+        } catch {
+          // tab might be gone
         }
       }
 

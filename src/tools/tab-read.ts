@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { pageAccessGate, extractReadableMarkdown } from '../page-reader';
+import { pageAccessGate, extractReadableMarkdown, countWords } from '../page-reader';
 
 /**
  * Tab content extraction tool: reads rendered page content, metadata, headings,
@@ -74,20 +74,23 @@ export const tabRead = tool({
     }
 
     const SCRIPT_TIMEOUT_MS = 4000;
+    const selectedFormat = format ?? 'markdown';
 
     try {
       const injectionPromise = chrome.scripting.executeScript({
         target: { tabId: targetTabId },
         world: 'ISOLATED',
-        func: () => {
+        args: [charCap],
+        func: (cap: number) => {
           const doc = document;
           const metaDesc =
             doc.querySelector('meta[name="description"]')?.getAttribute('content') ||
             doc.querySelector('meta[property="og:description"]')?.getAttribute('content') ||
+            doc.querySelector('meta[name="twitter:description"]')?.getAttribute('content') ||
             '';
 
-          // Extract up to 30 visible headings
-          const headingEls = Array.from(doc.querySelectorAll('h1, h2, h3')).slice(0, 30);
+          // Extract up to 25 visible headings
+          const headingEls = Array.from(doc.querySelectorAll('h1, h2, h3')).slice(0, 25);
           const headings = headingEls
             .map((el) => ({
               level: el.tagName.toLowerCase(),
@@ -95,8 +98,23 @@ export const tabRead = tool({
             }))
             .filter((h) => h.text.length > 0);
 
-          // Get primary content container if possible, else body
           const mainEl = doc.querySelector('main, article, [role="main"]') || doc.body || doc.documentElement;
+
+          // FAST PATH: For summary inspection (cap <= 2000), avoid heavy DOM clone & 300KB HTML serialization
+          if (cap <= 2000) {
+            const rawText = (((mainEl as HTMLElement).innerText || doc.body?.innerText || '') as string).replace(/\s+/g, ' ').trim().slice(0, cap * 2);
+            return {
+              title: doc.title || '',
+              url: location.href,
+              metaDescription: metaDesc,
+              headings,
+              innerText: rawText,
+              html: '',
+              fast: true,
+            };
+          }
+
+          // Full extraction path for deep reading
           const clone = mainEl.cloneNode(true) as HTMLElement;
           clone.querySelectorAll('script, style, noscript, svg, canvas, iframe').forEach((n) => n.remove());
 
@@ -107,6 +125,7 @@ export const tabRead = tool({
             headings,
             innerText: (doc.body?.innerText || '').slice(0, 100_000),
             html: clone.outerHTML.slice(0, 300_000),
+            fast: false,
           };
         },
       });
@@ -135,13 +154,35 @@ export const tabRead = tool({
         };
       }
 
+      if (raw.fast) {
+        const cleanExcerpt = (raw.innerText || raw.metaDescription || '').slice(0, 600);
+        return {
+          id: targetTabId,
+          tabId: targetTabId,
+          url: raw.url || gate.url,
+          title: raw.title || gate.tab.title || 'Untitled',
+          description: raw.metaDescription || cleanExcerpt.slice(0, 200),
+          metaDescription: raw.metaDescription || null,
+          meta: {
+            description: raw.metaDescription || '',
+          },
+          headings: raw.headings,
+          headingTexts: (raw.headings || []).map((h: any) => h.text),
+          wordCount: countWords(raw.innerText),
+          excerpt: cleanExcerpt,
+          markdown: raw.innerText.slice(0, charCap),
+          content: raw.innerText.slice(0, charCap),
+          links: [],
+          untrusted: true,
+        };
+      }
+
       const readable = extractReadableMarkdown(raw.html, {
         url: raw.url || gate.url,
         title: raw.title || gate.tab.title,
         maxBytes: charCap * 2,
       });
 
-      const selectedFormat = format ?? 'markdown';
       const cleanExcerpt = (raw.innerText || readable.markdown || '')
         .replace(/\s+/g, ' ')
         .trim()
