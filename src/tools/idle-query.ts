@@ -16,7 +16,7 @@ export const idleQuery = tool({
   execute: async ({ detectionIntervalInSeconds }) => {
     const interval = Math.max(15, detectionIntervalInSeconds ?? 60);
     const state = await new Promise<chrome.idle.IdleState>((resolve) => {
-      chrome.idle.queryState(interval, (s) => resolve(s));
+      chrome.idle.queryState(interval, (s) => resolve(s as chrome.idle.IdleState));
     });
     return { state, detectionIntervalInSeconds: interval };
   },

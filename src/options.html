@@ -622,7 +622,7 @@
         <div class="provider-grid" id="providerGrid"></div>
         <div id="providerDetails">
           <div class="field-grid">
-            <div>
+            <div id="apiKeyFieldGroup">
               <label for="apiKey">API Key</label>
               <div class="input-with-action">
                 <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
@@ -630,7 +630,7 @@
               </div>
               <div class="hint" id="apiKeyHint"></div>
             </div>
-            <div>
+            <div id="modelFieldGroup">
               <label for="model">Model ID</label>
               <div id="modelInputContainer">
                 <input id="model" list="modelOptions" placeholder="" autocomplete="off" />
@@ -670,8 +670,9 @@
         <legend>Automation Schedule</legend>
         <label for="alarmMinutes">Run agent prompt periodically</label>
         <div class="schedule-row">
-          <input id="alarmMinutes" type="number" min="1" max="1440" style="width: 110px;" />
+          <input id="alarmMinutes" type="number" min="0" max="1440" style="width: 110px;" />
           <div id="schedulePresets" class="preset-chips">
+            <button type="button" class="preset-chip" data-min="0">Never</button>
             <button type="button" class="preset-chip" data-min="5">5m</button>
             <button type="button" class="preset-chip" data-min="15">15m</button>
             <button type="button" class="preset-chip" data-min="30">30m</button>
@@ -679,7 +680,7 @@
             <button type="button" class="preset-chip" data-min="240">4h</button>
           </div>
         </div>
-        <div class="hint" id="scheduleHint">Interval in minutes between automatic service worker wakeup runs.</div>
+        <div class="hint" id="scheduleHint">Interval in minutes between automatic service worker wakeup runs. Set to 0 (Never) to disable periodic wakeups.</div>
       </fieldset>
 
       <!-- Main Action Bar -->

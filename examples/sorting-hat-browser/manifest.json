@@ -36,14 +36,14 @@
     "alarms",
     "notifications",
     "tabs",
-    "offscreen",
-    "sidePanel",
     "tabGroups",
     "scripting",
     "activeTab",
+    "idle",
+    "offscreen",
+    "sidePanel",
     "history",
-    "contextMenus",
-    "idle"
+    "contextMenus"
   ],
   "side_panel": {
     "default_path": "dist/sidepanel.html"
@@ -53,15 +53,11 @@
     "proxy",
     "tts",
     "declarativeNetRequest",
-    "tabGroups",
-    "activeTab",
-    "scripting",
     "bookmarks",
     "contextMenus",
     "downloads",
     "history",
     "sessions",
-    "idle",
     "webNavigation",
     "cookies",
     "browsingData",
@@ -80,13 +76,17 @@
     "webRequest",
     "userScripts",
     "clipboardWrite",
-    "nativeMessaging"
+    "nativeMessaging",
+    "tabGroups",
+    "activeTab",
+    "scripting",
+    "idle"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://api.anthropic.com/*",
     "https://generativelanguage.googleapis.com/*",
-    "https://api.openai.com/*",
-    "<all_urls>"
+    "https://api.openai.com/*"
   ],
   "optional_host_permissions": [
     "<all_urls>"

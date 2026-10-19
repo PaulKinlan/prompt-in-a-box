@@ -6,6 +6,7 @@
  */
 
 import type { ArtifactIndexEntry, ArtifactKind, Artifact } from './artifacts';
+import { getConfig } from './config';
 
 const INDEX_KEY = '__pib_artifact_index';
 
@@ -460,7 +461,26 @@ function wireButtons(): void {
   });
 }
 
+async function applyUIConfig(): Promise<void> {
+  const cfg = await getConfig();
+  if (cfg.ui?.showArtifactFilters === false) {
+    const filtersBar = document.querySelector('.filters') as HTMLElement | null;
+    if (filtersBar) filtersBar.style.display = 'none';
+  }
+  if (cfg.ui?.allowDeleteArtifacts === false) {
+    try { $('clearAll').style.display = 'none'; } catch {}
+    try { $('v-delete').style.display = 'none'; } catch {}
+  }
+  if (cfg.ui?.allowCopyArtifact === false) {
+    try { $('v-copy').style.display = 'none'; } catch {}
+  }
+  if (cfg.ui?.allowDownloadArtifact === false) {
+    try { $('v-download').style.display = 'none'; } catch {}
+  }
+}
+
 document.title = `${chrome.runtime.getManifest().name} — Artifacts`;
 wireFilters();
 wireButtons();
+void applyUIConfig();
 void refresh();

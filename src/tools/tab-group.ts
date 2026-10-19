@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { recordSortSnapshotIfNeeded } from './action-toast';
 
 export const tabGroup = tool({
   description:
@@ -17,6 +18,9 @@ export const tabGroup = tool({
       .describe('Whether the group should be collapsed. If omitted when adding to an existing group, the group\'s current collapsed state is preserved.'),
   }),
   execute: async ({ tabIds, groupId, title, color, collapsed }) => {
+    // Record snapshot before modifying tab groups for undo support
+    await recordSortSnapshotIfNeeded();
+
     let wasCollapsed: boolean | undefined;
     if (groupId !== undefined) {
       try {

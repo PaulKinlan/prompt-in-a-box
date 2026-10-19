@@ -67,15 +67,26 @@ import { drainEvents } from './events/queue';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
 
+async function ensureScheduled(alarmMinutes?: number): Promise<void> {
+  const cfg = await getConfig();
+  const minutes = alarmMinutes !== undefined ? alarmMinutes : cfg.alarmMinutes;
+  if (minutes <= 0) {
+    await chrome.alarms.clear(ALARM_NAME);
+    log('alarm disabled (never)');
+    return;
+  }
+  await chrome.alarms.create(ALARM_NAME, {
+    delayInMinutes: 1,
+    periodInMinutes: minutes,
+  });
+  log('alarm scheduled every', minutes, 'min');
+}
+
 // ─── Lifecycle ─────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   const cfg = await getConfig();
-  await chrome.alarms.create(ALARM_NAME, {
-    delayInMinutes: 1,
-    periodInMinutes: cfg.alarmMinutes,
-  });
-  log('installed; alarm scheduled every', cfg.alarmMinutes, 'min');
+  await ensureScheduled(cfg.alarmMinutes);
 
   if (details.reason === 'install' || !cfg.onboarded) {
     chrome.runtime.openOptionsPage();
@@ -91,10 +102,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   const cfg = await getConfig();
-  await chrome.alarms.create(ALARM_NAME, {
-    delayInMinutes: 1,
-    periodInMinutes: cfg.alarmMinutes,
-  });
+  await ensureScheduled(cfg.alarmMinutes);
   // Startup run so the prompt can check state, drain any events that
   // queued between sessions, and re-assert context menus / commands.
   await run('startup').catch((err) => console.warn('[prompt-in-a-box] startup run failed:', err));
@@ -168,12 +176,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await run('manual', userMsg));
       } else if (msg?.type === 'reschedule-alarm') {
         const cfg = await getConfig();
-        await chrome.alarms.create(ALARM_NAME, {
-          delayInMinutes: 1,
-          periodInMinutes: cfg.alarmMinutes,
-        });
+        await ensureScheduled(cfg.alarmMinutes);
         // Permissions may have changed since last boot; re-scan.
         startEvents(triggerRun).catch(() => {});
+        sendResponse({ ok: true });
+      } else if (msg?.type === 'action-toast-undo') {
+        sendResponse(await restoreSortSnapshot());
+      } else if (msg?.type === 'action-toast-dismiss') {
+        await chrome.storage.local.remove(['activeUndoToast', 'lastSortSnapshot']);
+        try {
+          await chrome.action.setBadgeText({ text: '' });
+          await chrome.action.setTitle({ title: chrome.runtime.getManifest().name });
+        } catch {
+          // ignore
+        }
         sendResponse({ ok: true });
       } else {
         sendResponse({ error: `unknown message type: ${msg?.type}` });
@@ -325,9 +341,89 @@ async function run(
   }
 }
 
+async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: number; error?: string }> {
+  try {
+    const stored = await chrome.storage.local.get(['activeUndoToast', 'lastSortSnapshot']);
+    type TabGroupColor = chrome.tabGroups.Color;
+    interface StoredSnapshot {
+      tabs?: Array<{ id: number; groupId: number; index: number; windowId: number }>;
+      groups?: Array<{ id: number; title?: string; color?: TabGroupColor; collapsed?: boolean }>;
+    }
+    const toast = stored.activeUndoToast as { snapshot?: StoredSnapshot } | undefined;
+    const snapshot = (toast?.snapshot || stored.lastSortSnapshot) as StoredSnapshot | undefined;
+
+    if (!snapshot || !Array.isArray(snapshot.tabs)) {
+      return { ok: false, restoredTabs: 0, error: 'No sort snapshot found to restore' };
+    }
+
+    const tabs = snapshot.tabs;
+    const ungroupTabIds: number[] = [];
+    const groupMap = new Map<number, number[]>();
+
+    for (const t of tabs) {
+      if (t.groupId === -1 || t.groupId === undefined) {
+        ungroupTabIds.push(t.id);
+      } else {
+        const list = groupMap.get(t.groupId) || [];
+        list.push(t.id);
+        groupMap.set(t.groupId, list);
+      }
+    }
+
+    if (ungroupTabIds.length > 0) {
+      try {
+        await chrome.tabs.ungroup(ungroupTabIds as [number, ...number[]]);
+      } catch {
+        // some tabs might have closed
+      }
+    }
+
+    const groupMeta = snapshot.groups || [];
+    const metaById = new Map<number, { title?: string; color?: TabGroupColor; collapsed?: boolean }>();
+    for (const g of groupMeta) {
+      metaById.set(g.id, g);
+    }
+
+    for (const [oldGroupId, tabIds] of groupMap.entries()) {
+      if (tabIds.length === 0) continue;
+      try {
+        const newGroupId = await chrome.tabs.group({ tabIds: tabIds as [number, ...number[]] });
+        const meta = metaById.get(oldGroupId);
+        if (meta) {
+          await chrome.tabGroups.update(newGroupId, {
+            title: meta.title,
+            color: meta.color,
+            collapsed: meta.collapsed,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Clear active toast & snapshot & reset badge
+    await chrome.storage.local.remove(['activeUndoToast', 'lastSortSnapshot']);
+    try {
+      await chrome.action.setBadgeText({ text: '' });
+      await chrome.action.setTitle({ title: chrome.runtime.getManifest().name });
+    } catch {
+      // ignore
+    }
+
+    // Trigger an agent run to update state.json and UI card
+    await run('manual', 'The user clicked Undo on the tab sorting action. Verify that tabs have been restored, clear any lastSort state in storage/state.json, and refresh the UI card.');
+
+    return { ok: true, restoredTabs: tabs.length };
+  } catch (err) {
+    return { ok: false, restoredTabs: 0, error: (err as Error).message };
+  }
+}
+
 async function composeUserMessage(
   trigger: AuditEntry['trigger'],
 ): Promise<string> {
+  const cfg = await getConfig();
+
   // Bootstrap triggers get an explicit hint so the prompt can perform
   // one-shot setup (context menus, seeded defaults, etc.). The event
   // queue is still drained and appended, so setup + event handling can
@@ -343,12 +439,19 @@ async function composeUserMessage(
 
   const events = await drainEvents();
 
-  if (!bootstrapHint && events.length === 0) {
-    return 'Begin your scheduled run now.';
-  }
-
   const parts: string[] = [];
   if (bootstrapHint) parts.push(bootstrapHint);
+
+  // Inject user-configured agent settings if declared
+  if (cfg.agentSettings?.fields && cfg.agentSettings.fields.length > 0) {
+    const stored = await chrome.storage.local.get('agentSettingsValues');
+    const userValues = (stored.agentSettingsValues as Record<string, unknown>) || {};
+    const effective: Record<string, unknown> = {};
+    for (const field of cfg.agentSettings.fields) {
+      effective[field.id] = userValues[field.id] !== undefined ? userValues[field.id] : field.default;
+    }
+    parts.push(`Current user-configured agent settings:\n\`\`\`json\n${JSON.stringify(effective, null, 2)}\n\`\`\``);
+  }
 
   if (events.length > 0) {
     const lines = events
@@ -367,6 +470,10 @@ async function composeUserMessage(
     );
   } else if (bootstrapHint) {
     parts.push('No queued events.');
+  }
+
+  if (parts.length === 0) {
+    return 'Begin your scheduled run now.';
   }
 
   return parts.join('\n\n');

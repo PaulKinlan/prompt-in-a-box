@@ -207,10 +207,17 @@ export const QUEUED_SOURCES: EventSource[] = [
     real.onCompleted.addListener(h);
     return () => real.onCompleted.removeListener(h);
   }),
-  source('idle.onStateChanged', 'idle', false, (emit) => {
+  source('idle.onStateChanged', 'idle', true, (emit) => {
     const api = (chrome as unknown as { idle?: typeof chrome.idle }).idle;
     if (!api) return () => {};
-    const h = (state: `${chrome.idle.IdleState}`) => emit({ state });
+    try {
+      api.setDetectionInterval?.(60);
+    } catch {
+      // ignore
+    }
+    const h = (state: `${chrome.idle.IdleState}`) => {
+      emit({ state, isIdleWake: state === 'idle' });
+    };
     api.onStateChanged.addListener(h);
     return () => api.onStateChanged.removeListener(h);
   }),

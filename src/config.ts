@@ -23,6 +23,7 @@ export interface AgentSettingField {
   id: string;
   label: string;
   hint?: string;
+  description?: string;
   type: 'boolean' | 'select';
   default: boolean | string;
   options?: AgentSettingOption[];

@@ -2,7 +2,7 @@
  * Options page: provider selection, API keys per provider, schedule,
  * optional permissions manager, and a full audit log of every action the agent has taken.
  *
- * Supports runtime policy locking via static config.json.
+ * Supports runtime policy locking via static config.json and granular UI flags.
  */
 
 import {
@@ -19,6 +19,14 @@ import {
   type Provider,
   type StaticConfig,
 } from './config';
+import {
+  CAPABILITY_GROUPS,
+  CAPABILITIES,
+  isRequiredCapability,
+  checkCapability,
+  requestCapability,
+  removeCapability,
+} from './capabilities';
 import type { AuditEntry, AuditIndexEntry } from './audit';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -26,7 +34,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
 
 let currentConfig: Config;
 let staticCfg: StaticConfig;
-let currentProvider: Provider = 'anthropic';
+let currentProvider: Provider = 'google';
 let allAuditIndex: AuditIndexEntry[] = [];
 
 async function loadUI(): Promise<void> {
@@ -45,7 +53,7 @@ async function loadUI(): Promise<void> {
     if (policyBadge) policyBadge.style.display = 'inline-flex';
   }
 
-  // Feature toggles from policy
+  // Feature toggles from policy and granular UI flags
   applyFeatureGating();
 
   if (!currentConfig.onboarded) {
@@ -63,114 +71,45 @@ async function loadUI(): Promise<void> {
   wireEventHandlers();
 }
 
+function setDisplay(id: string, value: string): void {
+  const el = $(id);
+  if (el) el.style.display = value;
+}
+
 function applyFeatureGating(): void {
   const f = staticCfg.features;
-  if (!f) return;
+  if (f) {
+    if (f.showProviderSelector === false) setDisplay('providerFieldset', 'none');
+    if (f.showProviderTools === false) setDisplay('providerToolsFieldset', 'none');
+    if (f.showPermissionsManager === false) setDisplay('permissionsFieldset', 'none');
+    if (f.showSchedule === false) setDisplay('scheduleFieldset', 'none');
+    if (f.showAuditLog === false) setDisplay('auditSection', 'none');
+    if (f.allowExportAudit === false) setDisplay('exportAudit', 'none');
+    if (f.allowClearAudit === false) setDisplay('clearAudit', 'none');
+    if (f.allowManualRun === false) setDisplay('runNow', 'none');
+    if (f.allowSidePanel === false) setDisplay('navSidePanel', 'none');
+    if (f.allowArtifacts === false) setDisplay('navArtifacts', 'none');
+  }
 
-  if (f.showProviderSelector === false) {
-    const el = $('providerFieldset');
-    if (el) el.style.display = 'none';
-  }
-  if (f.showProviderTools === false) {
-    const el = $('providerToolsFieldset');
-    if (el) el.style.display = 'none';
-  }
-  if (f.showPermissionsManager === false) {
-    const el = $('permissionsFieldset');
-    if (el) el.style.display = 'none';
-  }
-  if (f.showSchedule === false) {
-    const el = $('scheduleFieldset');
-    if (el) el.style.display = 'none';
-  }
-  if (f.showAuditLog === false) {
-    const el = $('auditSection');
-    if (el) el.style.display = 'none';
-  }
-  if (f.allowExportAudit === false) {
-    const el = $('exportAudit');
-    if (el) el.style.display = 'none';
-  }
-  if (f.allowClearAudit === false) {
-    const el = $('clearAudit');
-    if (el) el.style.display = 'none';
-  }
-  if (f.allowManualRun === false) {
-    const el = $('runNow');
-    if (el) el.style.display = 'none';
-  }
-  if (f.allowSidePanel === false) {
-    const el = $('navSidePanel');
-    if (el) el.style.display = 'none';
-  }
-  if (f.allowArtifacts === false) {
-    const el = $('navArtifacts');
-    if (el) el.style.display = 'none';
+  // Granular UI config flags
+  const ui = currentConfig.ui;
+  if (ui) {
+    if (ui.showProviderSelector === false) setDisplay('providerFieldset', 'none');
+    if (ui.showApiKeyInput === false) setDisplay('apiKeyFieldGroup', 'none');
+    if (ui.showModelSelector === false) setDisplay('modelFieldGroup', 'none');
+    if (ui.showProviderTools === false) setDisplay('providerToolsFieldset', 'none');
+    if (ui.showPermissionsManager === false) setDisplay('permissionsFieldset', 'none');
+    if (ui.showSchedule === false) setDisplay('scheduleFieldset', 'none');
+    if (ui.showAuditLog === false) setDisplay('auditSection', 'none');
+    if (ui.showAuditStats === false) setDisplay('stats', 'none');
+    if (ui.showAuditFilters === false) setDisplay('auditSearch', 'none');
+    if (ui.allowClearAudit === false) setDisplay('clearAudit', 'none');
+    if (ui.allowExportAudit === false) setDisplay('exportAudit', 'none');
+    if (ui.showHistory === false) setDisplay('auditList', 'none');
   }
 }
 
-// ─── Optional Permissions Manager ───────────────────────────────────
-
-const PERMISSION_DESCRIPTIONS: Record<string, { label: string; desc: string }> = {
-  tabs: { label: 'Tabs Management', desc: 'Interact with open browser tabs, query/group/move them.' },
-  scripting: { label: 'Tab Scripting & Screenshot', desc: 'Read page text and capture DOM screenshots.' },
-  bookmarks: { label: 'Bookmarks', desc: 'Search, create, list, and delete browser bookmarks.' },
-  history: { label: 'History', desc: 'Search user browser history.' },
-  downloads: { label: 'Downloads', desc: 'Download files and search download history.' },
-  contextMenus: { label: 'Context Menus', desc: 'Create and respond to right-click menu items.' },
-  idle: { label: 'Idle State', desc: 'Detect when the system/browser is idle.' },
-  readingList: { label: 'Reading List', desc: 'Add pages to or query the browser Reading List.' },
-  webNavigation: { label: 'Web Navigation', desc: 'Receive navigation events inside tabs.' },
-  clipboardWrite: { label: 'Clipboard Write', desc: 'Copy text to the clipboard in the background.' },
-};
-
-function getHostPermissionDef(origin: string): { label: string; desc: string } {
-  if (origin === '<all_urls>') {
-    return { label: 'All Websites', desc: 'Allows the agent to read/act on any website you navigate to.' };
-  }
-  return { label: origin, desc: `Access and script pages on ${origin}.` };
-}
-
-interface PermissionResult {
-  ok: boolean;
-  error?: string;
-}
-
-function checkPermission(perm: string, isHost: boolean): Promise<boolean> {
-  return new Promise((resolve) => {
-    chrome.permissions.contains(
-      isHost ? { origins: [perm] } : { permissions: [perm as chrome.runtime.ManifestPermission] },
-      (result) => {
-        void chrome.runtime.lastError;
-        resolve(Boolean(result));
-      }
-    );
-  });
-}
-
-function requestPermission(perm: string, isHost: boolean): Promise<PermissionResult> {
-  return new Promise((resolve) => {
-    chrome.permissions.request(
-      isHost ? { origins: [perm] } : { permissions: [perm as chrome.runtime.ManifestPermission] },
-      (granted) => {
-        const err = chrome.runtime.lastError;
-        resolve({ ok: Boolean(granted), error: err?.message });
-      }
-    );
-  });
-}
-
-function removePermission(perm: string, isHost: boolean): Promise<PermissionResult> {
-  return new Promise((resolve) => {
-    chrome.permissions.remove(
-      isHost ? { origins: [perm] } : { permissions: [perm as chrome.runtime.ManifestPermission] },
-      (removed) => {
-        const err = chrome.runtime.lastError;
-        resolve({ ok: Boolean(removed), error: err?.message });
-      }
-    );
-  });
-}
+// ─── Grouped Capabilities / Permissions Manager ─────────────────────
 
 function permissionErrorText(action: 'grant' | 'remove', label: string, err?: string): string {
   if (err && err.includes('must be called in response to a user action')) {
@@ -180,131 +119,100 @@ function permissionErrorText(action: 'grant' | 'remove', label: string, err?: st
 }
 
 async function renderOptionalPermissions(): Promise<void> {
-  const manifest = chrome.runtime.getManifest();
-  const optionalPermissions = manifest.optional_permissions ?? [];
-  const optionalHostPermissions = manifest.optional_host_permissions ?? [];
-
-  if (optionalPermissions.length === 0 && optionalHostPermissions.length === 0) {
-    const fs = $('permissionsFieldset');
-    if (fs) fs.hidden = true;
-    return;
-  }
-
   const loading = $('permissionsLoading');
   if (loading) loading.style.display = 'none';
 
   const apiContainer = $('apiPermissionsContainer');
-  if (apiContainer) {
-    apiContainer.innerHTML = '';
-    for (const perm of optionalPermissions) {
-      const def = PERMISSION_DESCRIPTIONS[perm] ?? {
-        label: perm,
-        desc: `Grant the ${perm} permission to unlock related tools.`,
-      };
-      const granted = await checkPermission(perm, false);
+  if (!apiContainer) return;
+  apiContainer.innerHTML = '';
+  apiContainer.style.display = 'flex';
+  apiContainer.style.flexDirection = 'column';
+  apiContainer.style.gap = '20px';
+
+  for (const group of CAPABILITY_GROUPS) {
+    const groupCaps = CAPABILITIES.filter((c) => c.group === group.id);
+    if (groupCaps.length === 0) continue;
+
+    const groupSection = document.createElement('div');
+    groupSection.style.border = '1px solid var(--color-border)';
+    groupSection.style.borderRadius = 'var(--pib-radius-sm)';
+    groupSection.style.padding = '14px';
+    groupSection.style.background = 'var(--color-card-base)';
+
+    const groupHeader = document.createElement('div');
+    groupHeader.style.marginBottom = '12px';
+    groupHeader.innerHTML = `
+      <div style="font-weight: 700; font-size: 14px; color: var(--color-text-primary);">${group.label}</div>
+      <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">${group.hint}</div>
+    `;
+    groupSection.appendChild(groupHeader);
+
+    const capsGrid = document.createElement('div');
+    capsGrid.className = 'provider-tools-grid';
+
+    for (const cap of groupCaps) {
+      const isReq = isRequiredCapability(cap.id);
+      const isGranted = isReq || (await checkCapability(cap.id));
 
       const wrap = document.createElement('div');
       wrap.className = 'provider-tool';
+      wrap.style.display = 'flex';
+      wrap.style.alignItems = 'flex-start';
+      wrap.style.gap = '10px';
 
-      const id = `perm-${perm}`;
       const input = document.createElement('input');
       input.type = 'checkbox';
-      input.id = id;
-      input.checked = granted;
+      input.id = `cap-${cap.id}`;
+      input.checked = isGranted;
 
-      input.addEventListener('change', async () => {
-        if (input.checked) {
-          const res = await requestPermission(perm, false);
-          if (res.ok) {
-            toast(`Granted ${def.label} permission`);
-            await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
-          } else {
-            input.checked = false;
-            toast(permissionErrorText('grant', def.label, res.error), 'error');
-          }
-        } else {
-          const res = await removePermission(perm, false);
-          if (res.ok) {
-            toast(`Removed ${def.label} permission`);
-            await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
-          } else {
-            input.checked = true;
-            toast(permissionErrorText('remove', def.label, res.error), 'error');
-          }
-        }
-      });
-
-      const label = document.createElement('label');
-      label.setAttribute('for', id);
-      label.textContent = def.label;
-
-      const desc = document.createElement('div');
-      desc.className = 'desc';
-      desc.textContent = def.desc;
-
-      label.appendChild(desc);
-      wrap.appendChild(input);
-      wrap.appendChild(label);
-      apiContainer.appendChild(wrap);
-    }
-  }
-
-  const hostContainer = $('hostPermissionsContainer');
-  if (hostContainer) {
-    hostContainer.innerHTML = '';
-    if (optionalHostPermissions.length > 0) {
-      const hostSec = $('hostPermissionsSection');
-      if (hostSec) hostSec.style.display = 'block';
-
-      for (const host of optionalHostPermissions) {
-        const def = getHostPermissionDef(host);
-        const granted = await checkPermission(host, true);
-
-        const wrap = document.createElement('div');
-        wrap.className = 'provider-tool';
-
-        const id = `host-${host.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.id = id;
-        input.checked = granted;
-
+      if (isReq) {
+        input.disabled = true;
+      } else {
         input.addEventListener('change', async () => {
           if (input.checked) {
-            const res = await requestPermission(host, true);
-            if (res.ok) {
-              toast(`Granted ${def.label} permission`);
+            const granted = await requestCapability(cap.id);
+            if (granted) {
+              toast(`Granted ${cap.label}`);
               await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
             } else {
               input.checked = false;
-              toast(permissionErrorText('grant', def.label, res.error), 'error');
+              toast(permissionErrorText('grant', cap.label), 'error');
             }
           } else {
-            const res = await removePermission(host, true);
-            if (res.ok) {
-              toast(`Removed ${def.label} permission`);
+            const removed = await removeCapability(cap.id);
+            if (removed) {
+              toast(`Removed ${cap.label}`);
               await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
             } else {
               input.checked = true;
-              toast(permissionErrorText('remove', def.label, res.error), 'error');
+              toast(permissionErrorText('remove', cap.label), 'error');
             }
           }
         });
-
-        const label = document.createElement('label');
-        label.setAttribute('for', id);
-        label.textContent = def.label;
-
-        const desc = document.createElement('div');
-        desc.className = 'desc';
-        desc.textContent = def.desc;
-
-        label.appendChild(desc);
-        wrap.appendChild(input);
-        wrap.appendChild(label);
-        hostContainer.appendChild(wrap);
       }
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `cap-${cap.id}`);
+      label.style.flex = '1';
+      label.style.cursor = isReq ? 'default' : 'pointer';
+
+      const reqBadge = isReq
+        ? `<span style="font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--color-accent-tint); color: var(--color-accent); border: 1px solid var(--color-border); margin-left: 6px;">Required by manifest</span>`
+        : '';
+
+      label.innerHTML = `
+        <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center;">${cap.label} ${reqBadge}</div>
+        <div class="desc" style="font-size: 12px; margin-top: 3px; color: var(--color-text-secondary);">${cap.hint}</div>
+        <div style="font-size: 11px; margin-top: 4px; color: var(--color-text-muted); font-family: var(--pib-font-mono);">${cap.gates}</div>
+      `;
+
+      wrap.appendChild(input);
+      wrap.appendChild(label);
+      capsGrid.appendChild(wrap);
     }
+
+    groupSection.appendChild(capsGrid);
+    apiContainer.appendChild(groupSection);
   }
 }
 
@@ -552,22 +460,35 @@ function wireEventHandlers(): void {
   }
 
   // Save Settings
-  const saveBtn = $('save');
+  const saveBtn = $('save') as HTMLButtonElement | null;
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      const patch = collectConfig();
-      await setConfig({ ...patch, onboarded: true });
-      await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
-      currentConfig = await getConfig();
-      const onboarding = $('onboarding');
-      if (onboarding) onboarding.hidden = true;
-      renderProviderGrid();
-      toast('Settings saved successfully');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        const patch = collectConfig();
+        await setConfig(patch);
+        currentConfig = await getConfig();
+        renderProviderGrid();
+        renderActiveProvider();
+        renderSchedule();
+
+        await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
+        toast('Settings saved');
+
+        const onboardingEl = $('onboarding');
+        if (onboardingEl) onboardingEl.hidden = true;
+      } catch (err) {
+        toast(`Save failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Settings';
+      }
     });
   }
 
   // Test Connection
-  const testBtn = $('test') as HTMLButtonElement;
+  const testBtn = $('test') as HTMLButtonElement | null;
   if (testBtn) {
     testBtn.addEventListener('click', async () => {
       testBtn.disabled = true;
@@ -578,12 +499,17 @@ function wireEventHandlers(): void {
           type: 'test-provider',
           config: patch,
         })) as AuditEntry;
+
         if (result.status === 'ok') {
-          toast(`Test OK · ${result.steps} step${result.steps === 1 ? '' : 's'} · $${result.tokens.estimatedCost.toFixed(4)}`);
+          toast(`Connected to ${patch.provider}/${patch.model}! Test run complete.`);
+        } else if (result.status === 'skipped') {
+          toast(result.summary, 'error');
         } else {
-          toast(result.summary || 'Test failed', 'error');
+          toast(`Test failed: ${result.summary}`, 'error');
         }
         await refreshAudit();
+      } catch (err) {
+        toast(`Test error: ${err instanceof Error ? err.message : String(err)}`, 'error');
       } finally {
         testBtn.disabled = false;
         testBtn.textContent = 'Test Connection';
@@ -592,7 +518,7 @@ function wireEventHandlers(): void {
   }
 
   // Run Now
-  const runBtn = $('runNow') as HTMLButtonElement;
+  const runBtn = $('runNow') as HTMLButtonElement | null;
   if (runBtn) {
     runBtn.addEventListener('click', async () => {
       runBtn.disabled = true;
@@ -653,7 +579,8 @@ function wireEventHandlers(): void {
 }
 
 function collectConfig(): Partial<Config> {
-  const alarmMinutes = Number(($('alarmMinutes') as HTMLInputElement).value) || 30;
+  const rawMins = Number(($('alarmMinutes') as HTMLInputElement).value);
+  const alarmMinutes = Number.isNaN(rawMins) ? 30 : Math.max(0, rawMins);
   const apiKeyValue = ($('apiKey') as HTMLInputElement).value.trim();
 
   const strictSelect = staticCfg.models?.allowCustomModelInput === false || staticCfg.models?.lockModel;

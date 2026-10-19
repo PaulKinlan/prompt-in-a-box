@@ -208,6 +208,22 @@ On by default. Users can disable any of them by name from the options page. Disa
 
 Implementation is in `src/provider-tools.ts`. The pattern mirrors what the CHAOS extension does — a factory function per provider that returns a `ToolSet`, merged into the custom set before the loop runs.
 
+## Configuration & Policy Locking (`config.json`)
+
+Extensions can declare static policies in `config.json` (or per-example `config.json`) to enforce locked enterprise or evaluation configurations:
+
+- **Default Provider & Model**: Configured out-of-the-box to use Google Gemini with **`gemini-3.8-flash`** as the default model.
+- **Schedule Presets**: Choose periodic intervals (5m, 15m, 30m, 1h, 4h) or **Never (`0`)** to disable periodic background alarms completely.
+- **Granular UI Flags (`ui` block)**: 37 granular boolean flags to show or hide any element across the Popup, Side Panel, Options/Settings, and Artifacts Browser (e.g. `showCosts`, `showHistory`, `showProviderCard`, `showAuditStats`, etc.).
+- **User Agent Settings (`agentSettings`)**: Declarative schema for prompt-specific runtime user preferences (rendered as toggles or dropdowns in popup & side panel, automatically injected into the agent prompt message).
+- **Grouped Capabilities & Permissions**: Modeled on Chrome Agent Platform (`Browsing`, `Content`, `System`) with clear action gates and manifest requirement badges.
+- **Rich Page Content Extraction & Automation**:
+  - `tab_read`: Scrapes metadata, headings, and Reader-Mode markdown.
+  - `capture_page`: Pure reader-mode structured Markdown with YAML frontmatter.
+  - `find_elements`, `click_element`, `type_text`, `select_option`, `scroll_page`, `wait_for`: Safe accessibility-snapshot DOM interaction.
+  - `extract_tables`: Extracts tabular DOM structures.
+- **Undo Toast Bubble (`action_toast`)**: Pops open an undo toast attached to the extension icon after major operations (like tab sorting), allowing instant deterministic restoration.
+
 ## Artifacts — things the agent creates for you
 
 A prompt produces two kinds of output: **internal state** (cursors, dedup keys, event logs — written via `opfs_write` / `storage_set`) and **artifacts** (user-facing things the human will want to browse — summaries, digests, journal entries, screenshots, quotes, meeting notes). Artifacts are written via the `artifact_create` tool and appear in:

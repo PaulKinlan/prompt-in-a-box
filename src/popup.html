@@ -364,6 +364,15 @@
       </div>
     </header>
 
+    <!-- Undo Toast Banner (shown when activeUndoToast exists) -->
+    <div id="undoToastBanner" style="display: none; background: #27272a; border-bottom: 2px solid #f59e0b; padding: 10px 16px; align-items: center; justify-content: space-between; gap: 8px;">
+      <div style="font-size: 12px; color: #f4f4f5; line-height: 1.3; flex: 1;" id="undoToastMsg"></div>
+      <div style="display: flex; gap: 6px; align-items: center;">
+        <button id="undoToastBtn" style="background: #f59e0b; color: #000; font-weight: 700; border: none; border-radius: 5px; padding: 5px 10px; font-size: 11.5px; cursor: pointer;">Undo</button>
+        <button id="dismissToastBtn" style="background: transparent; color: #a1a1aa; border: none; font-size: 16px; cursor: pointer; padding: 0 4px;">&times;</button>
+      </div>
+    </div>
+
     <!-- Segmented view switcher (shown when dynamic view exists) -->
     <div id="viewSwitcher" class="view-switcher" style="display: none;">
       <a id="switchToStandard" class="switch-tab active">Dashboard</a>
@@ -387,6 +396,12 @@
           <span id="summaryModel" class="model-name">—</span>
           <span id="summarySchedule" class="schedule-chip">Every 30m</span>
         </div>
+      </div>
+
+      <!-- User-Configured Agent Settings -->
+      <div id="agentSettingsCard" class="status-card" style="display: none; margin-top: 10px; padding: 12px 14px;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 8px;" id="agentSettingsTitle">Agent Settings</div>
+        <div id="agentSettingsFields" style="display: flex; flex-direction: column; gap: 10px;"></div>
       </div>
 
       <!-- Action Button -->

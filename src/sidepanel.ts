@@ -26,19 +26,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ($('version')) $('version').textContent = `v${manifest.version}`;
 
   const staticCfg = await getStaticConfig();
+  const cfg = await getConfig();
 
-  // Features gating
-  if (staticCfg.features?.allowManualRun === false) {
+  // Features and UI config gating
+  if (staticCfg.features?.allowManualRun === false || cfg.ui?.allowManualRun === false) {
     const runBtn = $('runNowBtn');
     if (runBtn) runBtn.style.display = 'none';
   }
-  if (staticCfg.features?.allowArtifacts === false) {
+  if (staticCfg.features?.allowArtifacts === false || cfg.ui?.allowArtifacts === false || cfg.ui?.showRecentArtifacts === false) {
     const artBtn = $('openArtifactsBtn');
     if (artBtn) artBtn.style.display = 'none';
   }
+  if (cfg.ui?.showSidePanelStatusBar === false) {
+    const sb = document.querySelector('.sp-status-bar') as HTMLElement | null;
+    if (sb) sb.style.display = 'none';
+  }
 
-  async function updateStatusBar(cfg?: Config): Promise<void> {
-    const current = cfg ?? (await getConfig());
+  async function updateStatusBar(currentCfg?: Config): Promise<void> {
+    const current = currentCfg ?? (await getConfig());
     const providerLabel = PROVIDER_LABELS[current.provider] || current.provider;
     $('spProviderModel').textContent = `${providerLabel} · ${current.model}`;
 
@@ -54,7 +59,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  void updateStatusBar();
+  void updateStatusBar(cfg);
+
+  // Undo Toast Banner
+  await checkUndoToast();
+
+  // Agent Settings Card
+  await loadAgentSettings();
 
   // 1. Initial render of saved or welcoming state
   void renderer.loadAndRender();
@@ -105,6 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         await renderer.loadAndRender();
         await refreshDrawer();
+        await checkUndoToast();
       } catch (err) {
         showStatus((err as Error).message || 'Execution error', 'error');
       } finally {
@@ -125,6 +137,143 @@ document.addEventListener('DOMContentLoaded', async () => {
     optBtn.addEventListener('click', () => {
       chrome.runtime.openOptionsPage();
     });
+  }
+
+  // Undo Toast Controller
+  async function checkUndoToast(): Promise<void> {
+    const banner = $('undoToastBanner');
+    if (!banner) return;
+
+    const stored = await chrome.storage.local.get('activeUndoToast');
+    const toastData = stored.activeUndoToast as { id: string; message: string; undoLabel: string; expiresAt: number } | undefined;
+
+    if (toastData && toastData.expiresAt > Date.now()) {
+      banner.style.display = 'flex';
+      if ($('undoToastMsg')) $('undoToastMsg').textContent = toastData.message;
+      if ($('undoToastBtn')) $('undoToastBtn').textContent = toastData.undoLabel || 'Undo';
+
+      $('undoToastBtn').onclick = async () => {
+        $('undoToastBtn').textContent = 'Undoing…';
+        (document.getElementById('undoToastBtn') as HTMLButtonElement).disabled = true;
+        try {
+          await chrome.runtime.sendMessage({ type: 'action-toast-undo' });
+          banner.style.display = 'none';
+          showStatus('Sort undone successfully', 'ok');
+          await renderer.loadAndRender();
+        } catch (err) {
+          showStatus(`Undo failed: ${(err as Error).message}`, 'error');
+        }
+      };
+
+      $('dismissToastBtn').onclick = async () => {
+        await chrome.runtime.sendMessage({ type: 'action-toast-dismiss' });
+        banner.style.display = 'none';
+      };
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // Agent Settings Controller
+  async function loadAgentSettings(): Promise<void> {
+    const config = await getConfig();
+    const card = $('agentSettingsCard');
+    const container = $('agentSettingsFields');
+    if (!card || !container) return;
+
+    const fields = config.agentSettings?.fields;
+    if (!fields || fields.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    if (config.agentSettings?.title && $('agentSettingsTitle')) {
+      $('agentSettingsTitle').textContent = config.agentSettings.title;
+    }
+
+    const stored = await chrome.storage.local.get('agentSettingsValues');
+    const values = (stored.agentSettingsValues as Record<string, unknown>) || {};
+
+    container.innerHTML = '';
+    for (const field of fields) {
+      const val = values[field.id] !== undefined ? values[field.id] : field.default;
+
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.flexDirection = 'column';
+      row.style.gap = '4px';
+
+      if (field.type === 'boolean') {
+        const label = document.createElement('label');
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        label.style.gap = '8px';
+        label.style.cursor = 'pointer';
+        label.style.fontSize = '12px';
+        label.style.fontWeight = '500';
+
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = Boolean(val);
+        chk.addEventListener('change', async () => {
+          values[field.id] = chk.checked;
+          await chrome.storage.local.set({ agentSettingsValues: values });
+        });
+
+        label.appendChild(chk);
+        const span = document.createElement('span');
+        span.textContent = field.label;
+        label.appendChild(span);
+        row.appendChild(label);
+      } else if (field.type === 'select') {
+        const topRow = document.createElement('div');
+        topRow.style.display = 'flex';
+        topRow.style.justifyContent = 'space-between';
+        topRow.style.alignItems = 'center';
+
+        const label = document.createElement('span');
+        label.textContent = field.label;
+        label.style.fontSize = '11.5px';
+        label.style.fontWeight = '600';
+
+        const select = document.createElement('select');
+        select.style.padding = '2px 6px';
+        select.style.fontSize = '11px';
+        select.style.borderRadius = '5px';
+        select.style.background = 'var(--color-bg-base)';
+        select.style.color = 'var(--color-text-primary)';
+        select.style.border = '1px solid var(--color-border)';
+
+        for (const opt of field.options || []) {
+          const optionEl = document.createElement('option');
+          optionEl.value = opt.value;
+          optionEl.textContent = opt.label;
+          if (opt.value === val) optionEl.selected = true;
+          select.appendChild(optionEl);
+        }
+
+        select.addEventListener('change', async () => {
+          values[field.id] = select.value;
+          await chrome.storage.local.set({ agentSettingsValues: values });
+        });
+
+        topRow.appendChild(label);
+        topRow.appendChild(select);
+        row.appendChild(topRow);
+      }
+
+      const descText = field.description || field.hint;
+      if (descText) {
+        const desc = document.createElement('div');
+        desc.textContent = descText;
+        desc.style.fontSize = '10.5px';
+        desc.style.color = 'var(--color-text-muted)';
+        row.appendChild(desc);
+      }
+
+      container.appendChild(row);
+    }
   }
 
   // 5. Activity Drawer

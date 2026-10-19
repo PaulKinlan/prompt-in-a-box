@@ -6,9 +6,6 @@
  * manifest actually grants — a permission declaration is a capability
  * declaration, full stop. That's the contract the browser already enforces;
  * we just pass it through to the prompt.
- *
- * When a prompt asks for capability it doesn't have, the tool is simply
- * not in its ToolSet. The model can't see what it can't call.
  */
 
 import type { ToolSet } from 'ai';
@@ -22,8 +19,21 @@ import { tabMove } from './tab-move';
 import { tabMute } from './tab-mute';
 import { tabPin } from './tab-pin';
 import { tabGroup } from './tab-group';
-import { tabRead } from './tab-read';
+import { tabGroupList } from './tab-group-list';
+import { tabUngroup } from './tab-ungroup';
+import { tabRead, capturePage } from './tab-read';
+import {
+  findElements,
+  clickElement,
+  typeText,
+  selectOption,
+  scrollPage,
+  waitForPage,
+  extractTables,
+} from './page-action';
 import { tabScreenshot } from './tab-screenshot';
+import { actionToast } from './action-toast';
+import { idleQuery } from './idle-query';
 import { notificationShow } from './notification-show';
 import { bookmarkSearch } from './bookmark-search';
 import { bookmarkAdd } from './bookmark-add';
@@ -54,20 +64,34 @@ import { readingListQuery } from './reading-list-query';
 import { clipboardWrite } from './clipboard-write';
 import { artifactCreate } from './artifact-create';
 import { uiUpdate } from './ui-update';
+import {
+  sessionsRecent,
+  sessionsRestore,
+  topSitesGet,
+  cookiesGet,
+  cookiesSet,
+  cookiesRemove,
+  browsingDataRemove,
+  pageCaptureMhtml,
+  browserSearch,
+  ttsSpeak,
+  ttsStop,
+  powerKeepAwake,
+  extensionsList,
+  webNavigationFrames,
+  systemCpuInfo,
+  systemMemoryInfo,
+  systemStorageInfo,
+  systemDisplayInfo,
+} from './browser-extra';
 
 /**
  * Map Chrome permission → tools it unlocks.
- *
- * `__always__` is a meta-bucket for tools that work regardless of
- * Chrome permissions — notably OPFS, which is part of the Web Platform
- * (navigator.storage) rather than the chrome.* API set. Window tools
- * also live here because the `windows` namespace needs no permission.
  */
 const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   __always__: {
     storage_get: storageGet,
     storage_set: storageSet,
-    // Legacy aliases for backward compatibility
     get_state: storageGet,
     set_state: storageSet,
     opfs_read: opfsRead,
@@ -91,11 +115,28 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
     tab_move: tabMove,
     tab_mute: tabMute,
     tab_pin: tabPin,
+    action_toast: actionToast,
+  },
+  tabGroups: {
     tab_group: tabGroup,
+    tab_group_list: tabGroupList,
+    tab_ungroup: tabUngroup,
   },
   scripting: {
     tab_read: tabRead,
+    read_page: tabRead,
+    capture_page: capturePage,
+    find_elements: findElements,
+    click_element: clickElement,
+    type_text: typeText,
+    select_option: selectOption,
+    scroll_page: scrollPage,
+    wait_for: waitForPage,
+    extract_tables: extractTables,
     tab_screenshot: tabScreenshot,
+  },
+  idle: {
+    idle_query: idleQuery,
   },
   notifications: {
     notification_show: notificationShow,
@@ -131,6 +172,52 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   },
   clipboardWrite: {
     clipboard_write: clipboardWrite,
+  },
+  sessions: {
+    sessions_recent: sessionsRecent,
+    sessions_restore: sessionsRestore,
+  },
+  topSites: {
+    top_sites: topSitesGet,
+  },
+  cookies: {
+    cookies_get: cookiesGet,
+    cookies_set: cookiesSet,
+    cookies_remove: cookiesRemove,
+  },
+  browsingData: {
+    browsing_data_remove: browsingDataRemove,
+  },
+  pageCapture: {
+    page_capture_mhtml: pageCaptureMhtml,
+  },
+  search: {
+    browser_search: browserSearch,
+  },
+  tts: {
+    tts_speak: ttsSpeak,
+    tts_stop: ttsStop,
+  },
+  power: {
+    power_keep_awake: powerKeepAwake,
+  },
+  management: {
+    extensions_list: extensionsList,
+  },
+  webNavigation: {
+    web_navigation_frames: webNavigationFrames,
+  },
+  'system.cpu': {
+    system_cpu_info: systemCpuInfo,
+  },
+  'system.memory': {
+    system_memory_info: systemMemoryInfo,
+  },
+  'system.storage': {
+    system_storage_info: systemStorageInfo,
+  },
+  'system.display': {
+    system_display_info: systemDisplayInfo,
   },
 };
 
