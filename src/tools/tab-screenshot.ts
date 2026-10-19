@@ -22,7 +22,7 @@ export const tabScreenshot = tool({
   }),
   execute: async ({ windowId, quality }) => {
     const format: 'png' | 'jpeg' = quality === undefined ? 'png' : 'jpeg';
-    const options: chrome.tabs.CaptureVisibleTabOptions = { format };
+    const options: chrome.extensionTypes.ImageDetails = { format };
     if (quality !== undefined) options.quality = quality;
     const dataUrl =
       windowId === undefined

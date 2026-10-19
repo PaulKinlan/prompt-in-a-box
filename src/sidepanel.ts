@@ -1,15 +1,65 @@
 import { UIRenderer } from './ui-renderer';
+import {
+  getConfig,
+  getStaticConfig,
+  activeKey,
+  PROVIDER_LABELS,
+  type Config,
+} from './config';
+import type { AuditEntry, AuditIndexEntry } from './audit';
+import type { ArtifactIndexEntry } from './artifacts';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const container = document.getElementById('app-root');
+const INDEX_KEY = '__pib_artifact_index';
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
+  document.getElementById(id) as T;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const container = $('app-root');
   if (!container) return;
 
   const renderer = new UIRenderer(container, 'sidepanel');
 
+  // Load manifest & config metadata
+  const manifest = chrome.runtime.getManifest();
+  if ($('extName')) $('extName').textContent = manifest.name;
+  if ($('version')) $('version').textContent = `v${manifest.version}`;
+
+  const staticCfg = await getStaticConfig();
+
+  // Features gating
+  if (staticCfg.features?.allowManualRun === false) {
+    const runBtn = $('runNowBtn');
+    if (runBtn) runBtn.style.display = 'none';
+  }
+  if (staticCfg.features?.allowArtifacts === false) {
+    const artBtn = $('openArtifactsBtn');
+    if (artBtn) artBtn.style.display = 'none';
+  }
+
+  async function updateStatusBar(cfg?: Config): Promise<void> {
+    const current = cfg ?? (await getConfig());
+    const providerLabel = PROVIDER_LABELS[current.provider] || current.provider;
+    $('spProviderModel').textContent = `${providerLabel} · ${current.model}`;
+
+    const hasKey = Boolean(activeKey(current)?.trim());
+    const keyBadge = $('spKeyStatus');
+    const keyText = $('spKeyText');
+    if (hasKey) {
+      keyBadge.className = 'status-pill status-ready';
+      keyText.textContent = 'Key Ready';
+    } else {
+      keyBadge.className = 'status-pill status-missing';
+      keyText.textContent = 'No Key';
+    }
+  }
+
+  void updateStatusBar();
+
   // 1. Initial render of saved or welcoming state
   void renderer.loadAndRender();
 
-  // 2. Listen for push updates from background Sw when the agent outputs a new UI
+  // 2. Listen for push updates from background SW when the agent outputs a new UI
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'ui-state-updated' && msg.ui) {
       renderer.render(msg.ui);
@@ -18,4 +68,153 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. Notify the background service worker that sidepanel is open to trigger agent execution
   void chrome.runtime.sendMessage({ type: 'ui-opened', view: 'sidepanel' });
+
+  // 4. Wire header actions
+  const runBtn = $('runNowBtn') as HTMLButtonElement;
+  const statusEl = $('spRunStatus');
+  let runTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function showStatus(text: string, kind: 'ok' | 'error' | 'info' = 'info'): void {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.className = `sp-run-status show ${kind === 'error' ? 'error' : kind === 'ok' ? 'ok' : ''}`;
+    if (runTimer) clearTimeout(runTimer);
+    if (kind !== 'info') {
+      runTimer = setTimeout(() => {
+        statusEl.className = 'sp-run-status';
+      }, 3500);
+    }
+  }
+
+  if (runBtn) {
+    runBtn.addEventListener('click', async () => {
+      runBtn.disabled = true;
+      showStatus('Executing agent loop…', 'info');
+      try {
+        const result = (await chrome.runtime.sendMessage({
+          type: 'run-now',
+        })) as AuditEntry;
+
+        if (result.status === 'ok') {
+          showStatus(
+            `Agent completed · ${result.toolCalls.length} tool call${result.toolCalls.length === 1 ? '' : 's'}`,
+            'ok'
+          );
+        } else {
+          showStatus(result.summary || 'Run failed', 'error');
+        }
+        await renderer.loadAndRender();
+        await refreshDrawer();
+      } catch (err) {
+        showStatus((err as Error).message || 'Execution error', 'error');
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  }
+
+  const artBtn = $('openArtifactsBtn');
+  if (artBtn) {
+    artBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('artifacts.html') });
+    });
+  }
+
+  const optBtn = $('openOptionsBtn');
+  if (optBtn) {
+    optBtn.addEventListener('click', () => {
+      chrome.runtime.openOptionsPage();
+    });
+  }
+
+  // 5. Activity Drawer
+  const toggleDrawerBtn = $('toggleActivityBtn');
+  const drawerContent = $('activityDrawerContent');
+  const chevron = $('activityChevron');
+
+  if (toggleDrawerBtn && drawerContent) {
+    toggleDrawerBtn.addEventListener('click', () => {
+      const isOpen = drawerContent.classList.toggle('open');
+      toggleDrawerBtn.setAttribute('aria-expanded', String(isOpen));
+      if (chevron) chevron.textContent = isOpen ? '▴' : '▾';
+      if (isOpen) {
+        void refreshDrawer();
+      }
+    });
+  }
+
+  async function refreshDrawer(): Promise<void> {
+    try {
+      const runs = (await chrome.runtime.sendMessage({
+        type: 'get-audit-index',
+      })) as AuditIndexEntry[];
+
+      const runsContainer = $('spRecentRuns');
+      if (runsContainer) {
+        runsContainer.innerHTML = '';
+        const recentRuns = (runs || []).slice(0, 5);
+        if (recentRuns.length === 0) {
+          runsContainer.innerHTML = '<div style="opacity: 0.6; font-size: 11px;">No runs recorded yet.</div>';
+        } else {
+          for (const r of recentRuns) {
+            const row = document.createElement('div');
+            row.className = 'drawer-item';
+            const time = new Date(r.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const statusColor = r.status === 'ok' ? 'var(--color-success)' : r.status === 'error' ? 'var(--color-danger)' : 'var(--color-text-muted)';
+            row.innerHTML = `
+              <div class="drawer-item-title" title="${escapeHtml(r.summary || '')}">
+                <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${statusColor}; margin-right:4px;"></span>
+                ${escapeHtml(r.summary || r.trigger || '')}
+              </div>
+              <div class="drawer-item-meta">${time}</div>
+            `;
+            row.addEventListener('click', () => {
+              chrome.runtime.openOptionsPage();
+            });
+            runsContainer.appendChild(row);
+          }
+        }
+      }
+
+      // Recent artifacts
+      const stored = await chrome.storage.local.get(INDEX_KEY);
+      const artifacts = ((stored[INDEX_KEY] as ArtifactIndexEntry[]) || []).slice(0, 5);
+      const artContainer = $('spRecentArtifacts');
+      if (artContainer) {
+        artContainer.innerHTML = '';
+        if (artifacts.length === 0) {
+          artContainer.innerHTML = '<div style="opacity: 0.6; font-size: 11px;">No artifacts produced yet.</div>';
+        } else {
+          for (const a of artifacts) {
+            const row = document.createElement('div');
+            row.className = 'drawer-item';
+            const time = new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            row.innerHTML = `
+              <div class="drawer-item-title" title="${escapeHtml(a.title)}">
+                <span style="font-size:9.5px; font-weight:700; text-transform:uppercase; color:var(--color-accent); margin-right:4px;">${a.kind.replace('image-', '')}</span>
+                ${escapeHtml(a.title)}
+              </div>
+              <div class="drawer-item-meta">${time}</div>
+            `;
+            row.addEventListener('click', () => {
+              chrome.tabs.create({ url: chrome.runtime.getURL(`artifacts.html?id=${encodeURIComponent(a.artifactId)}`) });
+            });
+            artContainer.appendChild(row);
+          }
+        }
+      }
+    } catch {
+      // Ignore background communication failures
+    }
+  }
+
+  function escapeHtml(s: string): string {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[c] as string));
+  }
 });

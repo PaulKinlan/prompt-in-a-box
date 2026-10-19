@@ -98,7 +98,7 @@ export const IMMEDIATE_SOURCES: EventSource[] = [
   source('omnibox.onInputEntered', null, true, (emit) => {
     const api = (chrome as unknown as { omnibox?: typeof chrome.omnibox }).omnibox;
     if (!api) return () => {};
-    const h = (text: string, disposition: chrome.omnibox.OnInputEnteredDisposition) =>
+    const h = (text: string, disposition: `${chrome.omnibox.OnInputEnteredDisposition}`) =>
       emit({ text, disposition });
     api.onInputEntered.addListener(h);
     return () => api.onInputEntered.removeListener(h);
@@ -114,7 +114,7 @@ export const QUEUED_SOURCES: EventSource[] = [
     return () => chrome.tabs.onCreated.removeListener(h);
   }),
   source('tabs.onUpdated', 'tabs', false, (emit) => {
-    const h = (tabId: number, info: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
+    const h = (tabId: number, info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
       // Filter out the chatty status='loading' churn.
       if (info.status && info.status !== 'complete') return;
       emit({ tabId, url: tab.url, title: tab.title, status: info.status });
@@ -123,13 +123,13 @@ export const QUEUED_SOURCES: EventSource[] = [
     return () => chrome.tabs.onUpdated.removeListener(h);
   }),
   source('tabs.onRemoved', 'tabs', false, (emit) => {
-    const h = (tabId: number, info: chrome.tabs.TabRemoveInfo) =>
+    const h = (tabId: number, info: chrome.tabs.OnRemovedInfo) =>
       emit({ tabId, windowId: info.windowId, isWindowClosing: info.isWindowClosing });
     chrome.tabs.onRemoved.addListener(h);
     return () => chrome.tabs.onRemoved.removeListener(h);
   }),
   source('tabs.onActivated', 'tabs', false, (emit) => {
-    const h = (info: chrome.tabs.TabActiveInfo) => emit({ tabId: info.tabId, windowId: info.windowId });
+    const h = (info: chrome.tabs.OnActivatedInfo) => emit({ tabId: info.tabId, windowId: info.windowId });
     chrome.tabs.onActivated.addListener(h);
     return () => chrome.tabs.onActivated.removeListener(h);
   }),
@@ -140,12 +140,12 @@ export const QUEUED_SOURCES: EventSource[] = [
     return () => chrome.bookmarks.onCreated.removeListener(h);
   }),
   source('bookmarks.onChanged', 'bookmarks', false, (emit) => {
-    const h = (id: string, info: chrome.bookmarks.BookmarkChangeInfo) => emit({ id, ...info });
+    const h = (id: string, info: { title: string; url?: string }) => emit({ id, ...info });
     chrome.bookmarks.onChanged.addListener(h);
     return () => chrome.bookmarks.onChanged.removeListener(h);
   }),
   source('bookmarks.onRemoved', 'bookmarks', false, (emit) => {
-    const h = (id: string, info: chrome.bookmarks.BookmarkRemoveInfo) =>
+    const h = (id: string, info: { parentId: string; index: number; node: chrome.bookmarks.BookmarkTreeNode }) =>
       emit({ id, parentId: info.parentId, index: info.index });
     chrome.bookmarks.onRemoved.addListener(h);
     return () => chrome.bookmarks.onRemoved.removeListener(h);
@@ -196,8 +196,6 @@ export const QUEUED_SOURCES: EventSource[] = [
     return () => chrome.windows.onFocusChanged.removeListener(h);
   }),
   source('webNavigation.onCompleted', 'webNavigation', false, (emit) => {
-    const api = (chrome as unknown as { webNavigation?: chrome.webNavigation.WebNavigationEventFilter })
-      .webNavigation as unknown as chrome.webNavigation.WebNavigationEvent<chrome.webNavigation.WebNavigationFramedCallbackDetails> | undefined;
     // Types are awkward here; fall through to the real API at runtime.
     const real = (chrome as unknown as { webNavigation?: { onCompleted: chrome.events.Event<(d: unknown) => void> } }).webNavigation;
     if (!real) return () => {};
@@ -207,13 +205,12 @@ export const QUEUED_SOURCES: EventSource[] = [
       emit({ tabId: details.tabId, url: details.url });
     };
     real.onCompleted.addListener(h);
-    void api;
     return () => real.onCompleted.removeListener(h);
   }),
   source('idle.onStateChanged', 'idle', false, (emit) => {
     const api = (chrome as unknown as { idle?: typeof chrome.idle }).idle;
     if (!api) return () => {};
-    const h = (state: chrome.idle.IdleState) => emit({ state });
+    const h = (state: `${chrome.idle.IdleState}`) => emit({ state });
     api.onStateChanged.addListener(h);
     return () => api.onStateChanged.removeListener(h);
   }),

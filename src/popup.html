@@ -7,121 +7,433 @@
     <title>Prompt in a Box</title>
     <link rel="stylesheet" href="ui-renderer.css" />
     <style>
-      :root { color-scheme: light dark; }
-      * { box-sizing: border-box; }
       body {
-        font: 13px/1.4 system-ui, sans-serif;
-        width: 360px;
-        padding: 14px;
+        font-family: var(--pib-font);
+        width: 380px;
         margin: 0;
+        padding: 0;
+        background: var(--color-bg-base);
+        color: var(--color-text-primary);
+        box-sizing: border-box;
       }
-      h1 {
+      * { box-sizing: border-box; }
+
+      /* Top Header */
+      .popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: var(--color-card-base);
+        border-bottom: 1px solid var(--color-border);
+      }
+      .brand-box {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .brand-box img {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+      }
+      .brand-title {
         font-size: 14px;
-        margin: 0 0 4px;
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        letter-spacing: -0.01em;
+      }
+      .version-badge {
+        font-size: 10px;
+        font-weight: 600;
+        font-family: var(--pib-font-mono);
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--color-card-muted);
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .icon-btn {
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 5px;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+      }
+      .icon-btn:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
+        border-color: var(--color-border);
+      }
+
+      /* Segmented view switcher */
+      .view-switcher {
+        display: flex;
+        padding: 3px;
+        margin: 12px 16px 0;
+        background: var(--color-card-muted);
+        border-radius: 8px;
+        border: 1px solid var(--color-border);
+      }
+      .switch-tab {
+        flex: 1;
+        padding: 5px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        border-radius: 6px;
+        cursor: pointer;
+        color: var(--color-text-muted);
+        transition: all 0.15s ease;
+        text-decoration: none;
+        user-select: none;
+      }
+      .switch-tab.active {
+        background: var(--color-card-base);
+        color: var(--color-text-primary);
+        box-shadow: var(--pib-shadow-sm);
+      }
+
+      /* Main content wrapper */
+      .popup-content {
+        padding: 14px 16px 16px;
+      }
+
+      /* Status card */
+      .status-card {
+        background: var(--color-card-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius);
+        padding: 12px 14px;
+        margin-bottom: 12px;
+        box-shadow: var(--pib-shadow-sm);
+      }
+      .status-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .provider-chip {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-accent);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .key-status {
+        font-size: 11px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        cursor: pointer;
+      }
+      .key-status .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+      }
+      .key-status.ready { color: var(--color-success); }
+      .key-status.ready .dot { background: var(--color-success); }
+      .key-status.missing { color: var(--color-warning); }
+      .key-status.missing .dot { background: var(--color-warning); }
+
+      .model-row {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
+        font-size: 12px;
       }
-      h1 small { font-weight: normal; opacity: 0.7; font-size: 11px; }
-      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; margin: 14px 0 6px; font-weight: 600; }
-      .summary-meta { font-size: 12px; opacity: 0.7; margin: 0 0 12px; }
-      .row { display: flex; gap: 8px; align-items: center; }
-      .row > * { flex: 1; }
-      button {
-        padding: 7px 10px;
-        font: inherit;
-        font-weight: 500;
-        border: 1px solid rgba(128,128,128,0.4);
-        border-radius: 4px;
-        background: ButtonFace;
-        color: ButtonText;
-        cursor: pointer;
+      .model-name {
+        font-family: var(--pib-font-mono);
+        font-weight: 600;
+        color: var(--color-text-primary);
+        font-size: 12px;
       }
-      button:hover { filter: brightness(1.05); }
-      button:disabled { opacity: 0.55; cursor: not-allowed; }
-      button.primary {
-        background: #2f6fe1;
-        color: white;
-        border-color: #2f6fe1;
+      .schedule-chip {
+        color: var(--color-text-muted);
+        font-size: 11px;
       }
-      .status { margin-top: 10px; font-size: 12px; min-height: 16px; opacity: 0.8; }
 
-      .artifact {
-        padding: 7px 9px;
-        border: 1px solid rgba(128,128,128,0.2);
-        border-radius: 5px;
-        margin-bottom: 5px;
+      /* Primary Action */
+      .run-btn {
+        width: 100%;
+        padding: 10px 14px;
+        font-size: 13.5px;
+        font-weight: 600;
+        border-radius: 8px;
+        background: var(--color-accent);
+        color: #ffffff;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: var(--pib-shadow-sm);
+        transition: all 0.15s ease;
+      }
+      .run-btn:hover:not(:disabled) {
+        background: var(--color-accent-hover);
+      }
+      .run-btn:active:not(:disabled) {
+        transform: translateY(1px);
+      }
+      .run-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* Status Feedback */
+      .status-box {
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        padding: 8px 11px;
+        border-radius: 6px;
+        background: var(--color-card-muted);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-secondary);
+        display: none;
+      }
+      .status-box.show { display: block; }
+      .status-box.error {
+        background: var(--color-danger-bg);
+        border-color: var(--color-danger-border);
+        color: var(--color-danger);
+      }
+      .status-box.ok {
+        background: var(--color-success-bg);
+        border-color: var(--color-success-border);
+        color: var(--color-success);
+      }
+
+      /* Section titles */
+      .section-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 16px 0 8px;
+      }
+      .section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+        color: var(--color-text-muted);
+        margin: 0;
+      }
+      .section-link {
+        font-size: 11.5px;
+        color: var(--color-accent);
+        text-decoration: none;
+        cursor: pointer;
+        font-weight: 500;
+      }
+      .section-link:hover { text-decoration: underline; }
+
+      /* Artifact items */
+      .artifact-item {
+        padding: 8px 10px;
+        background: var(--color-card-base);
+        border: 1px solid var(--color-border);
+        border-radius: 7px;
+        margin-bottom: 6px;
         cursor: pointer;
         display: grid;
         grid-template-columns: auto 1fr auto;
         gap: 8px;
         align-items: center;
+        transition: all 0.15s ease;
       }
-      .artifact:hover { background: rgba(47,111,225,0.05); border-color: rgba(47,111,225,0.3); }
-      .artifact .kind-badge {
-        font-size: 9px;
-        font-weight: 600;
+      .artifact-item:hover {
+        border-color: var(--color-accent);
+        background: var(--color-accent-tint);
+        transform: translateX(1px);
+      }
+      .kind-badge {
+        font-size: 9.5px;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        padding: 1px 5px;
-        border-radius: 3px;
-        background: rgba(47,111,225,0.12);
-        color: #2f6fe1;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: var(--color-info-bg);
+        color: var(--color-info);
       }
-      .artifact .kind-image { background: rgba(200,130,30,0.14); color: #c8821e; }
-      .artifact .kind-json { background: rgba(130,200,30,0.14); color: #4a8a16; }
-      .artifact .kind-html { background: rgba(200,30,130,0.12); color: #c81e82; }
-      .artifact .title {
-        font-size: 12px;
-        font-weight: 500;
+      .kind-image { background: var(--color-warning-bg); color: var(--color-warning); }
+      .kind-json { background: var(--color-success-bg); color: var(--color-success); }
+      .kind-html { background: rgba(192, 38, 211, 0.1); color: #c026d3; }
+
+      .artifact-title {
+        font-size: 12.5px;
+        font-weight: 550;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        color: var(--color-text-primary);
       }
-      .artifact .time { font-size: 10px; opacity: 0.6; font-family: ui-monospace, monospace; }
-      .empty { font-size: 12px; opacity: 0.55; padding: 8px 4px; }
-
-      .links { display: flex; gap: 8px; margin-top: 12px; font-size: 12px; }
-      .links a {
-        flex: 1;
-        padding: 7px 10px;
+      .artifact-time {
+        font-size: 10.5px;
+        color: var(--color-text-muted);
+        font-family: var(--pib-font-mono);
+      }
+      .empty-state {
+        font-size: 12px;
+        color: var(--color-text-muted);
+        padding: 14px 8px;
         text-align: center;
-        border: 1px solid rgba(128,128,128,0.3);
-        border-radius: 4px;
-        text-decoration: none;
-        color: inherit;
-        cursor: pointer;
+        background: var(--color-card-base);
+        border: 1px dashed var(--color-border);
+        border-radius: var(--pib-radius-sm);
       }
-      .links a:hover { background: rgba(128,128,128,0.08); }
+
+      /* Footer links */
+      .popup-footer {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--color-border);
+      }
+      .footer-link {
+        flex: 1;
+        padding: 7px 8px;
+        text-align: center;
+        font-size: 11.5px;
+        font-weight: 600;
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        background: var(--color-card-base);
+        color: var(--color-text-secondary);
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+      }
+      .footer-link:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
+        border-color: var(--color-border-hover);
+      }
     </style>
   </head>
   <body>
-    <!-- Toggle tab to switch to dynamic view if present -->
-    <div id="dynamicViewToggle" style="display: none; padding: 6px 12px; font-size: 11px; background: rgba(59, 130, 246, 0.08); text-align: center; border-bottom: 1px solid var(--color-border); font-family: 'Outfit', sans-serif;">
-      🤖 <a href="#" id="switchToDynamic" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Switch to Agent Interactive View</a>
+    <!-- Top Header Bar -->
+    <header class="popup-header">
+      <div class="brand-box">
+        <img id="extIcon" src="../icon-32.png" alt="icon" />
+        <h1 class="brand-title">
+          <span id="extName">Prompt in a Box</span>
+          <span id="version" class="version-badge">v0.7.0</span>
+        </h1>
+      </div>
+      <div class="header-actions">
+        <button id="openSidePanelBtn" class="icon-btn" title="Open Side Panel" aria-label="Open Side Panel">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+          </svg>
+        </button>
+        <button id="openOptionsTop" class="icon-btn" title="Settings &amp; Audit" aria-label="Settings &amp; Audit">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Segmented view switcher (shown when dynamic view exists) -->
+    <div id="viewSwitcher" class="view-switcher" style="display: none;">
+      <a id="switchToStandard" class="switch-tab active">Dashboard</a>
+      <a id="switchToDynamic" class="switch-tab">Agent UI</a>
     </div>
-    <div id="standardViewToggle" style="display: none; padding: 6px 12px; font-size: 11px; background: rgba(59, 130, 246, 0.08); text-align: center; border-bottom: 1px solid var(--color-border); font-family: 'Outfit', sans-serif;">
-      📊 <a href="#" id="switchToStandard" style="color: #3b82f6; text-decoration: none; font-weight: 600;">Switch to Admin Dashboard</a>
-    </div>
 
-    <!-- Standard Admin Panel View -->
-    <div id="standardPopup">
-      <div style="padding: 14px;">
-        <h1><span id="extName">Prompt in a Box</span> <small id="version"></small></h1>
-        <p class="summary-meta"><span id="summaryProvider">—</span><span id="summaryMeta"></span></p>
-
-        <div class="row">
-          <button id="runNow" class="primary">Run now</button>
+    <!-- Standard Dashboard View -->
+    <div id="standardPopup" class="popup-content">
+      <!-- Runtime Status Card -->
+      <div class="status-card">
+        <div class="status-header">
+          <div class="provider-chip">
+            <span id="summaryProvider">—</span>
+          </div>
+          <div id="keyStatusBadge" class="key-status missing" title="Click to configure API key">
+            <span class="dot"></span>
+            <span id="keyStatusText">No Key</span>
+          </div>
         </div>
-        <div class="status" id="status"></div>
-
-        <h2>Recent artifacts</h2>
-        <div id="artifactList"><div class="empty">Nothing yet — artifacts appear here once the agent creates some.</div></div>
-
-        <div class="links">
-          <a id="openArtifacts">Browse all →</a>
-          <a id="openOptions">Settings &amp; audit</a>
+        <div class="model-row">
+          <span id="summaryModel" class="model-name">—</span>
+          <span id="summarySchedule" class="schedule-chip">Every 30m</span>
         </div>
+      </div>
+
+      <!-- Action Button -->
+      <button id="runNow" class="run-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Run Agent Now</span>
+      </button>
+
+      <!-- Run status feedback -->
+      <div id="status" class="status-box"></div>
+
+      <!-- Recent Artifacts -->
+      <div id="artifactsSection">
+        <div class="section-heading">
+          <h2 class="section-title">Recent Artifacts</h2>
+          <a id="openArtifactsTop" class="section-link">View all →</a>
+        </div>
+        <div id="artifactList">
+          <div class="empty-state">No artifacts produced yet.</div>
+        </div>
+      </div>
+
+      <!-- Footer Navigation -->
+      <div class="popup-footer">
+        <a id="openArtifacts" class="footer-link">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+          Artifacts
+        </a>
+        <a id="openSidePanel" class="footer-link">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+          </svg>
+          Side Panel
+        </a>
+        <a id="openOptions" class="footer-link">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Settings
+        </a>
       </div>
     </div>
 

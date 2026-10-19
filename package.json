@@ -1,6 +1,6 @@
 {
   "name": "prompt-in-a-box",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
   "type": "module",
@@ -15,17 +15,17 @@
     "icons": "node scripts/gen-icons.js"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "3.0.71",
-    "@ai-sdk/google": "3.0.64",
-    "@ai-sdk/openai": "3.0.53",
-    "agent-do": "0.4.2",
-    "ai": "^6.0.168",
-    "sharp": "^0.34.5",
-    "zod": "^3.23.0"
+    "@ai-sdk/anthropic": "^4.0.83",
+    "@ai-sdk/google": "^4.0.100",
+    "@ai-sdk/openai": "^4.0.97",
+    "agent-do": "^0.7.0",
+    "ai": "^7.0.145",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.287",
-    "esbuild": "^0.25.12",
-    "typescript": "^5.7.0"
+    "@types/chrome": "^0.3.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3"
   }
 }

@@ -3,8 +3,8 @@
  *
  * Two ways to make an extension icon:
  *
- *   1. AI generation (preferred) — calls Gemini (Imagen / Gemini image) or
- *      OpenAI (gpt-image-1) to render a bespoke icon that reflects what the
+ *   1. AI generation (preferred) — calls Gemini (Nano Banana / Gemini image) or
+ *      OpenAI (gpt-image-2.5-flare) to render a bespoke icon that reflects what the
  *      extension actually does. Used automatically when an API key is present.
  *
  *   2. Procedural fallback — a clean, modern flat icon built from a per-extension
@@ -37,18 +37,18 @@ export function detectImageProvider(env = process.env) {
 
   // Honour an explicit choice first.
   if (env.ICON_PROVIDER === 'google' && googleKey) {
-    return { kind: 'google', apiKey: googleKey, model: env.ICON_MODEL || 'imagen-4.0-fast-generate-001' };
+    return { kind: 'google', apiKey: googleKey, model: env.ICON_MODEL || 'gemini-nano-banana-2.1' };
   }
   if (env.ICON_PROVIDER === 'openai' && openaiKey) {
-    return { kind: 'openai', apiKey: openaiKey, model: env.ICON_MODEL || 'gpt-image-1' };
+    return { kind: 'openai', apiKey: openaiKey, model: env.ICON_MODEL || 'gpt-image-2.5-flare' };
   }
 
   // Otherwise auto-detect: Gemini first (matches `npm run create`), then OpenAI.
   if (googleKey) {
-    return { kind: 'google', apiKey: googleKey, model: env.ICON_MODEL || 'imagen-4.0-fast-generate-001' };
+    return { kind: 'google', apiKey: googleKey, model: env.ICON_MODEL || 'gemini-nano-banana-2.1' };
   }
   if (openaiKey) {
-    return { kind: 'openai', apiKey: openaiKey, model: env.ICON_MODEL || 'gpt-image-1' };
+    return { kind: 'openai', apiKey: openaiKey, model: env.ICON_MODEL || 'gpt-image-2.5-flare' };
   }
   return null;
 }

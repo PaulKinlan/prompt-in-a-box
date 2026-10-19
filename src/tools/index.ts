@@ -67,6 +67,9 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   __always__: {
     storage_get: storageGet,
     storage_set: storageSet,
+    // Legacy aliases for backward compatibility
+    get_state: storageGet,
+    set_state: storageSet,
     opfs_read: opfsRead,
     opfs_write: opfsWrite,
     opfs_list: opfsList,
@@ -96,6 +99,7 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   },
   notifications: {
     notification_show: notificationShow,
+    notify: notificationShow,
   },
   bookmarks: {
     bookmark_search: bookmarkSearch,

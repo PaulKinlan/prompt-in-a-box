@@ -9,6 +9,6 @@ export const tabNavigate = tool({
   }),
   execute: async ({ tabId, url }) => {
     const tab = await chrome.tabs.update(tabId, { url });
-    return { tabId: tab.id, url: tab.url ?? url };
+    return { tabId: tab?.id ?? tabId, url: tab?.url ?? url };
   },
 });

@@ -70,12 +70,14 @@ export interface AuditEntry {
 export interface AuditIndexEntry {
   runId: string;
   startedAt: number;
+  trigger?: AuditEntry['trigger'];
   status: AuditEntry['status'];
   provider: string;
   model: string;
   summary: string;
   durationMs?: number;
   toolCallCount: number;
+  totalTokens?: number;
   estimatedCost: number;
 }
 
@@ -99,12 +101,14 @@ export async function writeAudit(entry: AuditEntry): Promise<void> {
   const summary: AuditIndexEntry = {
     runId: entry.runId,
     startedAt: entry.startedAt,
+    trigger: entry.trigger,
     status: entry.status,
     provider: entry.provider,
     model: entry.model,
     summary: entry.summary,
     durationMs: entry.finishedAt ? entry.finishedAt - entry.startedAt : undefined,
     toolCallCount: entry.toolCalls.length,
+    totalTokens: (entry.tokens?.input ?? 0) + (entry.tokens?.output ?? 0),
     estimatedCost: entry.tokens.estimatedCost,
   };
 

@@ -9,6 +9,6 @@ export const tabMute = tool({
   }),
   execute: async ({ tabId, muted }) => {
     const tab = await chrome.tabs.update(tabId, { muted });
-    return { tabId: tab.id, muted: tab.mutedInfo?.muted ?? muted };
+    return { tabId: tab?.id ?? tabId, muted: tab?.mutedInfo?.muted ?? muted };
   },
 });

@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { removeContextMenuIndex } from './context-menu-list';
 
 export const contextMenuRemove = tool({
   description: 'Remove a single context menu item by id, or all items the extension owns when `all` is true.',
@@ -16,6 +17,7 @@ export const contextMenuRemove = tool({
           else resolve();
         });
       });
+      await removeContextMenuIndex({ all: true }).catch(() => {});
       return { ok: true, removed: 'all' };
     }
     if (!id) return { error: 'either `id` or `all: true` is required' };
@@ -26,6 +28,7 @@ export const contextMenuRemove = tool({
         else resolve();
       });
     });
+    await removeContextMenuIndex({ id }).catch(() => {});
     return { ok: true, id };
   },
 });

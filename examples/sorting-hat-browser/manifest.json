@@ -6,8 +6,8 @@
   "prompt_in_a_box": {
     "prompt": "prompt.md",
     "alarm_minutes": 15,
-    "default_provider": "anthropic",
-    "default_model": "claude-sonnet-4-6"
+    "default_provider": "google",
+    "default_model": "gemini-3.8-flash"
   },
   "background": {
     "service_worker": "dist/background.js",
@@ -37,22 +37,50 @@
     "notifications",
     "tabs",
     "offscreen",
+    "sidePanel",
     "tabGroups",
     "scripting",
     "activeTab",
     "history",
-    "contextMenus"
-  ],
-  "optional_permissions": [
-    "bookmarks",
-    "history",
-    "downloads",
-    "clipboardWrite",
-    "scripting",
     "contextMenus",
+    "idle"
+  ],
+  "side_panel": {
+    "default_path": "dist/sidepanel.html"
+  },
+  "optional_permissions": [
+    "fontSettings",
+    "proxy",
+    "tts",
+    "declarativeNetRequest",
+    "tabGroups",
+    "activeTab",
+    "scripting",
+    "bookmarks",
+    "contextMenus",
+    "downloads",
+    "history",
+    "sessions",
     "idle",
+    "webNavigation",
+    "cookies",
+    "browsingData",
+    "contentSettings",
+    "system.cpu",
+    "system.memory",
+    "system.storage",
+    "system.display",
+    "topSites",
     "readingList",
-    "webNavigation"
+    "pageCapture",
+    "management",
+    "privacy",
+    "power",
+    "search",
+    "webRequest",
+    "userScripts",
+    "clipboardWrite",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "https://api.anthropic.com/*",
@@ -66,6 +94,7 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "config.json",
         "prompt.md",
         "icon.png",
         "icon-16.png",

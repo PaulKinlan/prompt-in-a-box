@@ -3,17 +3,20 @@ import { z } from 'zod';
 
 export const alarmSet = tool({
   description:
-    'Create or replace a named Chrome alarm. The extension wakes on alarm fire, but the prompt itself is not notified per-alarm — use this only for scheduling extension-level side effects.',
+    'Create or replace a named Chrome alarm. When the alarm fires, the extension wakes and invokes the agent with the alarm name in context.',
   inputSchema: z.object({
     name: z.string().min(1),
     delayMinutes: z.number().positive().optional(),
     periodMinutes: z.number().positive().optional(),
   }),
   execute: async ({ name, delayMinutes, periodMinutes }) => {
-    await chrome.alarms.create(name, {
-      delayInMinutes: delayMinutes,
-      periodInMinutes: periodMinutes,
-    });
+    const alarmInfo =
+      delayMinutes !== undefined && periodMinutes !== undefined
+        ? { delayInMinutes: delayMinutes, periodInMinutes: periodMinutes }
+        : delayMinutes !== undefined
+          ? { delayInMinutes: delayMinutes }
+          : { periodInMinutes: periodMinutes ?? 1 };
+    await chrome.alarms.create(name, alarmInfo);
     return { ok: true };
   },
 });

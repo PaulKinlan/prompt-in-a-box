@@ -17,8 +17,8 @@ function reject(...args: unknown[]): never {
   throw new Error(UNSUPPORTED);
 }
 
-// The handful of specific named exports agent-do touches from node:fs
-// and node:path. If the bundler needs more, add them here.
+// The handful of specific named exports agent-do touches from node:fs,
+// node:path, node:crypto, node:os, node:child_process, node:util.
 export const promises = new Proxy({}, { get: () => reject });
 export const readFileSync = reject;
 export const writeFileSync = reject;
@@ -27,9 +27,18 @@ export const mkdirSync = reject;
 export const readFile = reject;
 export const writeFile = reject;
 export const stat = reject;
+export const lstat = reject;
 export const unlink = reject;
 export const readdir = reject;
 export const mkdir = reject;
+export const open = reject;
+export const rm = reject;
+export const realpath = reject;
+export const createHash = reject;
+export const randomBytes = reject;
+export const exec = reject;
+export const hostname = () => 'browser';
+export const promisify = () => reject;
 export const join = (...parts: string[]) => parts.filter(Boolean).join('/');
 export const resolve = (...parts: string[]) => parts.filter(Boolean).join('/');
 export const dirname = (p: string) => p.split('/').slice(0, -1).join('/');
@@ -49,9 +58,18 @@ export default {
   readFile,
   writeFile,
   stat,
+  lstat,
   unlink,
   readdir,
   mkdir,
+  open,
+  rm,
+  realpath,
+  createHash,
+  randomBytes,
+  exec,
+  hostname,
+  promisify,
   join,
   resolve,
   dirname,

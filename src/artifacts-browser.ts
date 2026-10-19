@@ -3,12 +3,6 @@
  * directly (it's a plain key we control) and loads individual contents
  * on demand via the background SW so we reuse the OPFS module already
  * bundled there.
- *
- * All rendering is local: no frameworks, no markdown library. The
- * markdown renderer is a tiny line-based pass — good enough for the
- * headers, lists, code blocks, and links that agents produce in
- * practice. If we ever need something richer we can drop in a real
- * library later.
  */
 
 import type { ArtifactIndexEntry, ArtifactKind, Artifact } from './artifacts';
@@ -36,12 +30,15 @@ function $(id: string): HTMLElement {
   return el;
 }
 
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function toast(msg: string, kind: 'ok' | 'error' = 'ok'): void {
   const el = $('toast');
   el.textContent = msg;
-  el.classList.toggle('error', kind === 'error');
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2400);
+  el.className = `toast show ${kind}`;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.className = 'toast';
+  }, 2400);
 }
 
 function formatKB(bytes: number): string {
@@ -215,13 +212,13 @@ function renderMarkdown(md: string): string {
 
   const inline = (s: string): string => {
     let r = escapeHtml(s);
-    // Inline code.
+    // Inline code
     r = r.replace(/`([^`]+)`/g, '<code>$1</code>');
-    // Bold.
+    // Bold
     r = r.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    // Italic (loose).
+    // Italic
     r = r.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
-    // Links.
+    // Links
     r = r.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>');
     return r;
   };
@@ -294,6 +291,12 @@ async function openViewer(artifactId: string): Promise<void> {
     return;
   }
   openArtifact = a;
+
+  // Deep linking sync
+  if (window.location.hash !== `#${a.artifactId}`) {
+    window.location.hash = a.artifactId;
+  }
+
   $('v-title').textContent = a.title;
   const sourceLink = a.sourceUrl
     ? ` · <a href="${escapeHtml(a.sourceUrl)}" target="_blank" rel="noreferrer noopener">source</a>`
@@ -332,6 +335,20 @@ async function openViewer(artifactId: string): Promise<void> {
 function closeViewer(): void {
   $('viewer').hidden = true;
   openArtifact = null;
+  // Clear hash without reloading
+  if (window.location.hash) {
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+}
+
+async function copyOpenArtifact(): Promise<void> {
+  if (!openArtifact) return;
+  try {
+    await navigator.clipboard.writeText(openArtifact.content);
+    toast('Copied content to clipboard');
+  } catch (err) {
+    toast(`Failed to copy: ${(err as Error).message}`, 'error');
+  }
 }
 
 function downloadOpenArtifact(): void {
@@ -376,9 +393,12 @@ async function refresh(): Promise<void> {
   render();
 
   const params = new URLSearchParams(window.location.search);
-  const id = params.get('id');
-  if (id) {
-    void openViewer(id);
+  const idFromParam = params.get('id');
+  const hash = window.location.hash.replace(/^#/, '');
+  const targetId = idFromParam || hash;
+
+  if (targetId) {
+    void openViewer(targetId);
   }
 }
 
@@ -411,6 +431,9 @@ function wireButtons(): void {
     toast('Cleared all artifacts.');
   });
   $('v-close').addEventListener('click', closeViewer);
+  $('v-copy').addEventListener('click', () => {
+    void copyOpenArtifact();
+  });
   $('v-delete').addEventListener('click', async () => {
     if (!openArtifact) return;
     if (!confirm(`Delete "${openArtifact.title}"?`)) return;
@@ -426,9 +449,18 @@ function wireButtons(): void {
   $('viewer').addEventListener('click', (e) => {
     if ((e.target as HTMLElement).id === 'viewer') closeViewer();
   });
+
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace(/^#/, '');
+    if (hash && (!openArtifact || openArtifact.artifactId !== hash)) {
+      void openViewer(hash);
+    } else if (!hash && openArtifact) {
+      closeViewer();
+    }
+  });
 }
 
-document.title = `${chrome.runtime.getManifest().name} — artifacts`;
+document.title = `${chrome.runtime.getManifest().name} — Artifacts`;
 wireFilters();
 wireButtons();
 void refresh();

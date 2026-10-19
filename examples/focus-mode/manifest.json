@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Focus Mode",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Standalone Focus Mode Chrome Extension built with prompt-in-a-box.",
   "prompt_in_a_box": {
     "prompt": "prompt.md",
     "alarm_minutes": 30,
     "default_provider": "anthropic",
-    "default_model": "claude-sonnet-4-6"
+    "default_model": "claude-sonnet-5-5"
   },
   "background": {
     "service_worker": "dist/background.js",

@@ -15,6 +15,8 @@ export const tabList = tool({
       url: t.url ?? '',
       active: t.active ?? false,
       pinned: t.pinned ?? false,
+      groupId: t.groupId ?? -1,
+      index: t.index,
       windowId: t.windowId,
       incognito: t.incognito,
       lastAccessed: t.lastAccessed ?? null,

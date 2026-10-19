@@ -9,6 +9,6 @@ export const tabPin = tool({
   }),
   execute: async ({ tabId, pinned }) => {
     const tab = await chrome.tabs.update(tabId, { pinned });
-    return { tabId: tab.id, pinned: tab.pinned };
+    return { tabId: tab?.id ?? tabId, pinned: tab?.pinned ?? pinned };
   },
 });

@@ -32,7 +32,7 @@ if (!apiKey) {
 }
 
 const google = createGoogleGenerativeAI({ apiKey });
-const model = google('gemini-3.1-pro-preview');
+const model = google(process.env.GEMINI_MODEL || 'gemini-3.8-flash');
 
 // ─── Local File System Tools ───────────────────────────────────────
 

@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { upsertContextMenuIndex } from './context-menu-list';
 
 export const contextMenuUpdate = tool({
   description: 'Update a context menu item (title, enabled, contexts, etc.) by its id. Only fields you provide are changed.',
@@ -34,7 +35,10 @@ export const contextMenuUpdate = tool({
           title: opts.title,
           enabled: opts.enabled,
           checked: opts.checked,
-          contexts: opts.contexts,
+          contexts: opts.contexts as [
+            `${chrome.contextMenus.ContextType}`,
+            ...`${chrome.contextMenus.ContextType}`[],
+          ] | undefined,
         },
         () => {
           const err = chrome.runtime.lastError;
@@ -43,6 +47,13 @@ export const contextMenuUpdate = tool({
         },
       );
     });
+    await upsertContextMenuIndex({
+      id: opts.id,
+      title: opts.title,
+      enabled: opts.enabled,
+      checked: opts.checked,
+      contexts: opts.contexts,
+    }).catch(() => {});
     return { id: opts.id, ok: true };
   },
 });

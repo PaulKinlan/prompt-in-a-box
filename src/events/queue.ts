@@ -35,52 +35,66 @@ async function getQueueFile(): Promise<FileSystemFileHandle> {
   return await dir.getFileHandle('queue.jsonl', { create: true });
 }
 
+let queueLock: Promise<unknown> = Promise.resolve();
+
+function withQueueLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = queueLock.then(fn, fn);
+  queueLock = next.catch(() => {});
+  return next;
+}
+
 export async function enqueueEvent(event: QueuedEvent): Promise<void> {
-  const line = JSON.stringify(event) + '\n';
-  const fh = await getQueueFile();
-  const file = await fh.getFile();
-  const existing = await file.text();
-  let next = existing + line;
-  // Trim from the front if we blow the cap. Dropping the oldest events
-  // is the least-bad option when the agent hasn't been running.
-  if (next.length > MAX_QUEUE_BYTES) {
-    const overflow = next.length - MAX_QUEUE_BYTES;
-    const cutAt = next.indexOf('\n', overflow) + 1;
-    next = next.slice(cutAt);
-  }
-  const w = await fh.createWritable();
-  await w.write(next);
-  await w.close();
+  return withQueueLock(async () => {
+    const line = JSON.stringify(event) + '\n';
+    const fh = await getQueueFile();
+    const file = await fh.getFile();
+    const existing = await file.text();
+    let next = existing + line;
+    // Trim from the front if we blow the cap. Dropping the oldest events
+    // is the least-bad option when the agent hasn't been running.
+    if (next.length > MAX_QUEUE_BYTES) {
+      const overflow = next.length - MAX_QUEUE_BYTES;
+      const cutAt = next.indexOf('\n', overflow) + 1;
+      next = next.slice(cutAt);
+    }
+    const w = await fh.createWritable();
+    await w.write(next);
+    await w.close();
+  });
 }
 
 export async function drainEvents(): Promise<QueuedEvent[]> {
-  const fh = await getQueueFile();
-  const file = await fh.getFile();
-  const text = await file.text();
-  if (!text) return [];
-  const w = await fh.createWritable();
-  await w.write('');
-  await w.close();
-  const events: QueuedEvent[] = [];
-  for (const line of text.split('\n')) {
-    if (!line) continue;
-    try {
-      events.push(JSON.parse(line) as QueuedEvent);
-    } catch {
-      // Skip malformed lines rather than fail the whole drain.
-    }
-  }
-  return events;
-}
-
-export async function peekEventCount(): Promise<number> {
-  try {
+  return withQueueLock(async () => {
     const fh = await getQueueFile();
     const file = await fh.getFile();
     const text = await file.text();
-    if (!text) return 0;
-    return text.split('\n').filter(Boolean).length;
-  } catch {
-    return 0;
-  }
+    if (!text) return [];
+    const w = await fh.createWritable();
+    await w.write('');
+    await w.close();
+    const events: QueuedEvent[] = [];
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      try {
+        events.push(JSON.parse(line) as QueuedEvent);
+      } catch {
+        // Skip malformed lines rather than fail the whole drain.
+      }
+    }
+    return events;
+  });
+}
+
+export async function peekEventCount(): Promise<number> {
+  return withQueueLock(async () => {
+    try {
+      const fh = await getQueueFile();
+      const file = await fh.getFile();
+      const text = await file.text();
+      if (!text) return 0;
+      return text.split('\n').filter(Boolean).length;
+    } catch {
+      return 0;
+    }
+  });
 }

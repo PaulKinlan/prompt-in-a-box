@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Prompt in a Box",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
   "prompt_in_a_box": {
     "prompt": "prompt.md",
     "alarm_minutes": 30,
-    "default_provider": "anthropic",
-    "default_model": "claude-sonnet-4-6"
+    "default_provider": "google",
+    "default_model": "gemini-3.8-flash"
   },
   "background": {
     "service_worker": "dist/background.js",
@@ -35,15 +35,38 @@
     "default_path": "dist/sidepanel.html"
   },
   "optional_permissions": [
-    "bookmarks",
-    "history",
-    "downloads",
-    "clipboardWrite",
+    "fontSettings",
+    "proxy",
+    "tts",
+    "declarativeNetRequest",
+    "tabGroups",
+    "activeTab",
     "scripting",
+    "bookmarks",
     "contextMenus",
+    "downloads",
+    "history",
+    "sessions",
     "idle",
+    "webNavigation",
+    "cookies",
+    "browsingData",
+    "contentSettings",
+    "system.cpu",
+    "system.memory",
+    "system.storage",
+    "system.display",
+    "topSites",
     "readingList",
-    "webNavigation"
+    "pageCapture",
+    "management",
+    "privacy",
+    "power",
+    "search",
+    "webRequest",
+    "userScripts",
+    "clipboardWrite",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "https://api.anthropic.com/*",
@@ -55,7 +78,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["prompt.md", "icon.png", "icon-16.png", "icon-32.png", "icon-48.png", "icon-128.png"],
+      "resources": ["config.json", "prompt.md", "icon.png", "icon-16.png", "icon-32.png", "icon-48.png", "icon-128.png"],
       "matches": ["<all_urls>"]
     }
   ],

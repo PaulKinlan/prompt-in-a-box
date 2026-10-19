@@ -19,45 +19,61 @@
 import { ALL_SOURCES, type EventSource } from './registry';
 import { enqueueEvent } from './queue';
 
-const MANIFEST_PERMS = new Set<string>();
-function refreshManifestPerms(): void {
-  MANIFEST_PERMS.clear();
+const grantedPerms = new Set<string>();
+
+function refreshSyncPerms(): void {
+  grantedPerms.clear();
   for (const p of chrome.runtime.getManifest().permissions ?? []) {
-    if (typeof p === 'string') MANIFEST_PERMS.add(p);
+    if (typeof p === 'string') grantedPerms.add(p);
   }
 }
 
-async function hasPermission(perm: string | null): Promise<boolean> {
-  if (perm === null) return true;
-  if (MANIFEST_PERMS.has(perm)) return true;
-  // Runtime-granted optional permissions count too.
-  return await new Promise<boolean>((resolve) => {
-    chrome.permissions.contains({ permissions: [perm] }, (granted) => resolve(granted));
+async function refreshAllPerms(): Promise<void> {
+  return new Promise((resolve) => {
+    chrome.permissions.getAll((p) => {
+      for (const perm of p.permissions ?? []) {
+        if (typeof perm === 'string') grantedPerms.add(perm);
+      }
+      resolve();
+    });
   });
+}
+
+// Hook into runtime permission grant/revoke events
+try {
+  chrome.permissions.onAdded.addListener((p) => {
+    for (const perm of p.permissions ?? []) {
+      if (typeof perm === 'string') grantedPerms.add(perm);
+    }
+  });
+  chrome.permissions.onRemoved.addListener((p) => {
+    for (const perm of p.permissions ?? []) {
+      if (typeof perm === 'string') grantedPerms.delete(perm);
+    }
+    refreshSyncPerms();
+  });
+} catch {
+  // Not all runtimes support onAdded/onRemoved
 }
 
 const active: Array<{ source: EventSource; unsubscribe: () => void }> = [];
 
 export async function startEvents(onEventTrigger: () => Promise<void>): Promise<void> {
-  refreshManifestPerms();
-  // Tear down any stale subscriptions before re-attaching. Calling
-  // startEvents twice in the same SW lifetime is legal (the options
-  // page can ask the background to re-scan permissions after a
-  // runtime grant).
+  refreshSyncPerms();
   stopEvents();
 
+  // Attach listeners synchronously during this evaluation turn
   for (const src of ALL_SOURCES) {
-    if (!(await hasPermission(src.permission))) continue;
     try {
       const unsubscribe = src.subscribe(({ source, triggersRun, payload }) => {
+        // Gate emission on whether permission is currently held
+        if (src.permission !== null && !grantedPerms.has(src.permission)) {
+          return;
+        }
+
         const queued = { at: Date.now(), source, triggersRun, payload };
-        enqueueEvent(queued).catch(() => {
-          // Queue write failures are non-fatal; the event is still
-          // logged via the trigger path if applicable.
-        });
+        enqueueEvent(queued).catch(() => {});
         if (triggersRun) {
-          // Don't await — we want the event handler to return fast so
-          // Chrome's listener budget isn't consumed.
           onEventTrigger().catch((err) => {
             console.warn('[events] trigger failed:', err);
           });
@@ -69,7 +85,9 @@ export async function startEvents(onEventTrigger: () => Promise<void>): Promise<
     }
   }
 
-  console.log('[events] subscribed to', active.length, 'sources');
+  // Refresh runtime-granted permissions asynchronously in background
+  await refreshAllPerms().catch(() => {});
+  console.log('[events] synchronously subscribed to', active.length, 'sources');
 }
 
 export function stopEvents(): void {
@@ -77,7 +95,7 @@ export function stopEvents(): void {
     try {
       unsubscribe();
     } catch {
-      // Ignore — the SW is probably tearing down.
+      // Ignore
     }
   }
   active.length = 0;

@@ -113,6 +113,19 @@ if (exampleName) {
     }
   }
 
+  // Ensure config.json exists in example folder, otherwise copy default template
+  const exampleConfig = join(exampleDir, 'config.json');
+  if (!existsSync(exampleConfig)) {
+    const templateConfig = resolve('scripts/templates/config.json');
+    if (existsSync(templateConfig)) {
+      cpSync(templateConfig, exampleConfig);
+      console.log(`⚙️ Copied default config.json to ${exampleConfig}`);
+    } else if (existsSync('config.json')) {
+      cpSync('config.json', exampleConfig);
+      console.log(`⚙️ Copied config.json to ${exampleConfig}`);
+    }
+  }
+
   // Ensure the icon set exists, otherwise copy each missing size from root.
   const iconFiles = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png'];
   for (const iconFile of iconFiles) {
@@ -144,6 +157,9 @@ const stubNodeOnlyImports = {
       path: NODE_MODULE_STUB,
     }));
     build.onResolve({ filter: /^node:/ }, () => ({
+      path: NODE_BUILTIN_STUB,
+    }));
+    build.onResolve({ filter: /^just-bash$/ }, () => ({
       path: NODE_BUILTIN_STUB,
     }));
   },

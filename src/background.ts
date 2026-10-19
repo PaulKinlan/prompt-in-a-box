@@ -18,6 +18,29 @@
 
 import { runAgentLoop, DEFAULT_PRICING, estimateCost } from 'agent-do';
 import type { AgentHooks } from 'agent-do';
+
+/** Extended pricing table incorporating latest verified model rates. */
+const RUNTIME_PRICING: Record<string, { input: number; output: number }> = {
+  ...DEFAULT_PRICING,
+  'claude-fable-5-1': { input: 10.0, output: 50.0 },
+  'claude-opus-5-5': { input: 4.0, output: 20.0 },
+  'claude-sonnet-5-5': { input: 2.0, output: 10.0 },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
+  'gemini-4-argon': { input: 2.0, output: 10.0 },
+  'gemini-3.8-flash': { input: 0.75, output: 3.75 },
+  'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+  'gpt-6-astra': { input: 10.0, output: 50.0 },
+  'gpt-6.1-sol': { input: 2.0, output: 10.0 },
+  'gpt-6-sol': { input: 2.0, output: 10.0 },
+  'gpt-6-luna': { input: 0.1, output: 0.5 },
+  'gpt-5.6-sol': { input: 4.0, output: 20.0 },
+  'gpt-5.6': { input: 4.0, output: 20.0 },
+  'gpt-5.5': { input: 5.0, output: 30.0 },
+  'gpt-5.5-pro': { input: 30.0, output: 180.0 },
+  'gpt-5.4-pro': { input: 30.0, output: 180.0 },
+  'gpt-5.4-mini': { input: 0.75, output: 4.5 },
+  'gpt-5.4-nano': { input: 0.2, output: 1.25 },
+};
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -78,8 +101,14 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== ALARM_NAME) return;
-  await run('alarm');
+  if (alarm.name === ALARM_NAME) {
+    await run('alarm');
+  } else {
+    await run(
+      'alarm',
+      `Named Chrome alarm '${alarm.name}' fired at ${new Date().toISOString()}. Execute any scheduled tasks associated with this alarm.`,
+    );
+  }
 });
 
 chrome.notifications.onClicked.addListener((notificationId) => {
@@ -238,7 +267,7 @@ async function run(
         tools,
         maxIterations: 8,
         hooks,
-        usage: { enabled: true },
+        usage: { enabled: true, pricing: RUNTIME_PRICING },
       },
       userMessage,
     );
@@ -253,7 +282,7 @@ async function run(
             cfg.model,
             result.usage.totalInputTokens,
             result.usage.totalOutputTokens,
-            DEFAULT_PRICING,
+            RUNTIME_PRICING,
           ) ||
           0,
       };

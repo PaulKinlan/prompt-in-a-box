@@ -3,109 +3,223 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
-    <title>Prompt in a Box — artifacts</title>
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;" />
+    <title>Prompt in a Box — Artifacts</title>
+    <link rel="stylesheet" href="ui-renderer.css" />
     <style>
-      :root { color-scheme: light dark; }
+      :root {
+        color-scheme: light dark;
+      }
       * { box-sizing: border-box; }
       body {
-        font: 14px/1.5 system-ui, sans-serif;
-        margin: 0 auto;
-        padding: 32px;
-        max-width: 1100px;
+        font-family: var(--pib-font);
+        margin: 0;
+        padding: 28px 20px 48px;
+        background: var(--color-bg-base);
+        color: var(--color-text-primary);
+        line-height: 1.5;
       }
-      h1 { font-size: 20px; margin: 0 0 6px; }
-      h2 { font-size: 16px; margin: 24px 0 10px; }
-      .subtitle { color: #888; margin: 0 0 24px; }
+      .artifacts-container {
+        max-width: 960px;
+        margin: 0 auto;
+      }
 
+      /* Header Bar */
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--color-border);
+      }
+      .header-title-box {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .header-title-box img {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        letter-spacing: -0.01em;
+      }
+      .subtitle {
+        color: var(--color-text-secondary);
+        font-size: 13.5px;
+        margin: 0 0 20px;
+      }
+      .header-nav {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nav-link {
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: var(--color-card-base);
+        color: var(--color-text-secondary);
+        border: 1px solid var(--color-border);
+        text-decoration: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.15s ease;
+      }
+      .nav-link:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
+        border-color: var(--color-border-hover);
+      }
+
+      /* Stats */
       .stats {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
         gap: 12px;
-        margin: 12px 0 20px;
+        margin-bottom: 20px;
+      }
+      @media (max-width: 720px) {
+        .stats { grid-template-columns: repeat(2, 1fr); }
       }
       .stat {
         padding: 12px;
-        background: rgba(128,128,128,0.06);
-        border-radius: 6px;
+        background: var(--color-card-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
         text-align: center;
       }
-      .stat .num { font-size: 20px; font-weight: 600; }
-      .stat .label { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+      .stat .num {
+        font-size: 20px;
+        font-weight: 700;
+        font-family: var(--pib-font-mono);
+      }
+      .stat .label {
+        font-size: 10.5px;
+        color: var(--color-text-muted);
+        margin-top: 3px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
 
+      /* Filters */
       .filters {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
         align-items: center;
         margin-bottom: 18px;
-        padding: 12px;
-        background: rgba(128,128,128,0.04);
-        border-radius: 6px;
+        padding: 12px 14px;
+        background: var(--color-card-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
       }
-      .filters label { font-size: 12px; opacity: 0.75; margin-right: 4px; }
+      .filters label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+        margin-right: 4px;
+      }
       .filters select, .filters input {
-        padding: 5px 8px;
-        font: inherit;
+        padding: 6px 10px;
+        font-family: inherit;
         font-size: 13px;
-        border: 1px solid rgba(128,128,128,0.4);
-        border-radius: 4px;
-        background: Canvas;
-        color: CanvasText;
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--pib-radius-sm);
+        background: var(--color-bg-base);
+        color: var(--color-text-primary);
       }
-      .filters input[type="search"] { min-width: 200px; }
-      button {
-        padding: 6px 12px;
-        font: inherit;
-        font-size: 13px;
-        border: 1px solid rgba(128,128,128,0.4);
-        border-radius: 4px;
-        background: ButtonFace;
-        color: ButtonText;
-        cursor: pointer;
+      .filters select:focus, .filters input:focus {
+        outline: none;
+        border-color: var(--color-accent);
       }
-      button.danger { color: #c03030; }
-      button.primary { background: #2f6fe1; color: white; border-color: #2f6fe1; }
+      .filters input[type="search"] { min-width: 220px; flex: 1; }
 
-      .date-group { margin-bottom: 28px; }
+      .btn {
+        padding: 6px 12px;
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        border-radius: var(--pib-radius-sm);
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-card-base);
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .btn:hover {
+        background: var(--color-card-muted);
+        border-color: var(--color-border-hover);
+      }
+      .btn-danger {
+        color: var(--color-danger);
+        border-color: var(--color-danger-border);
+      }
+      .btn-danger:hover {
+        background: var(--color-danger-bg);
+      }
+
+      /* Date Group & Artifact Cards */
+      .date-group { margin-bottom: 24px; }
       .date-group h3 {
-        font-size: 13px;
-        opacity: 0.7;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-muted);
         margin: 0 0 10px;
         padding-bottom: 6px;
-        border-bottom: 1px solid rgba(128,128,128,0.2);
+        border-bottom: 1px solid var(--color-border);
       }
       .artifact {
         padding: 12px 14px;
-        border: 1px solid rgba(128,128,128,0.2);
-        border-radius: 6px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
         margin-bottom: 8px;
         cursor: pointer;
+        background: var(--color-card-base);
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto auto;
         gap: 12px;
         align-items: center;
+        transition: all 0.15s ease;
       }
-      .artifact:hover { background: rgba(128,128,128,0.05); }
-      .artifact .kind-badge {
+      .artifact:hover {
+        border-color: var(--color-accent);
+        background: var(--color-accent-tint);
+        transform: translateX(1px);
+      }
+      .kind-badge {
         font-size: 10px;
-        font-weight: 600;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        padding: 2px 6px;
-        border-radius: 3px;
-        background: rgba(47,111,225,0.12);
-        color: #2f6fe1;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: var(--color-info-bg);
+        color: var(--color-info);
         white-space: nowrap;
       }
-      .artifact .kind-image { background: rgba(200,130,30,0.14); color: #c8821e; }
-      .artifact .kind-html { background: rgba(200,30,130,0.12); color: #c81e82; }
-      .artifact .kind-json { background: rgba(130,200,30,0.14); color: #4a8a16; }
-      .artifact .details {
-        min-width: 0;
-      }
+      .kind-image { background: var(--color-warning-bg); color: var(--color-warning); }
+      .kind-html { background: rgba(192, 38, 211, 0.1); color: #c026d3; }
+      .kind-json { background: var(--color-success-bg); color: var(--color-success); }
+
+      .artifact .details { min-width: 0; }
       .artifact .title {
-        font-weight: 500;
+        font-weight: 600;
+        font-size: 13.5px;
         margin: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -113,7 +227,7 @@
       }
       .artifact .preview {
         font-size: 12px;
-        opacity: 0.65;
+        color: var(--color-text-muted);
         margin-top: 2px;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -124,148 +238,202 @@
         flex-wrap: wrap;
         gap: 4px;
         align-items: center;
-        font-size: 11px;
-        opacity: 0.7;
       }
       .artifact .tags span {
         display: inline-block;
-        padding: 1px 5px;
-        background: rgba(128,128,128,0.12);
-        border-radius: 3px;
+        font-size: 10.5px;
+        padding: 1px 6px;
+        background: var(--color-card-muted);
+        border-radius: 4px;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-secondary);
         white-space: nowrap;
       }
-      .artifact .time { font-size: 11px; opacity: 0.6; font-family: ui-monospace, monospace; white-space: nowrap; }
+      .artifact .time {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        font-family: var(--pib-font-mono);
+        white-space: nowrap;
+      }
 
-      /* Viewer */
+      /* Modal Viewer */
       .viewer {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.4);
+        background: rgba(0, 0, 0, 0.45);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 100;
+        backdrop-filter: blur(2px);
       }
       .viewer[hidden] { display: none; }
       .viewer-inner {
-        background: Canvas;
-        color: CanvasText;
-        border-radius: 8px;
+        background: var(--color-card-base);
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--pib-radius);
         max-width: 900px;
         max-height: 90vh;
-        width: 90%;
+        width: 92%;
         overflow: auto;
         padding: 20px 24px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        box-shadow: var(--pib-shadow-lg);
       }
       .viewer-header {
         display: flex;
-        gap: 10px;
+        gap: 12px;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--color-border);
       }
-      .viewer-header h2 { margin: 0; font-size: 18px; }
-      .viewer-meta { font-size: 12px; opacity: 0.7; margin-top: 4px; }
-      .viewer-meta a { color: inherit; }
-      .viewer-actions { display: flex; gap: 6px; flex-shrink: 0; }
+      .viewer-header h2 { margin: 0; font-size: 18px; font-weight: 700; }
+      .viewer-meta { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
+      .viewer-meta a { color: var(--color-accent); text-decoration: none; }
+      .viewer-meta a:hover { text-decoration: underline; }
+      .viewer-actions { display: flex; gap: 8px; flex-shrink: 0; }
       .viewer-body {
         padding: 16px;
-        background: rgba(128,128,128,0.06);
-        border-radius: 6px;
+        background: var(--color-bg-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
         max-height: 60vh;
         overflow: auto;
       }
       .viewer-body pre {
         white-space: pre-wrap;
         word-break: break-word;
-        font: 13px/1.5 ui-monospace, monospace;
+        font: 12.5px/1.5 var(--pib-font-mono);
         margin: 0;
       }
-      .viewer-body img { max-width: 100%; height: auto; display: block; }
-      .viewer-body.markdown h1, .viewer-body.markdown h2, .viewer-body.markdown h3 { margin: 12px 0 6px; }
+      .viewer-body img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+      .viewer-body.markdown h1, .viewer-body.markdown h2, .viewer-body.markdown h3 { margin: 14px 0 6px; }
       .viewer-body.markdown p { margin: 8px 0; }
       .viewer-body.markdown ul, .viewer-body.markdown ol { padding-left: 20px; }
-      .viewer-body.markdown code { font-family: ui-monospace, monospace; font-size: 13px; background: rgba(128,128,128,0.14); padding: 1px 4px; border-radius: 3px; }
-      .viewer-body.markdown pre code { background: none; padding: 0; }
+      .viewer-body.markdown code {
+        font-family: var(--pib-font-mono);
+        font-size: 12px;
+        background: var(--color-card-muted);
+        padding: 1px 5px;
+        border-radius: 4px;
+        border: 1px solid var(--color-border);
+      }
+      .viewer-body.markdown pre code { background: none; border: none; padding: 0; }
 
       .empty {
-        padding: 40px;
+        padding: 48px;
         text-align: center;
-        opacity: 0.6;
+        color: var(--color-text-muted);
+        background: var(--color-card-base);
+        border: 1px dashed var(--color-border);
+        border-radius: var(--pib-radius);
       }
 
+      /* Toast */
       .toast {
         position: fixed;
-        top: 20px;
-        right: 20px;
+        bottom: 24px;
+        right: 24px;
         padding: 10px 16px;
-        background: #2a8a2a;
-        color: white;
-        border-radius: 4px;
-        font-size: 13px;
+        background: var(--color-card-base);
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-border-strong);
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        box-shadow: var(--pib-shadow-md);
         opacity: 0;
-        transition: opacity 0.2s;
+        transform: translateY(8px);
+        transition: all 0.2s ease;
         pointer-events: none;
+        z-index: 100;
       }
-      .toast.show { opacity: 1; }
-      .toast.error { background: #c03030; }
+      .toast.show { opacity: 1; transform: translateY(0); }
+      .toast.ok { border-color: var(--color-success); color: var(--color-success); }
+      .toast.error { border-color: var(--color-danger); color: var(--color-danger); }
     </style>
   </head>
   <body>
-    <h1>Artifacts</h1>
-    <p class="subtitle">Everything the agent has produced for you. The prompt decides what lands here via the <code>artifact_create</code> tool.</p>
-
-    <div class="stats" id="stats">
-      <div class="stat"><div class="num" id="stat-total">0</div><div class="label">Total artifacts</div></div>
-      <div class="stat"><div class="num" id="stat-today">0</div><div class="label">Today</div></div>
-      <div class="stat"><div class="num" id="stat-week">0</div><div class="label">This week</div></div>
-      <div class="stat"><div class="num" id="stat-kinds">0</div><div class="label">Distinct kinds</div></div>
-      <div class="stat"><div class="num" id="stat-size">0 KB</div><div class="label">On disk</div></div>
-    </div>
-
-    <div class="filters">
-      <label>Kind</label>
-      <select id="filter-kind">
-        <option value="">All</option>
-        <option value="markdown">markdown</option>
-        <option value="html">html</option>
-        <option value="json">json</option>
-        <option value="text">text</option>
-        <option value="image-png">image-png</option>
-        <option value="image-jpeg">image-jpeg</option>
-      </select>
-      <label>Tag</label>
-      <select id="filter-tag">
-        <option value="">All</option>
-      </select>
-      <label>Search</label>
-      <input id="filter-search" type="search" placeholder="title, preview, URL" />
-      <div style="flex:1"></div>
-      <button id="refresh">Refresh</button>
-      <button id="clearAll" class="danger">Delete all</button>
-    </div>
-
-    <div id="list"></div>
-
-    <div id="viewer" class="viewer" hidden>
-      <div class="viewer-inner">
-        <div class="viewer-header">
-          <div>
-            <h2 id="v-title"></h2>
-            <div class="viewer-meta" id="v-meta"></div>
-          </div>
-          <div class="viewer-actions">
-            <button id="v-download">Download</button>
-            <button id="v-delete" class="danger">Delete</button>
-            <button id="v-close">Close</button>
-          </div>
+    <div class="artifacts-container">
+      <!-- Top Header -->
+      <header class="page-header">
+        <div class="header-title-box">
+          <img id="extIcon" src="../icon-32.png" alt="icon" />
+          <h1>Prompt in a Box Artifacts</h1>
         </div>
-        <div class="viewer-body" id="v-body"></div>
-      </div>
-    </div>
+        <nav class="header-nav">
+          <a id="navSettings" class="nav-link" href="options.html">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Settings &amp; Audit
+          </a>
+        </nav>
+      </header>
 
-    <div id="toast" class="toast"></div>
+      <p class="subtitle">Persisted assets produced by the agent loop via the <code>artifact_create</code> tool.</p>
+
+      <!-- Stats Bar -->
+      <div class="stats" id="stats">
+        <div class="stat"><div class="num" id="stat-total">0</div><div class="label">Total artifacts</div></div>
+        <div class="stat"><div class="num" id="stat-today">0</div><div class="label">Today</div></div>
+        <div class="stat"><div class="num" id="stat-week">0</div><div class="label">This week</div></div>
+        <div class="stat"><div class="num" id="stat-kinds">0</div><div class="label">Distinct kinds</div></div>
+        <div class="stat"><div class="num" id="stat-size">0 KB</div><div class="label">On disk</div></div>
+      </div>
+
+      <!-- Filters & Actions -->
+      <div class="filters">
+        <label for="filter-kind">Kind</label>
+        <select id="filter-kind">
+          <option value="">All</option>
+          <option value="markdown">markdown</option>
+          <option value="html">html</option>
+          <option value="json">json</option>
+          <option value="text">text</option>
+          <option value="image-png">image-png</option>
+          <option value="image-jpeg">image-jpeg</option>
+        </select>
+        <label for="filter-tag">Tag</label>
+        <select id="filter-tag">
+          <option value="">All</option>
+        </select>
+        <label for="filter-search">Search</label>
+        <input id="filter-search" type="search" placeholder="Filter title, preview, URL…" />
+        <div style="display: flex; gap: 8px; margin-left: auto;">
+          <button id="refresh" class="btn">Refresh</button>
+          <button id="clearAll" class="btn btn-danger">Delete all</button>
+        </div>
+      </div>
+
+      <!-- Artifacts List -->
+      <div id="list"></div>
+
+      <!-- Viewer Modal -->
+      <div id="viewer" class="viewer" hidden>
+        <div class="viewer-inner">
+          <div class="viewer-header">
+            <div>
+              <h2 id="v-title"></h2>
+              <div class="viewer-meta" id="v-meta"></div>
+            </div>
+            <div class="viewer-actions">
+              <button id="v-copy" class="btn">Copy</button>
+              <button id="v-download" class="btn">Download</button>
+              <button id="v-delete" class="btn btn-danger">Delete</button>
+              <button id="v-close" class="btn">Close</button>
+            </div>
+          </div>
+          <div class="viewer-body" id="v-body"></div>
+        </div>
+      </div>
+
+      <!-- Toast Feedback -->
+      <div id="toast" class="toast"></div>
+    </div>
 
     <script type="module" src="artifacts-browser.js"></script>
   </body>

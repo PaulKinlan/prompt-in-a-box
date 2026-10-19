@@ -3,170 +3,312 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
-    <title>Prompt in a Box — settings &amp; audit</title>
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;" />
+    <title>Prompt in a Box — Settings &amp; Audit</title>
+    <link rel="stylesheet" href="ui-renderer.css" />
     <style>
       :root {
         color-scheme: light dark;
-        --accent: #2f6fe1;
-        --accent-strong: #2560c9;
-        --radius: 10px;
-        --border: color-mix(in srgb, CanvasText 16%, transparent);
-        --border-strong: color-mix(in srgb, CanvasText 30%, transparent);
-        --surface: color-mix(in srgb, CanvasText 3%, Canvas);
-        --surface-2: color-mix(in srgb, CanvasText 6%, Canvas);
-        --accent-tint: color-mix(in srgb, var(--accent) 10%, Canvas);
-        --accent-ring: color-mix(in srgb, var(--accent) 28%, transparent);
-        --muted: color-mix(in srgb, CanvasText 55%, Canvas);
       }
       * { box-sizing: border-box; }
       body {
-        font: 14px/1.5 system-ui, sans-serif;
+        font-family: var(--pib-font);
         margin: 0;
-        padding: 32px;
-        max-width: 900px;
+        padding: 28px 20px 48px;
+        background: var(--color-bg-base);
+        color: var(--color-text-primary);
+        line-height: 1.5;
       }
-      h1 { font-size: 20px; margin: 0 0 6px; }
-      h2 { font-size: 16px; margin: 28px 0 10px; }
-      h3 { font-size: 14px; margin: 18px 0 6px; }
-      .subtitle { color: var(--muted); margin: 0 0 24px; }
+      .options-container {
+        max-width: 920px;
+        margin: 0 auto;
+      }
+
+      /* Header Bar */
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--color-border);
+      }
+      .header-title-box {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .header-title-box img {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        letter-spacing: -0.01em;
+      }
+      .version-badge {
+        font-size: 11px;
+        font-weight: 600;
+        font-family: var(--pib-font-mono);
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: var(--color-card-muted);
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
+      }
+      .policy-badge {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--color-accent-tint);
+        color: var(--color-accent);
+        border: 1px solid var(--color-border-hover);
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .policy-badge::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-accent);
+      }
+      .header-nav {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nav-link {
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: var(--color-card-base);
+        color: var(--color-text-secondary);
+        border: 1px solid var(--color-border);
+        text-decoration: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.15s ease;
+      }
+      .nav-link:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
+        border-color: var(--color-border-hover);
+      }
+
+      .subtitle {
+        color: var(--color-text-secondary);
+        font-size: 13.5px;
+        margin: 0 0 20px;
+      }
+
+      /* Fieldsets */
       fieldset {
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 18px 20px 22px;
-        margin: 0 0 18px;
-        background: var(--surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius);
+        padding: 20px 22px;
+        margin: 0 0 20px;
+        background: var(--color-card-base);
+        box-shadow: var(--pib-shadow-sm);
       }
       legend {
         padding: 2px 10px;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 11px;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: var(--muted);
-        border: 1px solid var(--border);
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
         border-radius: 999px;
-        background: var(--surface-2);
+        background: var(--color-card-muted);
       }
       label {
         display: block;
         margin: 0 0 6px;
         font-weight: 600;
         font-size: 12px;
-        letter-spacing: 0.01em;
-        color: var(--muted);
+        color: var(--color-text-secondary);
       }
-      input, select {
+      .hint {
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--color-text-muted);
+        margin-top: 6px;
+      }
+      .hint code {
+        font-family: var(--pib-font-mono);
+        font-size: 11px;
+        padding: 1px 4px;
+        border-radius: 4px;
+        background: var(--color-card-muted);
+      }
+
+      input[type="text"], input[type="password"], input[type="number"], input[type="search"], select {
         width: 100%;
-        padding: 9px 11px;
-        font: inherit;
-        border: 1px solid var(--border-strong);
-        border-radius: 8px;
-        background: Canvas;
-        color: CanvasText;
+        padding: 9px 12px;
+        font-family: inherit;
+        font-size: 13px;
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--pib-radius-sm);
+        background: var(--color-bg-base);
+        color: var(--color-text-primary);
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
       input:focus, select:focus {
         outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-ring);
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px var(--pib-focus-ring);
       }
-      input::placeholder { color: var(--muted); opacity: 0.7; }
-      input[type="number"] { width: 140px; }
-      #apiKey, #model {
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 13px;
-        letter-spacing: 0.01em;
+      #apiKey, #model, #modelSelect {
+        font-family: var(--pib-font-mono);
+        font-size: 12.5px;
       }
 
-      /* Two-column field layout that top-aligns regardless of hint length. */
+      /* Two column grid */
       .field-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 18px;
         align-items: start;
       }
-      .field-grid > * { min-width: 0; }
 
-      .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-      .row > * { flex: 1; min-width: 180px; }
-      /* Action buttons sit at natural width, left-aligned. */
-      .actions { align-items: center; gap: 10px; }
-      .actions > * { flex: 0 0 auto; min-width: 0; }
-      button {
-        padding: 9px 16px;
-        font: inherit;
-        font-weight: 600;
-        border: 1px solid var(--border-strong);
-        border-radius: 8px;
-        background: var(--surface-2);
-        color: CanvasText;
-        cursor: pointer;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.05s ease;
-      }
-      button:hover { border-color: var(--border-strong); background: color-mix(in srgb, CanvasText 10%, Canvas); }
-      button:active { transform: translateY(1px); }
-      button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
-      button.primary {
-        background: var(--accent);
-        color: white;
-        border-color: var(--accent);
-      }
-      button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      .hint { font-size: 12px; line-height: 1.45; color: var(--muted); margin-top: 6px; }
-      .hint a { color: inherit; }
-      .hint code { font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--surface-2); }
+      /* Provider Grid */
       .provider-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
+        gap: 12px;
         margin: 4px 0 18px;
+      }
+      @media (max-width: 680px) {
+        .provider-grid { grid-template-columns: 1fr; }
       }
       .provider-card {
         position: relative;
-        padding: 14px 12px;
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius);
+        padding: 14px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
         cursor: pointer;
-        text-align: center;
-        background: Canvas;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        background: var(--color-card-base);
+        transition: all 0.15s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
       .provider-card:hover {
-        border-color: color-mix(in srgb, var(--accent) 50%, var(--border-strong));
-        background: var(--surface-2);
+        border-color: var(--color-accent);
+        background: var(--color-card-muted);
       }
       .provider-card.selected {
-        border-color: var(--accent);
-        background: var(--accent-tint);
-        box-shadow: 0 0 0 1px var(--accent) inset;
+        border-color: var(--color-accent);
+        background: var(--color-accent-tint);
+        box-shadow: 0 0 0 1px var(--color-accent) inset;
       }
-      /* Checkmark badge on the selected card. */
-      .provider-card.selected::after {
-        content: "";
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background:
-          var(--accent)
-          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E")
-          center / 11px no-repeat;
+      .provider-card .label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
       }
-      .provider-card .label { font-weight: 600; font-size: 13px; }
+      .provider-card .label {
+        font-weight: 700;
+        font-size: 13.5px;
+        color: var(--color-text-primary);
+      }
       .provider-card .model {
         font-size: 11px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: var(--muted);
-        margin-top: 5px;
+        font-family: var(--pib-font-mono);
+        color: var(--color-text-muted);
+      }
+      .provider-card .key-badge {
+        font-size: 10px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 6px;
+      }
+      .key-badge .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      .key-badge.ready { color: var(--color-success); }
+      .key-badge.ready .dot { background: var(--color-success); }
+      .key-badge.missing { color: var(--color-text-muted); }
+      .key-badge.missing .dot { background: var(--color-text-muted); opacity: 0.6; }
+
+      /* Input with action */
+      .input-with-action {
+        display: flex;
+        position: relative;
+        align-items: center;
+      }
+      .input-with-action input {
+        padding-right: 68px;
+      }
+      .input-action-btn {
+        position: absolute;
+        right: 4px;
+        background: none;
+        border: none;
+        padding: 5px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.15s ease;
+      }
+      .input-action-btn:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
       }
 
+      /* Model Chips */
+      .model-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .model-chip {
+        font-size: 11px;
+        font-family: var(--pib-font-mono);
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: var(--color-card-muted);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        user-select: none;
+      }
+      .model-chip:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-accent-tint);
+      }
+      .model-chip.active {
+        background: var(--color-accent-tint);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        font-weight: 600;
+      }
+
+      /* Provider tools grid */
       .provider-tools-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: 10px;
       }
       .provider-tool {
@@ -174,211 +316,419 @@
         align-items: flex-start;
         gap: 10px;
         padding: 12px 14px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: Canvas;
-        transition: border-color 0.15s ease, background 0.15s ease;
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
+        background: var(--color-card-base);
+        transition: all 0.15s ease;
       }
-      .provider-tool:hover { border-color: var(--border-strong); background: var(--surface-2); }
-      .provider-tool input { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; accent-color: var(--accent); }
-      .provider-tool label { margin: 0; font-weight: 600; font-size: 13px; color: CanvasText; cursor: pointer; flex: 1; }
-      .provider-tool .desc { font-size: 11px; color: var(--muted); margin-top: 3px; font-weight: normal; letter-spacing: 0; }
+      .provider-tool:hover {
+        border-color: var(--color-border-hover);
+        background: var(--color-card-muted);
+      }
+      .provider-tool input {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        margin-top: 2px;
+        accent-color: var(--color-accent);
+      }
+      .provider-tool label {
+        margin: 0;
+        font-weight: 600;
+        font-size: 12.5px;
+        color: var(--color-text-primary);
+        cursor: pointer;
+        flex: 1;
+      }
+      .provider-tool .desc {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        margin-top: 3px;
+        font-weight: normal;
+        line-height: 1.4;
+      }
+
+      /* Schedule Presets */
+      .schedule-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .preset-chips {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .preset-chip {
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 5px 10px;
+        border-radius: 6px;
+        background: var(--color-card-muted);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .preset-chip:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-accent-tint);
+      }
+      .preset-chip.active {
+        border-color: var(--color-accent);
+        color: #ffffff;
+        background: var(--color-accent);
+      }
+
+      /* Action Bar */
+      .main-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 24px 0 32px;
+      }
+      .btn {
+        padding: 9px 18px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: var(--pib-radius-sm);
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-card-base);
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn:hover:not(:disabled) {
+        background: var(--color-card-muted);
+        border-color: var(--color-border-hover);
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: var(--color-accent);
+        color: #ffffff;
+        border-color: var(--color-accent);
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: var(--color-accent-hover);
+        border-color: var(--color-accent-hover);
+      }
+      .btn-danger {
+        color: var(--color-danger);
+        border-color: var(--color-danger-border);
+      }
+      .btn-danger:hover:not(:disabled) {
+        background: var(--color-danger-bg);
+      }
 
       /* Onboarding banner */
       .onboarding {
-        background: rgba(47,111,225,0.08);
-        border: 1px solid #2f6fe1;
-        padding: 14px 18px;
-        border-radius: 6px;
+        background: var(--color-accent-tint);
+        border: 1px solid var(--color-accent);
+        padding: 16px 20px;
+        border-radius: var(--pib-radius);
         margin-bottom: 24px;
       }
-      .onboarding h2 { margin-top: 0; }
-      .onboarding .steps { margin: 0; padding-left: 20px; }
+      .onboarding h2 { margin-top: 0; font-size: 15px; color: var(--color-accent); }
+      .onboarding .steps { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6; }
 
-      /* Audit table */
-      .audit-row {
-        border-top: 1px solid rgba(128,128,128,0.2);
-        padding: 10px 0;
-      }
-      .audit-row.header {
-        font-weight: 600;
-        font-size: 12px;
-        opacity: 0.7;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-        border-top: none;
-        padding-top: 0;
-      }
-      .audit-cols {
-        display: grid;
-        grid-template-columns: 130px 80px 1fr 70px 80px 90px 30px;
-        gap: 10px;
+      /* Audit Stats */
+      .audit-section-header {
+        display: flex;
         align-items: center;
+        justify-content: space-between;
+        margin: 32px 0 12px;
       }
-      .audit-cols .status-ok { color: #2a8a2a; }
-      .audit-cols .status-error { color: #c03030; }
-      .audit-cols .status-skipped { opacity: 0.6; }
-      .audit-row .expand {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 14px;
-        color: inherit;
-        padding: 0 4px;
-      }
-      .audit-detail {
-        margin-top: 12px;
-        padding: 14px;
-        background: rgba(128,128,128,0.06);
-        border-radius: 6px;
-        font-size: 13px;
-      }
-      .audit-detail h4 { margin: 0 0 6px; font-size: 13px; }
-      .audit-detail pre {
-        white-space: pre-wrap;
-        word-break: break-word;
-        font: 12px/1.4 ui-monospace, monospace;
-        background: rgba(128,128,128,0.08);
-        padding: 8px 10px;
-        border-radius: 4px;
-        margin: 4px 0;
-        max-height: 300px;
-        overflow: auto;
-      }
-      .tool-call {
-        border-left: 3px solid #2f6fe1;
-        padding: 6px 10px;
-        margin: 8px 0;
-        background: rgba(47,111,225,0.04);
-      }
-      .tool-call .tool-name { font-weight: 600; font-family: ui-monospace, monospace; }
-      .tool-call .tool-meta { font-size: 11px; opacity: 0.6; margin-top: 2px; }
-
-      .toast {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 10px 16px;
-        background: #2a8a2a;
-        color: white;
-        border-radius: 4px;
-        font-size: 13px;
-        opacity: 0;
-        transition: opacity 0.2s;
-        pointer-events: none;
-      }
-      .toast.show { opacity: 1; }
-      .toast.error { background: #c03030; }
-
+      h2 { font-size: 17px; font-weight: 700; margin: 0; }
       .stats {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
-        margin: 12px 0 20px;
+        margin-bottom: 16px;
+      }
+      @media (max-width: 640px) {
+        .stats { grid-template-columns: repeat(2, 1fr); }
       }
       .stat {
         padding: 12px;
-        background: rgba(128,128,128,0.06);
-        border-radius: 6px;
+        background: var(--color-card-base);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
         text-align: center;
       }
-      .stat .num { font-size: 20px; font-weight: 600; }
-      .stat .label { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+      .stat .num { font-size: 20px; font-weight: 700; font-family: var(--pib-font-mono); }
+      .stat .label { font-size: 11px; color: var(--color-text-muted); margin-top: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+
+      /* Audit Filters */
+      .audit-filter-bar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .audit-filter-bar select { width: 130px; }
+      .audit-filter-bar input[type="search"] { flex: 1; min-width: 200px; }
+
+      /* Audit Table */
+      .audit-row {
+        border-top: 1px solid var(--color-border);
+        padding: 9px 0;
+      }
+      .audit-row.header {
+        font-weight: 700;
+        font-size: 11px;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-top: none;
+        padding-bottom: 8px;
+      }
+      .audit-cols {
+        display: grid;
+        grid-template-columns: 140px 90px 1fr 70px 85px 85px 30px;
+        gap: 10px;
+        align-items: center;
+        font-size: 12.5px;
+      }
+      .audit-cols .status-ok { color: var(--color-success); font-weight: 500; }
+      .audit-cols .status-error { color: var(--color-danger); font-weight: 500; }
+      .audit-cols .status-skipped { color: var(--color-text-muted); }
+      .audit-row .expand {
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--color-text-secondary);
+        padding: 2px 4px;
+        transition: all 0.15s ease;
+      }
+      .audit-row .expand:hover {
+        background: var(--color-card-muted);
+        border-color: var(--color-border);
+        color: var(--color-text-primary);
+      }
+      .audit-detail {
+        margin-top: 10px;
+        padding: 14px;
+        background: var(--color-card-muted);
+        border: 1px solid var(--color-border);
+        border-radius: var(--pib-radius-sm);
+        font-size: 12.5px;
+      }
+      .audit-detail h4 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); }
+      .audit-detail h4:first-child { margin-top: 0; }
+      .audit-detail pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 11.5px/1.4 var(--pib-font-mono);
+        background: var(--color-bg-base);
+        border: 1px solid var(--color-border);
+        padding: 8px 10px;
+        border-radius: 4px;
+        margin: 4px 0;
+        max-height: 280px;
+        overflow: auto;
+      }
+      .tool-call {
+        border-left: 3px solid var(--color-accent);
+        padding: 6px 10px;
+        margin: 8px 0;
+        background: var(--color-accent-tint);
+        border-radius: 0 4px 4px 0;
+      }
+      .tool-call .tool-name { font-weight: 700; font-family: var(--pib-font-mono); }
+      .tool-call .tool-meta { font-size: 10.5px; color: var(--color-text-muted); margin-top: 2px; }
+
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 10px 16px;
+        background: var(--color-card-base);
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-border-strong);
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        box-shadow: var(--pib-shadow-md);
+        opacity: 0;
+        transform: translateY(8px);
+        transition: all 0.2s ease;
+        pointer-events: none;
+        z-index: 100;
+      }
+      .toast.show { opacity: 1; transform: translateY(0); }
+      .toast.ok { border-color: var(--color-success); color: var(--color-success); }
+      .toast.error { border-color: var(--color-danger); color: var(--color-danger); }
     </style>
   </head>
   <body>
-    <h1><span id="extName">Prompt in a Box</span></h1>
-    <p class="subtitle">Your prompt is the program. This page configures the runtime and audits every action the agent takes.</p>
+    <div class="options-container">
+      <!-- Top Header Bar -->
+      <header class="page-header">
+        <div class="header-title-box">
+          <img id="extIcon" src="../icon-32.png" alt="icon" />
+          <h1>
+            <span id="extName">Prompt in a Box</span>
+            <span id="versionBadge" class="version-badge">v0.7.0</span>
+            <span id="policyBadge" class="policy-badge" style="display: none;">Policy Active (config.json)</span>
+          </h1>
+        </div>
+        <nav class="header-nav">
+          <a id="navArtifacts" class="nav-link" href="artifacts.html">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            Artifacts
+          </a>
+          <button id="navSidePanel" class="nav-link">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="15" y1="3" x2="15" y2="21"></line>
+            </svg>
+            Side Panel
+          </button>
+        </nav>
+      </header>
 
-    <div id="onboarding" class="onboarding" hidden>
-      <h2>First-time setup</h2>
-      <ol class="steps">
-        <li>Pick a model provider below.</li>
-        <li>Paste its API key. Keys are stored only in this browser, and sent only to the provider's endpoint.</li>
-        <li>Click <strong>Test</strong> to prove the key works, then <strong>Save &amp; finish</strong>.</li>
-      </ol>
-    </div>
+      <p class="subtitle">Your prompt is the program. Configure provider credentials, model selection, automation schedule, and inspect the runtime audit trace.</p>
 
-    <fieldset>
-      <legend>Provider</legend>
-      <div class="provider-grid" id="providerGrid"></div>
-      <div id="providerDetails">
-        <div class="field-grid">
-          <div>
-            <label for="apiKey">API key</label>
-            <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
-            <div class="hint" id="apiKeyHint"></div>
+      <!-- Onboarding Banner -->
+      <div id="onboarding" class="onboarding" hidden>
+        <h2>First-time setup</h2>
+        <ol class="steps">
+          <li>Pick a model provider below.</li>
+          <li>Paste its API key. Keys are stored safely in local extension storage and sent only to the provider endpoint.</li>
+          <li>Click <strong>Test Connection</strong> to verify, then <strong>Save Settings</strong>.</li>
+        </ol>
+      </div>
+
+      <!-- Provider & Model Configuration -->
+      <fieldset id="providerFieldset">
+        <legend>Provider &amp; Model</legend>
+        <div class="provider-grid" id="providerGrid"></div>
+        <div id="providerDetails">
+          <div class="field-grid">
+            <div>
+              <label for="apiKey">API Key</label>
+              <div class="input-with-action">
+                <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
+                <button type="button" id="toggleApiKey" class="input-action-btn">Show</button>
+              </div>
+              <div class="hint" id="apiKeyHint"></div>
+            </div>
+            <div>
+              <label for="model">Model ID</label>
+              <div id="modelInputContainer">
+                <input id="model" list="modelOptions" placeholder="" autocomplete="off" />
+                <datalist id="modelOptions"></datalist>
+                <select id="modelSelect" style="display: none;"></select>
+              </div>
+              <div id="modelChips" class="model-chips"></div>
+              <div class="hint" id="modelHint">Pick a recommended model above or enter any valid provider model identifier.</div>
+            </div>
           </div>
-          <div>
-            <label for="model">Model</label>
-            <input id="model" list="modelOptions" placeholder="" autocomplete="off" />
-            <datalist id="modelOptions"></datalist>
-            <div class="hint">Pick a recent model from the list, or type any model ID the SDK accepts. Defaults are tracked in <code>config.ts</code>.</div>
+        </div>
+      </fieldset>
+
+      <!-- Provider-Native Tools -->
+      <fieldset id="providerToolsFieldset">
+        <legend>Provider-Native Tools</legend>
+        <div class="hint" style="margin-bottom: 12px;">Server-executed tools the provider runs on your behalf (search grounding, web fetch, python code execution). Turn off any capabilities you want to disable.</div>
+        <div id="providerToolsGrid" class="provider-tools-grid"></div>
+      </fieldset>
+
+      <!-- Permissions Manager -->
+      <fieldset id="permissionsFieldset">
+        <legend>Permissions Manager</legend>
+        <div class="hint" style="margin-bottom: 12px;">Optional browser capabilities to protect user privacy. Enable the features and host origins below to unlock the corresponding tools for the agent loop.</div>
+        <div id="permissionsLoading" style="opacity: 0.6; font-size: 13px;">Scanning permissions…</div>
+        <div id="permissionsSection" style="display: flex; flex-direction: column; gap: 14px;">
+          <div id="apiPermissionsContainer" class="provider-tools-grid"></div>
+          <div id="hostPermissionsSection" style="margin-top: 6px; display: none;">
+            <h3 style="margin: 0 0 8px; font-size: 13px; font-weight: 600;">Host / Domain Permissions</h3>
+            <div id="hostPermissionsContainer" class="provider-tools-grid"></div>
           </div>
         </div>
-      </div>
-    </fieldset>
+      </fieldset>
 
-    <fieldset>
-      <legend>Provider tools</legend>
-      <div class="hint" style="margin-bottom: 10px;">Server-executed tools the provider runs on your behalf — web search, web fetch, code execution. They count against the provider's API usage like any other call. Turn off any you don't want the agent to use.</div>
-      <div id="providerToolsGrid" class="provider-tools-grid"></div>
-    </fieldset>
-
-    <fieldset id="permissionsFieldset" hidden>
-      <legend>Permissions Manager</legend>
-      <div class="hint" style="margin-bottom: 12px;">This extension specifies optional capabilities to prioritize user privacy. Enable the features and origins below to unlock the corresponding tools for the agent loop.</div>
-      <div id="permissionsLoading" style="opacity: 0.6; font-size: 13px;">Scanning permissions...</div>
-      <div id="permissionsSection" style="display: flex; flex-direction: column; gap: 14px;">
-        <div id="apiPermissionsContainer" class="provider-tools-grid"></div>
-        <div id="hostPermissionsSection" style="margin-top: 6px; display: none;">
-          <h3 style="margin: 0 0 8px; font-size: 13px; opacity: 0.85;">Host / Domain Permissions</h3>
-          <div id="hostPermissionsContainer" class="provider-tools-grid"></div>
+      <!-- Automation Schedule -->
+      <fieldset id="scheduleFieldset">
+        <legend>Automation Schedule</legend>
+        <label for="alarmMinutes">Run agent prompt periodically</label>
+        <div class="schedule-row">
+          <input id="alarmMinutes" type="number" min="1" max="1440" style="width: 110px;" />
+          <div id="schedulePresets" class="preset-chips">
+            <button type="button" class="preset-chip" data-min="5">5m</button>
+            <button type="button" class="preset-chip" data-min="15">15m</button>
+            <button type="button" class="preset-chip" data-min="30">30m</button>
+            <button type="button" class="preset-chip" data-min="60">1h</button>
+            <button type="button" class="preset-chip" data-min="240">4h</button>
+          </div>
         </div>
-      </div>
-    </fieldset>
+        <div class="hint" id="scheduleHint">Interval in minutes between automatic service worker wakeup runs.</div>
+      </fieldset>
 
-    <fieldset>
-      <legend>Schedule</legend>
-      <label for="alarmMinutes">Run the prompt every</label>
-      <div class="row">
-        <div>
-          <input id="alarmMinutes" type="number" min="1" max="1440" />
+      <!-- Main Action Bar -->
+      <div class="main-actions">
+        <button id="save" class="btn btn-primary">Save Settings</button>
+        <button id="test" class="btn">Test Connection</button>
+        <button id="runNow" class="btn">Run Agent Now</button>
+      </div>
+
+      <!-- Audit Section -->
+      <section id="auditSection">
+        <div class="audit-section-header">
+          <h2>Execution Audit Trace</h2>
         </div>
-        <div style="flex: 2;"><div class="hint" style="margin-top: 11px;">Minutes between automatic runs. The service worker dies between invocations; this is the only thing that wakes it.</div></div>
-      </div>
-    </fieldset>
+        <div class="stats" id="stats">
+          <div class="stat"><div class="num" id="stat-runs">0</div><div class="label">Total runs</div></div>
+          <div class="stat"><div class="num" id="stat-ok">0</div><div class="label">Successful</div></div>
+          <div class="stat"><div class="num" id="stat-tools">0</div><div class="label">Tool calls</div></div>
+          <div class="stat"><div class="num" id="stat-cost">$0.0000</div><div class="label">Estimated spend</div></div>
+        </div>
+        <div class="audit-filter-bar">
+          <select id="auditStatusFilter">
+            <option value="all">All Statuses</option>
+            <option value="ok">Success (ok)</option>
+            <option value="error">Error</option>
+            <option value="skipped">Skipped</option>
+          </select>
+          <input id="auditSearch" type="search" placeholder="Search trigger, tool, or summary…" />
+          <div style="display: flex; gap: 8px; margin-left: auto;">
+            <button id="refreshAudit" class="btn" style="padding: 7px 12px; font-size: 12px;">Refresh</button>
+            <button id="exportAudit" class="btn" style="padding: 7px 12px; font-size: 12px;">Export JSON</button>
+            <button id="clearAudit" class="btn btn-danger" style="padding: 7px 12px; font-size: 12px;">Clear</button>
+          </div>
+        </div>
+        <div class="audit-cols audit-row header">
+          <div>When</div>
+          <div>Trigger</div>
+          <div>Summary</div>
+          <div>Tools</div>
+          <div>Tokens</div>
+          <div>Cost</div>
+          <div></div>
+        </div>
+        <div id="auditList"></div>
+      </section>
 
-    <div class="row actions" style="margin-bottom: 24px;">
-      <button id="save" class="primary">Save</button>
-      <button id="test">Test</button>
-      <button id="runNow">Run now</button>
+      <!-- Toast Feedback -->
+      <div id="toast" class="toast"></div>
     </div>
-
-    <h2>Audit</h2>
-    <div class="stats" id="stats">
-      <div class="stat"><div class="num" id="stat-runs">0</div><div class="label">Total runs</div></div>
-      <div class="stat"><div class="num" id="stat-ok">0</div><div class="label">Successful</div></div>
-      <div class="stat"><div class="num" id="stat-tools">0</div><div class="label">Tool calls</div></div>
-      <div class="stat"><div class="num" id="stat-cost">$0.0000</div><div class="label">Estimated spend</div></div>
-    </div>
-    <div class="row" style="margin-bottom: 10px;">
-      <button id="refreshAudit">Refresh</button>
-      <button id="exportAudit">Export JSON</button>
-      <button id="clearAudit">Clear</button>
-    </div>
-    <div class="audit-cols audit-row header">
-      <div>When</div>
-      <div>Trigger</div>
-      <div>Summary</div>
-      <div>Tools</div>
-      <div>Tokens</div>
-      <div>Cost</div>
-      <div></div>
-    </div>
-    <div id="auditList"></div>
-
-    <div id="toast" class="toast"></div>
 
     <script type="module" src="options.js"></script>
   </body>

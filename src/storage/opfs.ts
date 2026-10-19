@@ -104,7 +104,6 @@ export class OPFS {
   async list(path: string): Promise<Array<{ name: string; kind: 'file' | 'directory' }>> {
     const dir = await this.resolveDir(path || '', false);
     const entries: Array<{ name: string; kind: 'file' | 'directory' }> = [];
-    // @ts-expect-error async iterator is supported in modern browsers
     for await (const [name, handle] of dir.entries()) {
       entries.push({ name, kind: handle.kind });
     }

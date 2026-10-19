@@ -84,12 +84,17 @@ if (exampleName) {
     'dist/background.js',
     'dist/popup.js',
     'dist/popup.html',
+    'dist/sidepanel.js',
+    'dist/sidepanel.html',
+    'dist/ui-renderer.css',
     'dist/options.js',
     'dist/options.html',
     'dist/offscreen.js',
     'dist/offscreen.html',
     'dist/artifacts.html',
     'dist/artifacts-browser.js',
+    'dist/sandbox.html',
+    'dist/sandbox.js',
   ];
 
   const missing = REQUIRED.filter((f) => !existsSync(join(exampleDir, f)));
@@ -136,12 +141,17 @@ if (exampleName) {
     'dist/background.js',
     'dist/popup.js',
     'dist/popup.html',
+    'dist/sidepanel.js',
+    'dist/sidepanel.html',
+    'dist/ui-renderer.css',
     'dist/options.js',
     'dist/options.html',
     'dist/offscreen.js',
     'dist/offscreen.html',
     'dist/artifacts.html',
     'dist/artifacts-browser.js',
+    'dist/sandbox.html',
+    'dist/sandbox.js',
   ];
 
   const ICON_FILES = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png'];
@@ -164,6 +174,9 @@ if (exampleName) {
   // Copy files to staging
   cpSync('prompt.md', join(STAGING_DIR, 'prompt.md'));
   cpSync('manifest.json', join(STAGING_DIR, 'manifest.json'));
+  if (existsSync('config.json')) {
+    cpSync('config.json', join(STAGING_DIR, 'config.json'));
+  }
   for (const f of ICON_FILES) {
     cpSync(f, join(STAGING_DIR, f));
   }

@@ -59,7 +59,12 @@ if (target === 'default' || target === 'reset') {
   fs.copyFileSync(defaultPrompt, path.join(repoRoot, 'prompt.md'));
   fs.copyFileSync(defaultManifest, path.join(repoRoot, 'manifest.json'));
 
-  console.log('\n✨ Reset workspace to baseline prompt.md and manifest.json!');
+  const defaultConfig = path.join(templatesDir, 'config.json');
+  if (fs.existsSync(defaultConfig)) {
+    fs.copyFileSync(defaultConfig, path.join(repoRoot, 'config.json'));
+  }
+
+  console.log('\n✨ Reset workspace to baseline prompt.md, manifest.json, and config.json!');
   process.exit(0);
 }
 
@@ -94,6 +99,19 @@ if (fs.existsSync(exampleManifest)) {
   if (fs.existsSync(defaultManifest)) {
     fs.copyFileSync(defaultManifest, path.join(repoRoot, 'manifest.json'));
     console.log(`📋 No custom manifest found. Restored baseline to manifest.json`);
+  }
+}
+
+// Copy config.json or restore default
+const exampleConfig = path.join(exampleDir, 'config.json');
+if (fs.existsSync(exampleConfig)) {
+  fs.copyFileSync(exampleConfig, path.join(repoRoot, 'config.json'));
+  console.log(`⚙️ Copied examples/${target}/config.json -> config.json (custom config)`);
+} else {
+  const defaultConfig = path.join(templatesDir, 'config.json');
+  if (fs.existsSync(defaultConfig)) {
+    fs.copyFileSync(defaultConfig, path.join(repoRoot, 'config.json'));
+    console.log(`⚙️ No custom config.json found. Restored baseline to config.json`);
   }
 }
 

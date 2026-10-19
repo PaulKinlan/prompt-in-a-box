@@ -4,25 +4,311 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;" />
-    <title>Agent Sidepanel</title>
+    <title>Prompt in a Box — Side Panel</title>
     <link rel="stylesheet" href="ui-renderer.css" />
     <style>
+      :root {
+        color-scheme: light dark;
+      }
       body {
+        font-family: var(--pib-font);
         margin: 0;
         padding: 0;
-        background: #f8fafc;
+        background: var(--color-bg-base);
+        color: var(--color-text-primary);
+        display: flex;
+        flex-direction: column;
         min-height: 100vh;
         overflow-x: hidden;
       }
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #090d16;
-        }
+      * { box-sizing: border-box; }
+
+      /* Sticky Top Header */
+      .sp-header {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        background: var(--color-card-base);
+        border-bottom: 1px solid var(--color-border);
+        box-shadow: var(--pib-shadow-sm);
+      }
+      .brand-box {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .brand-box img {
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        flex-shrink: 0;
+      }
+      .brand-title {
+        font-size: 13.5px;
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .version-badge {
+        font-size: 9.5px;
+        font-weight: 600;
+        font-family: var(--pib-font-mono);
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--color-card-muted);
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .header-run-btn {
+        background: var(--color-accent);
+        color: #ffffff;
+        border: none;
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-size: 11.5px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.15s ease;
+      }
+      .header-run-btn:hover:not(:disabled) {
+        background: var(--color-accent-hover);
+      }
+      .header-run-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .icon-btn {
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 5px;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+      }
+      .icon-btn:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
+        border-color: var(--color-border);
+      }
+
+      /* Slim Status Bar */
+      .sp-status-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 14px;
+        background: var(--color-bg-subtle);
+        border-bottom: 1px solid var(--color-border);
+        font-size: 11px;
+      }
+      .status-runtime {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-text-secondary);
+      }
+      .status-model {
+        font-family: var(--pib-font-mono);
+        font-weight: 600;
+        color: var(--color-text-primary);
+      }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      .status-ready { color: var(--color-success); }
+      .status-ready .status-dot { background: var(--color-success); }
+      .status-missing { color: var(--color-warning); }
+      .status-missing .status-dot { background: var(--color-warning); }
+
+      /* Run Status banner */
+      .sp-run-status {
+        padding: 6px 14px;
+        font-size: 11.5px;
+        line-height: 1.4;
+        display: none;
+        background: var(--color-card-muted);
+        border-bottom: 1px solid var(--color-border);
+      }
+      .sp-run-status.show { display: block; }
+      .sp-run-status.ok { background: var(--color-success-bg); color: var(--color-success); border-color: var(--color-success-border); }
+      .sp-run-status.error { background: var(--color-danger-bg); color: var(--color-danger); border-color: var(--color-danger-border); }
+
+      /* Main Dynamic View Host */
+      .sp-main {
+        flex: 1;
+        padding: 12px 14px;
+        overflow-y: auto;
+      }
+
+      /* Collapsible Drawer */
+      .sp-drawer {
+        border-top: 1px solid var(--color-border);
+        background: var(--color-card-base);
+        margin-top: auto;
+      }
+      .drawer-toggle {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 9px 14px;
+        background: none;
+        border: none;
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      .drawer-toggle:hover {
+        background: var(--color-card-muted);
+        color: var(--color-text-primary);
+      }
+      .drawer-content {
+        display: none;
+        padding: 10px 14px 14px;
+        border-top: 1px solid var(--color-border);
+        max-height: 220px;
+        overflow-y: auto;
+      }
+      .drawer-content.open { display: block; }
+
+      .drawer-section-title {
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-muted);
+        margin: 6px 0 6px;
+      }
+      .drawer-item {
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid var(--color-border);
+        background: var(--color-bg-base);
+        margin-bottom: 5px;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .drawer-item:hover {
+        border-color: var(--color-accent);
+        background: var(--color-accent-tint);
+      }
+      .drawer-item-title {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 500;
+      }
+      .drawer-item-meta {
+        font-size: 10px;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        font-family: var(--pib-font-mono);
       }
     </style>
   </head>
   <body>
-    <div id="app-root"></div>
+    <!-- Top Sticky Header -->
+    <header class="sp-header">
+      <div class="brand-box">
+        <img id="extIcon" src="../icon-32.png" alt="icon" />
+        <h1 class="brand-title">
+          <span id="extName">Prompt in a Box</span>
+          <span id="version" class="version-badge">v0.7.0</span>
+        </h1>
+      </div>
+      <div class="header-actions">
+        <button id="runNowBtn" class="header-run-btn" title="Execute Agent Now">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span>Run</span>
+        </button>
+        <button id="openArtifactsBtn" class="icon-btn" title="View Artifacts" aria-label="Artifacts">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </button>
+        <button id="openOptionsBtn" class="icon-btn" title="Settings &amp; Audit" aria-label="Settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Runtime Status Bar -->
+    <div class="sp-status-bar">
+      <div class="status-runtime">
+        <span id="spProviderModel" class="status-model">—</span>
+      </div>
+      <div id="spKeyStatus" class="status-pill status-missing" title="Provider API Key Status">
+        <span class="status-dot"></span>
+        <span id="spKeyText">No Key</span>
+      </div>
+    </div>
+
+    <!-- Active Run Status Toast / Banner -->
+    <div id="spRunStatus" class="sp-run-status"></div>
+
+    <!-- Main dynamic agent UI mount -->
+    <main id="app-root" class="sp-main"></main>
+
+    <!-- Collapsible Recent Activity Drawer -->
+    <footer class="sp-drawer">
+      <button id="toggleActivityBtn" class="drawer-toggle" aria-expanded="false">
+        <span>Recent Activity &amp; Artifacts</span>
+        <span id="activityChevron">▾</span>
+      </button>
+      <div id="activityDrawerContent" class="drawer-content">
+        <div class="drawer-section-title">Recent Runs</div>
+        <div id="spRecentRuns"><div style="opacity: 0.6; font-size: 11px;">No runs recorded yet.</div></div>
+        <div class="drawer-section-title" style="margin-top: 10px;">Recent Artifacts</div>
+        <div id="spRecentArtifacts"><div style="opacity: 0.6; font-size: 11px;">No artifacts produced yet.</div></div>
+      </div>
+    </footer>
+
     <script type="module" src="sidepanel.js"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { upsertContextMenuIndex } from './context-menu-list';
 
 /**
  * Context menu items the prompt creates are event sources for the
@@ -48,7 +49,10 @@ export const contextMenuCreate = tool({
         {
           id: opts.id,
           title: opts.title,
-          contexts: opts.contexts ?? ['page'],
+          contexts: (opts.contexts ?? ['page']) as [
+            `${chrome.contextMenus.ContextType}`,
+            ...`${chrome.contextMenus.ContextType}`[],
+          ],
           parentId: opts.parentId,
           type: opts.type,
           enabled: opts.enabled,
@@ -62,6 +66,16 @@ export const contextMenuCreate = tool({
         },
       );
     });
+    await upsertContextMenuIndex({
+      id: opts.id,
+      title: opts.title,
+      contexts: opts.contexts ?? ['page'],
+      parentId: opts.parentId,
+      type: opts.type,
+      enabled: opts.enabled ?? true,
+      documentUrlPatterns: opts.documentUrlPatterns,
+      targetUrlPatterns: opts.targetUrlPatterns,
+    }).catch(() => {});
     return { id: opts.id, ok: true };
   },
 });

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const tabGroup = tool({
   description:
-    'Group tabs together. Pass `groupId` to add to an existing group, or omit and provide `title`/`color` to create a new group. Pass an empty tabIds with existing groupId to update the group\'s title/color.',
+    'Group tabs together. Pass `groupId` to add to an existing group, or omit and provide `title`/`color` to create a new group. Pass an empty tabIds with existing groupId to update the group\'s title/color/collapsed state.',
   inputSchema: z.object({
     tabIds: z.array(z.number()).describe('Tab ids to add to the group.'),
     groupId: z.number().optional().describe('Existing group id. Omit to create a new one.'),
@@ -11,15 +11,41 @@ export const tabGroup = tool({
     color: z
       .enum(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'])
       .optional(),
+    collapsed: z
+      .boolean()
+      .optional()
+      .describe('Whether the group should be collapsed. If omitted when adding to an existing group, the group\'s current collapsed state is preserved.'),
   }),
-  execute: async ({ tabIds, groupId, title, color }) => {
+  execute: async ({ tabIds, groupId, title, color, collapsed }) => {
+    let wasCollapsed: boolean | undefined;
+    if (groupId !== undefined) {
+      try {
+        const existingGroup = await chrome.tabGroups.get(groupId);
+        wasCollapsed = existingGroup.collapsed;
+      } catch {
+        // Group may not exist or tabGroups permission not available
+      }
+    }
+
     let finalGroupId = groupId;
     if (tabIds.length > 0) {
-      finalGroupId = await chrome.tabs.group({ tabIds, groupId });
+      finalGroupId = await chrome.tabs.group({
+        tabIds: tabIds as [number, ...number[]],
+        groupId,
+      });
     }
-    if (finalGroupId !== undefined && (title !== undefined || color !== undefined)) {
-      await chrome.tabGroups.update(finalGroupId, { title, color });
+
+    const targetCollapsed = collapsed !== undefined ? collapsed : wasCollapsed;
+    if (
+      finalGroupId !== undefined &&
+      (title !== undefined || color !== undefined || targetCollapsed !== undefined)
+    ) {
+      const updateProps: chrome.tabGroups.UpdateProperties = {};
+      if (title !== undefined) updateProps.title = title;
+      if (color !== undefined) updateProps.color = color;
+      if (targetCollapsed !== undefined) updateProps.collapsed = targetCollapsed;
+      await chrome.tabGroups.update(finalGroupId, updateProps);
     }
-    return { groupId: finalGroupId };
+    return { groupId: finalGroupId, collapsed: targetCollapsed ?? false };
   },
 });
