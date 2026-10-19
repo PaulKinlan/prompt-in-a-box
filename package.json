@@ -1,6 +1,6 @@
 {
   "name": "prompt-in-a-box",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "private": true,
   "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
   "type": "module",
@@ -9,6 +9,8 @@
     "watch": "node build.js --watch",
     "typecheck": "tsc --noEmit",
     "pack": "node scripts/pack.js",
+    "bump": "node scripts/version.js",
+    "version:status": "node scripts/version.js --status",
     "release": "npm run build && npm run pack",
     "create": "node scripts/create.js",
     "use": "node scripts/use.js",

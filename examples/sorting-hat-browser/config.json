@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "1.0.0",
   "providers": {
     "allowed": [
       "google"
@@ -12,7 +12,6 @@
     "lockModel": false,
     "allowCustomModelInput": true,
     "allowed": {
-     
       "google": [
         "gemini-3.8-flash",
         "gemini-4-argon"
@@ -38,8 +37,14 @@
         "type": "select",
         "default": "ungrouped_only",
         "options": [
-          { "label": "Sort only ungrouped tabs", "value": "ungrouped_only" },
-          { "label": "Status quo (re-sort existing groups too)", "value": "status_quo" }
+          {
+            "label": "Sort only ungrouped tabs",
+            "value": "ungrouped_only"
+          },
+          {
+            "label": "Status quo (re-sort existing groups too)",
+            "value": "status_quo"
+          }
         ]
       },
       {

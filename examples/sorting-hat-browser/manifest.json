@@ -7,7 +7,8 @@
     "prompt": "prompt.md",
     "alarm_minutes": 15,
     "default_provider": "google",
-    "default_model": "gemini-3.8-flash"
+    "default_model": "gemini-3.8-flash",
+    "pack_hash": "fa106199f8175cc1178f2ddcc7235a6ead01625adbf07c32578dc373b9e72719"
   },
   "background": {
     "service_worker": "dist/background.js",

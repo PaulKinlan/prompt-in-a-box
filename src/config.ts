@@ -205,7 +205,7 @@ export interface Config {
 }
 
 export const DEFAULT_STATIC_CONFIG: Required<Omit<StaticConfig, 'agentSettings'>> & { agentSettings: AgentSettingsConfig | null } = {
-  version: '0.7.0',
+  version: typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest().version : '0.7.0',
   providers: {
     allowed: ['anthropic', 'google', 'openai'],
     default: 'google',

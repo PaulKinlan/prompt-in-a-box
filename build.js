@@ -67,6 +67,12 @@ if (exampleName) {
         if (exampleContent.name) manifestContent.name = exampleContent.name;
         if (exampleContent.version) manifestContent.version = exampleContent.version;
         if (exampleContent.description) manifestContent.description = exampleContent.description;
+        if (exampleContent.action) {
+          manifestContent.action = { ...manifestContent.action, ...exampleContent.action };
+        } else if (exampleContent.name) {
+          manifestContent.action = manifestContent.action || {};
+          manifestContent.action.default_title = exampleContent.name;
+        }
         
         if (exampleContent.prompt_in_a_box) {
           manifestContent.prompt_in_a_box = {

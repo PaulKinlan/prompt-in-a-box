@@ -14,6 +14,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync, rmSync, statSync, mkdirSync, cpSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { syncVersionOnPack } from './version.js';
 
 const repoRoot = resolve(new URL('..', import.meta.url).pathname);
 process.chdir(repoRoot);
@@ -61,6 +62,13 @@ if (exampleName) {
     console.error(`\n❌ Error building example "${exampleName}":`, err.message);
     process.exit(1);
   }
+
+  // 1b. Check content hash and sync/bump version if contents changed
+  const versionInfo = syncVersionOnPack(exampleName, {
+    forceBump: args.includes('--force-bump'),
+    noBump: args.includes('--no-bump'),
+    releaseType: args.includes('--minor') ? 'minor' : args.includes('--major') ? 'major' : 'patch',
+  });
 
   const exampleDir = join('examples', exampleName);
   const zipName = `${exampleName}.zip`;
@@ -114,9 +122,11 @@ if (exampleName) {
     });
 
     const size = (statSync(absoluteZipPath).size / 1024).toFixed(1);
-    console.log(`\n✨ Successfully built and packaged standalone example!`);
+    console.log(`\n✨ Successfully built and packaged standalone example v${versionInfo.version}!`);
     console.log(`📂 Unpacked extension folder:  file://${absoluteExampleDir}`);
     console.log(`📦 Standalone zip file:        file://${absoluteZipPath} (${size} kB)`);
+    console.log(`🔖 Version:                   v${versionInfo.version}`);
+    console.log(`🔑 Content Hash:             ${versionInfo.hash.slice(0, 16)}...`);
     console.log('\nLoad either unpacked folder directly in chrome://extensions or upload the ZIP to the Chrome Web Store.');
   } catch (err) {
     console.error('\n❌ Error during zipping:', err.message);
@@ -131,6 +141,13 @@ if (exampleName) {
     console.error('\n❌ Error building default workspace:', err.message);
     process.exit(1);
   }
+
+  // Check content hash and sync/bump version if contents changed
+  const versionInfo = syncVersionOnPack(null, {
+    forceBump: args.includes('--force-bump'),
+    noBump: args.includes('--no-bump'),
+    releaseType: args.includes('--minor') ? 'minor' : args.includes('--major') ? 'major' : 'patch',
+  });
 
   const ZIP_NAME = 'prompt-in-a-box.zip';
   if (existsSync(ZIP_NAME)) {
@@ -194,7 +211,9 @@ if (exampleName) {
     });
 
     const size = (statSync(ZIP_NAME).size / 1024).toFixed(1);
-    console.log(`\n✨ Packed ${ZIP_NAME} (${size} kB) successfully at repository root!`);
+    console.log(`\n✨ Packed ${ZIP_NAME} v${versionInfo.version} (${size} kB) successfully at repository root!`);
+    console.log(`🔖 Version:       v${versionInfo.version}`);
+    console.log(`🔑 Content Hash: ${versionInfo.hash.slice(0, 16)}...`);
   } catch (err) {
     console.error('\n❌ Error during zipping default extension:', err.message);
     process.exit(1);
