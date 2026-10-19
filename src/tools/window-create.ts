@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { recordAction } from '../action-history';
 
 export const windowCreate = tool({
   description:
@@ -27,6 +28,19 @@ export const windowCreate = tool({
       height,
       state,
     });
+
+    if (created?.id !== undefined) {
+      await recordAction({
+        toolName: 'window_create',
+        label: `Opened new window (${created.id})`,
+        detail: urls ? `${urls.length} tabs: ${urls.slice(0, 2).join(', ')}` : 'New empty window',
+        undo: {
+          kind: 'window_create',
+          createdWindowId: created.id,
+        },
+      });
+    }
+
     return {
       windowId: created?.id,
       tabIds: (created?.tabs ?? []).map((t) => t.id),

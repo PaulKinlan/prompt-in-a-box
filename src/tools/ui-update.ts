@@ -11,16 +11,49 @@ export const uiUpdate = tool({
     theme: z.enum(['default', 'glassmorphic', 'compact']).default('default').describe('Visual theme styling to apply.'),
     components: z.array(
       z.object({
-        type: z.enum(['header', 'text', 'button', 'alert', 'list', 'input']),
+        type: z
+          .enum(['header', 'text', 'button', 'alert', 'list', 'input', 'metrics', 'action-list', 'action-history', 'divider'])
+          .describe('Component type to render.'),
         id: z.string().optional().describe('Unique identifier for interactive elements. Crucial for catching interaction event click callbacks.'),
         text: z.string().optional().describe('Text content of the element (headers, text, button labels, or alert texts).'),
         intent: z.enum(['info', 'success', 'warning', 'danger']).optional().describe('Styling intent for alerts or buttons.'),
-        action: z.enum(['trigger-run', 'chrome-api', 'none']).optional().describe('Behavior on click: "trigger-run" alerts the agent loop, "chrome-api" directly runs a client-side Chrome API, "none" is static.'),
+        action: z
+          .enum(['trigger-run', 'chrome-api', 'undo-last', 'undo-action', 'none'])
+          .optional()
+          .describe('Behavior on click: "trigger-run" alerts the agent loop, "chrome-api" directly runs a client-side Chrome API, "undo-last" reverts the most recent action/sort, "undo-action" reverts a specific action, "none" is static.'),
+        actionId: z.string().optional().describe('The action ID to revert when action is "undo-action".'),
         apiMethod: z.string().optional().describe('The chrome API method name if action is chrome-api (e.g. "tabs.create" or "tabs.remove").'),
-        apiArgs: z.array(z.string()).optional().describe('The arguments to pass to the chrome API method. For complex objects or non-string arguments, pass them as a JSON-stringified string (e.g., ["{\\"url\\": \\"https://google.com\\"}"]).'),
+        apiArgs: z.array(z.string()).optional().describe('The arguments to pass to the chrome API method.'),
         placeholder: z.string().optional().describe('Placeholder text for input components.'),
         items: z.array(z.string()).optional().describe('Array of items to display when type is "list".'),
-        payload: z.any().optional().describe('Custom state or data payload to pass back to the agent on interaction click events.')
+        payload: z.any().optional().describe('Custom state or data payload to pass back to the agent on interaction click events.'),
+        limit: z.number().optional().describe('Max entries to show when type is "action-history". Default 15.'),
+        showUndoAll: z.boolean().optional().describe('Whether to show a prominent Undo All / Undo Last button in action-history. Default true.'),
+        undoAllLabel: z.string().optional().describe('Label for the Undo All button. Default "Undo Last Action".'),
+        emptyText: z.string().optional().describe('Text to display when list or action history is empty.'),
+        metrics: z
+          .array(
+            z.object({
+              label: z.string(),
+              value: z.string(),
+              subvalue: z.string().optional(),
+            })
+          )
+          .optional()
+          .describe('List of stat cards to display in a grid when type is "metrics".'),
+        actions: z
+          .array(
+            z.object({
+              id: z.string().optional(),
+              label: z.string(),
+              detail: z.string().optional(),
+              timestamp: z.string().optional(),
+              undoable: z.boolean().optional(),
+              undone: z.boolean().optional(),
+            })
+          )
+          .optional()
+          .describe('List of custom action rows when type is "action-list".')
       })
     ).describe('List of interface components to lay out sequentially.')
   }),

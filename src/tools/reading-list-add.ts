@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { recordAction } from '../action-history';
 
 // chrome.readingList isn't in @types/chrome yet. Duck-type the bits we use.
 interface ReadingListApi {
@@ -19,6 +20,17 @@ export const readingListAdd = tool({
   }),
   execute: async ({ url, title, hasBeenRead }) => {
     await api().addEntry({ url, title, hasBeenRead: hasBeenRead ?? false });
+
+    await recordAction({
+      toolName: 'reading_list_add',
+      label: `Added to reading list: "${title}"`,
+      detail: url,
+      undo: {
+        kind: 'reading_list_add',
+        url,
+      },
+    });
+
     return { ok: true };
   },
 });

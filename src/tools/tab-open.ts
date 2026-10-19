@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { recordAction } from '../action-history';
 
 export const tabOpen = tool({
   description: 'Open a URL in a new tab. Returns the new tab\'s id and title after it has loaded.',
@@ -9,6 +10,19 @@ export const tabOpen = tool({
   }),
   execute: async ({ url, active }) => {
     const tab = await chrome.tabs.create({ url, active: active ?? false });
+
+    if (tab.id !== undefined) {
+      await recordAction({
+        toolName: 'tab_open',
+        label: `Opened tab: ${tab.title || url}`,
+        detail: `Tab ID: ${tab.id}, URL: ${url}`,
+        undo: {
+          kind: 'tab_open',
+          createdTabId: tab.id,
+        },
+      });
+    }
+
     return { tabId: tab.id, title: tab.title ?? '', url: tab.url ?? url };
   },
 });

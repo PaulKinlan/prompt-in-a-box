@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { listActionHistory, undoActionById, undoLastRun } from '../action-history';
 
 export interface TabSnapshotItem {
   id: number;
@@ -196,5 +197,40 @@ export const actionToast = tool({
       popupOpened,
       hasSnapshot: !!snapshot,
     };
+  },
+});
+
+export const actionHistory = tool({
+  description: 'List the recent tool mutation actions (e.g. tabs grouped, moved, closed) and their undo status.',
+  inputSchema: z.object({
+    limit: z.number().int().positive().optional().describe('Maximum number of recent actions to return. Default 20.'),
+  }),
+  execute: async ({ limit }) => {
+    const history = await listActionHistory(limit ?? 20);
+    return {
+      count: history.length,
+      actions: history.map((h) => ({
+        id: h.id,
+        runId: h.runId,
+        timestamp: h.timestamp,
+        tool: h.toolName,
+        label: h.label,
+        detail: h.detail,
+        undone: h.undone,
+      })),
+    };
+  },
+});
+
+export const actionUndo = tool({
+  description: 'Revert a specific tool mutation action by its action ID, or revert the entire last run.',
+  inputSchema: z.object({
+    actionId: z.string().optional().describe('The specific action ID to revert. If omitted, reverts all actions from the most recent run.'),
+  }),
+  execute: async ({ actionId }) => {
+    if (actionId) {
+      return await undoActionById(actionId);
+    }
+    return await undoLastRun();
   },
 });

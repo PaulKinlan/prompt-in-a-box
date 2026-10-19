@@ -32,7 +32,7 @@ import {
   extractTables,
 } from './page-action';
 import { tabScreenshot } from './tab-screenshot';
-import { actionToast } from './action-toast';
+import { actionToast, actionHistory, actionUndo } from './action-toast';
 import { idleQuery } from './idle-query';
 import { notificationShow } from './notification-show';
 import { bookmarkSearch } from './bookmark-search';
@@ -99,6 +99,9 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
     opfs_list: opfsList,
     artifact_create: artifactCreate,
     ui_update: uiUpdate,
+    action_history: actionHistory,
+    action_undo: actionUndo,
+    undo_action: actionUndo,
     window_list: windowList,
     window_create: windowCreate,
     window_close: windowClose,

@@ -5,7 +5,7 @@
 import { getConfig, activeKey, PROVIDER_LABELS, getStaticConfig } from './config';
 import type { AuditEntry } from './audit';
 import type { ArtifactIndexEntry, ArtifactKind } from './artifacts';
-import { UIRenderer, type UISchema } from './ui-renderer';
+import { UIRenderer, loadPromptUIBlock, type UISchema } from './ui-renderer';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
@@ -360,7 +360,13 @@ async function checkDynamicUI(): Promise<void> {
   const data = (await chrome.storage.local.get('__pib_dynamic_ui')) as {
     __pib_dynamic_ui?: UISchema;
   };
-  const spec = data.__pib_dynamic_ui;
+  let spec = data.__pib_dynamic_ui;
+  if (!spec || !spec.components || spec.components.length === 0) {
+    const promptSpec = await loadPromptUIBlock();
+    if (promptSpec && promptSpec.components && promptSpec.components.length > 0) {
+      spec = promptSpec;
+    }
+  }
 
   if (spec && spec.components && spec.components.length > 0) {
     viewSwitcher.style.display = 'flex';

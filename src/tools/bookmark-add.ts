@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { recordAction } from '../action-history';
 
 export const bookmarkAdd = tool({
   description:
@@ -12,6 +13,17 @@ export const bookmarkAdd = tool({
   }),
   execute: async ({ title, url, parentId, index }) => {
     const node = await chrome.bookmarks.create({ title, url, parentId, index });
+
+    await recordAction({
+      toolName: 'bookmark_add',
+      label: `Created bookmark: "${title}"`,
+      detail: `URL: ${url}, ID: ${node.id}`,
+      undo: {
+        kind: 'bookmark_add',
+        createdBookmarkId: node.id,
+      },
+    });
+
     return { id: node.id, title: node.title, url: node.url ?? null, parentId: node.parentId ?? null };
   },
 });

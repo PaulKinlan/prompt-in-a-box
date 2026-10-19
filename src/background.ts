@@ -64,6 +64,12 @@ import {
 } from './artifacts';
 import { startEvents } from './events/dispatcher';
 import { drainEvents } from './events/queue';
+import {
+  setCurrentRunId,
+  undoActionById,
+  undoLastRun,
+  listActionHistory,
+} from './action-history';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
 
@@ -180,8 +186,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // Permissions may have changed since last boot; re-scan.
         startEvents(triggerRun).catch(() => {});
         sendResponse({ ok: true });
+      } else if (msg?.type === 'get-action-history') {
+        const history = await listActionHistory(msg.limit || 30);
+        sendResponse({ ok: true, history });
+      } else if (msg?.type === 'undo-action') {
+        sendResponse(await undoActionById(msg.actionId));
       } else if (msg?.type === 'action-toast-undo') {
-        sendResponse(await restoreSortSnapshot());
+        const snapRes = await restoreSortSnapshot();
+        const journalRes = await undoLastRun();
+        sendResponse({ ok: snapRes.ok || journalRes.ok, snapRes, journalRes });
       } else if (msg?.type === 'action-toast-dismiss') {
         await chrome.storage.local.remove(['activeUndoToast', 'lastSortSnapshot']);
         try {
@@ -208,6 +221,7 @@ async function run(
   customUserMessage?: string,
 ): Promise<AuditEntry> {
   const runId = newRunId();
+  setCurrentRunId(runId);
   const startedAt = Date.now();
   const cfg = await getConfig();
   const apiKey = activeKey(cfg);

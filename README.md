@@ -223,6 +223,8 @@ Extensions can declare static policies in `config.json` (or per-example `config.
   - `find_elements`, `click_element`, `type_text`, `select_option`, `scroll_page`, `wait_for`: Safe accessibility-snapshot DOM interaction.
   - `extract_tables`: Extracts tabular DOM structures.
 - **Undo Toast Bubble (`action_toast`)**: Pops open an undo toast attached to the extension icon after major operations (like tab sorting), allowing instant deterministic restoration.
+- **Declarative Agent UI (`prompt.md`)**: Describe the agent's popup and side panel UI directly inside `prompt.md` using a fenced ```` ```ui ```` JSON block! The extension renders it immediately upon opening (even before the background model runs), while `ui_update` allows the agent loop to dynamically update it during runtime.
+- **Universal Action History & Undo Journal**: All mutating tools (`tab_group`, `tab_ungroup`, `tab_move`, `tab_pin`, `tab_mute`, `tab_close`, `tab_open`, `tab_navigate`, `tab_duplicate`, `window_create`, `window_close`, `window_resize`, `bookmark_add`, `bookmark_remove`, `reading_list_add`, `storage_set`) automatically log to a deterministic action journal. The UI features both a prominent "Undo Last Sort / Revert All" button and per-item "Undo" buttons on each row in the recent actions list!
 
 ## Artifacts — things the agent creates for you
 
