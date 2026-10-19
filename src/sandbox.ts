@@ -113,6 +113,20 @@ function snakeToCamel(str: string): string {
 // Common single-argument tool normalization
 function normalizeToolArgs(toolName: string, args: unknown): unknown {
   if (args === undefined || args === null) return {};
+  if (typeof args === 'object' && !Array.isArray(args)) {
+    const obj = { ...(args as Record<string, unknown>) };
+    if (obj.id !== undefined && obj.tabId === undefined) {
+      obj.tabId = obj.id;
+    } else if (obj.tabId !== undefined && obj.id === undefined) {
+      obj.id = obj.tabId;
+    }
+    if (obj.maxChars !== undefined && obj.maxLength === undefined) {
+      obj.maxLength = obj.maxChars;
+    } else if (obj.maxLength !== undefined && obj.maxChars === undefined) {
+      obj.maxChars = obj.maxLength;
+    }
+    return obj;
+  }
   if (typeof args === 'object') return args;
 
   const t = toolName.toLowerCase();
@@ -120,7 +134,7 @@ function normalizeToolArgs(toolName: string, args: unknown): unknown {
     typeof args === 'number' &&
     (t.includes('tab') || t === 'read_page' || t === 'capture_page')
   ) {
-    return { tabId: args };
+    return { tabId: args, id: args };
   }
   if (typeof args === 'string') {
     if (t === 'storage_get' || t === 'get_state') return { key: args };

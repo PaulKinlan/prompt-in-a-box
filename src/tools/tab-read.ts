@@ -11,6 +11,7 @@ export const tabRead = tool({
     'Read the rendered content of a tab (defaults to active tab if tabId is omitted): extracts title, description, headings, readable markdown, body text, and links.',
   inputSchema: z.object({
     tabId: z.number().optional().describe('Tab ID to read. Defaults to the active tab if omitted.'),
+    id: z.number().optional().describe('Alias for tabId.'),
     maxChars: z
       .number()
       .int()
@@ -18,23 +19,41 @@ export const tabRead = tool({
       .max(200_000)
       .optional()
       .describe('Cap text/markdown length. Default 30 000.'),
+    maxLength: z
+      .number()
+      .int()
+      .positive()
+      .max(200_000)
+      .optional()
+      .describe('Alias for maxChars.'),
     format: z
       .enum(['markdown', 'text', 'both'])
       .optional()
       .describe("Preferred content format: 'markdown' (default), 'text', or 'both'."),
   }),
-  execute: async ({ tabId, maxChars, format }) => {
-    const gate = await pageAccessGate(tabId, 'read tab content');
+  execute: async ({ tabId, id, maxChars, maxLength, format }) => {
+    const resolvedTabId = tabId ?? id;
+    const gate = await pageAccessGate(resolvedTabId, 'read tab content');
     if (!gate.ok) {
       return {
-        error: gate.error,
+        id: gate.tab?.id,
         tabId: gate.tab?.id,
-        url: gate.url,
+        title: gate.tab?.title || '',
+        url: gate.url || '',
+        description: '',
+        metaDescription: '',
+        headings: [],
+        headingTexts: [],
+        markdown: '',
+        content: '',
+        excerpt: '',
+        error: gate.error,
+        blocked: true,
       };
     }
 
     const targetTabId = gate.tab.id!;
-    const charCap = maxChars ?? 30_000;
+    const charCap = maxChars ?? maxLength ?? 30_000;
 
     try {
       const [injectionResult] = await chrome.scripting.executeScript({
@@ -74,7 +93,20 @@ export const tabRead = tool({
 
       const raw = injectionResult?.result;
       if (!raw) {
-        return { error: 'Failed to extract content from tab: script returned empty result', tabId: targetTabId };
+        return {
+          id: targetTabId,
+          tabId: targetTabId,
+          title: gate.tab.title || '',
+          url: gate.url || '',
+          description: '',
+          metaDescription: '',
+          headings: [],
+          headingTexts: [],
+          markdown: '',
+          content: '',
+          excerpt: '',
+          error: 'Failed to extract content from tab: script returned empty result',
+        };
       }
 
       const readable = extractReadableMarkdown(raw.html, {
@@ -84,32 +116,54 @@ export const tabRead = tool({
       });
 
       const selectedFormat = format ?? 'markdown';
+      const cleanExcerpt = (raw.innerText || readable.markdown || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 600);
+      const cleanDesc = raw.metaDescription || '';
+
       const output: Record<string, unknown> = {
+        id: targetTabId,
         tabId: targetTabId,
         url: raw.url || gate.url,
         title: readable.title || raw.title || gate.tab.title || 'Untitled',
-        metaDescription: raw.metaDescription || null,
-        byline: readable.byline,
-        published: readable.published,
-        wordCount: readable.wordCount,
+        description: cleanDesc,
+        metaDescription: cleanDesc || null,
+        meta: {
+          description: cleanDesc,
+          byline: readable.byline,
+          published: readable.published,
+        },
         headings: raw.headings,
+        headingTexts: (raw.headings || []).map((h) => h.text),
+        wordCount: readable.wordCount,
+        excerpt: cleanExcerpt,
+        markdown: readable.markdown.slice(0, charCap),
+        content: (raw.innerText || readable.markdown || '').slice(0, charCap),
         links: readable.links.slice(0, 30),
         untrusted: true,
       };
 
-      if (selectedFormat === 'markdown' || selectedFormat === 'both') {
-        output.markdown = readable.markdown.slice(0, charCap);
-      }
-      if (selectedFormat === 'text' || selectedFormat === 'both') {
-        output.content = raw.innerText.slice(0, charCap);
+      if (selectedFormat === 'text') {
+        output.markdown = '';
       }
 
       return output;
     } catch (err) {
       return {
-        error: `Failed to read tab content: ${(err as Error).message}`,
+        id: targetTabId,
         tabId: targetTabId,
-        url: gate.url,
+        title: gate.tab.title || '',
+        url: gate.url || '',
+        description: '',
+        metaDescription: '',
+        headings: [],
+        headingTexts: [],
+        markdown: '',
+        content: '',
+        excerpt: '',
+        error: `Failed to read tab content: ${(err as Error).message}`,
+        blocked: String(err).includes('ExtensionsSettings policy'),
       };
     }
   },

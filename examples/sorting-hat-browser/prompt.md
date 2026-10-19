@@ -67,14 +67,15 @@ You are the "Sorting Hat" for browser tabs. Your task is to automatically catego
        const targetTabs = tabs.filter(t => !t.pinned && (sortMode === 'ungrouped_only' ? (t.groupId === -1 || t.groupId === undefined) : true));
        const summaries = await Promise.all(targetTabs.map(async (t) => {
          let desc = '', headings = [];
-         if (usePageContent) {
+         const tabId = t.id ?? t.tabId;
+         if (usePageContent && typeof tabId === 'number') {
            try {
-             const page = await tools.tab_read({ tabId: t.id, maxLength: 500 });
-             desc = page?.meta?.description || '';
-             headings = (page?.headings || []).slice(0, 3);
+             const page = await tools.tab_read({ tabId, maxLength: 500 });
+             desc = page?.description || page?.meta?.description || page?.excerpt || '';
+             headings = (page?.headingTexts || (page?.headings || []).map(h => typeof h === 'string' ? h : h.text)).slice(0, 3);
            } catch {}
          }
-         return { id: t.id, title: t.title, url: t.url, groupId: t.groupId, desc, headings };
+         return { id: tabId, tabId, title: t.title, url: t.url, groupId: t.groupId, desc, headings };
        }));
        return { groups, summaries, state };
        ```

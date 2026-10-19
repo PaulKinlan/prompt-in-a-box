@@ -10,6 +10,7 @@ export const tabList = tool({
   execute: async ({ query }) => {
     const tabs = await chrome.tabs.query({});
     let rows = tabs.map((t) => ({
+      id: t.id,
       tabId: t.id,
       title: t.title ?? '',
       url: t.url ?? '',

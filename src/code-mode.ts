@@ -26,6 +26,7 @@ export interface CodeSession {
   toolCallsCount: number;
   tools: ToolSet;
   recordToolCall?: (call: AuditToolCall) => void;
+  readCache?: Map<number, Promise<unknown>>;
 }
 
 const activeSessions = new Map<string, CodeSession>();
@@ -173,9 +174,65 @@ export async function handleCodeModeToolCall(msg: any): Promise<{
     return { ok: false, error: `Tool '${resolvedName}' cannot be executed` };
   }
 
+  const args = msg?.args ?? {};
+
+  // Normalize parameters and guard tab_read
+  if (resolvedName === 'tab_read') {
+    if (args && typeof args === 'object' && !Array.isArray(args)) {
+      if (args.id !== undefined && args.tabId === undefined) {
+        args.tabId = args.id;
+      }
+      if (args.tabId !== undefined && args.id === undefined) {
+        args.id = args.tabId;
+      }
+      if (args.maxLength !== undefined && args.maxChars === undefined) {
+        args.maxChars = args.maxLength;
+      }
+      // If tabId was explicitly passed as undefined or null, fail fast with a clear error
+      // instead of silently falling back to the active tab!
+      if (
+        ('tabId' in args && (args.tabId === undefined || args.tabId === null)) ||
+        ('id' in args && (args.id === undefined || args.id === null))
+      ) {
+        if (args.tabId === undefined || args.tabId === null) {
+          return {
+            ok: false,
+            error:
+              'tab_read: tabId is undefined or null. Provide a valid tab ID (e.g. from tab_list) or omit tabId completely to read the active tab.',
+          };
+        }
+      }
+    }
+
+    // Deduplicate / cache tab_read calls within the same code_mode session
+    const targetTabId = typeof args?.tabId === 'number' && Number.isFinite(args.tabId) ? args.tabId : undefined;
+    if (targetTabId !== undefined) {
+      if (!session.readCache) {
+        session.readCache = new Map();
+      }
+      const existing = session.readCache.get(targetTabId);
+      if (existing) {
+        try {
+          const cachedResult = await existing;
+          void emitAgentLog(
+            {
+              runId: session.runId,
+              channel: 'tool-result',
+              title: `[code_mode] Using cached tab_read for tabId ${targetTabId}`,
+              data: { tabId: targetTabId, cached: true },
+            },
+            `[code_mode] Cached tab_read (${targetTabId})`,
+          );
+          return { ok: true, result: cachedResult };
+        } catch (err: any) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      }
+    }
+  }
+
   session.toolCallsCount++;
   const callStarted = Date.now();
-  const args = msg?.args ?? {};
 
   void emitAgentLog(
     {
@@ -187,11 +244,20 @@ export async function handleCodeModeToolCall(msg: any): Promise<{
     `[code_mode] ${resolvedName}...`,
   );
 
-  try {
-    const result = await (toolObj.execute as any)(args, {
+  const execPromise = (async () => {
+    return (toolObj.execute as any)(args, {
       toolCallId: msg?.callId || `code_call_${Date.now()}`,
       messages: [],
     });
+  })();
+
+  if (resolvedName === 'tab_read' && typeof (args as any)?.tabId === 'number') {
+    if (!session.readCache) session.readCache = new Map();
+    session.readCache.set((args as any).tabId, execPromise);
+  }
+
+  try {
+    const result = await execPromise;
     const durationMs = Date.now() - callStarted;
 
     void emitAgentLog(
