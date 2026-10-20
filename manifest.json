@@ -3,13 +3,6 @@
   "name": "Prompt in a Box",
   "version": "0.7.2",
   "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
-  "prompt_in_a_box": {
-    "prompt": "prompt.md",
-    "alarm_minutes": 0,
-    "default_provider": "google",
-    "default_model": "gemini-3.8-flash",
-    "pack_hash": "e946a6f61b1718147a0789b0363bf0fae7ce798b75741f069ce6953de21d848f"
-  },
   "background": {
     "service_worker": "dist/background.js",
     "type": "module"

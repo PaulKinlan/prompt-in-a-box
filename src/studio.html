@@ -783,6 +783,35 @@
         </div>
 
         <div class="pane-scrollable">
+          <!-- Metadata & Identity Card (Top of Left Pane) -->
+          <div class="card">
+            <div class="card-title">
+              <span>Extension Metadata</span>
+              <span id="versionIndicator" class="badge-tag">v1.0.0</span>
+            </div>
+
+            <div>
+              <label for="extNameInput">Name</label>
+              <input type="text" id="extNameInput" placeholder="My Extension" />
+            </div>
+
+            <div class="field-row">
+              <div>
+                <label for="extSlugInput">Slug</label>
+                <input type="text" id="extSlugInput" placeholder="my-extension" />
+              </div>
+              <div>
+                <label for="extAlarmInput">Alarm Interval (min)</label>
+                <input type="number" id="extAlarmInput" min="0" max="1440" value="30" />
+              </div>
+            </div>
+
+            <div>
+              <label for="extDescInput">Description</label>
+              <textarea id="extDescInput" placeholder="Crisp summary of what this extension does..."></textarea>
+            </div>
+          </div>
+
           <!-- AI Generator Card -->
           <div class="card" style="border-color: var(--color-accent);">
             <div class="card-title">
@@ -798,8 +827,7 @@
             <div id="dropzone" class="dropzone">
               <input type="file" id="fileInput" multiple accept="image/*,.svg,.pdf,.md,.txt,.json" style="display: none;" />
               <div class="dropzone-label">
-                <span>📎 Drop inspiration image/mockup or click to attach</span>
-                <span style="font-size: 10px; color: var(--color-text-muted);">(Screenshots, mockups, specs, or paste with Ctrl+V)</span>
+                <span>📎 Drop inspiration images, mockups, or .md specs here</span>
               </div>
             </div>
             <div id="attachmentChips" class="attachment-chips"></div>
@@ -832,35 +860,6 @@
             <div id="aiProgressText" style="display: none; font-size: 11px; color: var(--color-accent); font-family: var(--pib-font-mono);"></div>
           </div>
 
-          <!-- Metadata & Identity Card -->
-          <div class="card">
-            <div class="card-title">
-              <span>Extension Metadata</span>
-              <span id="versionIndicator" class="badge-tag">v1.0.0</span>
-            </div>
-
-            <div>
-              <label for="extNameInput">Name</label>
-              <input type="text" id="extNameInput" placeholder="My Extension" />
-            </div>
-
-            <div class="field-row">
-              <div>
-                <label for="extSlugInput">Slug</label>
-                <input type="text" id="extSlugInput" placeholder="my-extension" />
-              </div>
-              <div>
-                <label for="extAlarmInput">Alarm Interval (min)</label>
-                <input type="number" id="extAlarmInput" min="0" max="1440" value="30" />
-              </div>
-            </div>
-
-            <div>
-              <label for="extDescInput">Description</label>
-              <textarea id="extDescInput" placeholder="Crisp summary of what this extension does..."></textarea>
-            </div>
-          </div>
-
           <!-- Icon Designer Card (LLM-Powered + Configurable) -->
           <div class="card">
             <div class="card-title">
@@ -870,19 +869,19 @@
 
             <div class="icon-preview-grid">
               <div class="icon-preview-box">
-                <canvas id="iconCanvas128" width="48" height="48" style="width: 48px; height: 48px; border-radius: 8px;"></canvas>
+                <canvas id="iconCanvas512" width="112" height="112" style="width: 56px; height: 56px; border-radius: 10px;"></canvas>
+                <span>512px Master</span>
+              </div>
+              <div class="icon-preview-box">
+                <canvas id="iconCanvas128" width="88" height="88" style="width: 44px; height: 44px; border-radius: 8px;"></canvas>
                 <span>128px</span>
               </div>
               <div class="icon-preview-box">
-                <canvas id="iconCanvas48" width="32" height="32" style="width: 32px; height: 32px; border-radius: 6px;"></canvas>
+                <canvas id="iconCanvas48" width="64" height="64" style="width: 32px; height: 32px; border-radius: 6px;"></canvas>
                 <span>48px</span>
               </div>
               <div class="icon-preview-box">
-                <canvas id="iconCanvas32" width="24" height="24" style="width: 24px; height: 24px; border-radius: 5px;"></canvas>
-                <span>32px</span>
-              </div>
-              <div class="icon-preview-box">
-                <canvas id="iconCanvas16" width="16" height="16" style="width: 16px; height: 16px; border-radius: 4px;"></canvas>
+                <canvas id="iconCanvas16" width="32" height="32" style="width: 16px; height: 16px; border-radius: 4px;"></canvas>
                 <span>16px</span>
               </div>
             </div>
@@ -1121,35 +1120,110 @@
         <!-- Subview A: Live Interactive UI Preview -->
         <div id="previewContainer" class="preview-body">
           <!-- Visual Dashboard UI Configurator -->
-          <div id="uiConfigToolbar" class="card" style="margin-bottom: 12px; padding: 10px 12px; gap: 8px;">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted);">
+          <div id="uiConfigToolbar" class="card" style="margin-bottom: 12px; padding: 10px 12px; gap: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border); padding-bottom: 6px;">
+              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.04em;">
                 Dashboard UI Configurator
               </span>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <label for="uiThemeSelect" style="margin: 0; font-size: 11px;">Theme:</label>
-                <select id="uiThemeSelect" style="width: auto; padding: 3px 8px; font-size: 11px;">
-                  <option value="glassmorphic">Glassmorphic</option>
-                  <option value="default">Default</option>
-                  <option value="compact">Compact</option>
+              <div style="display: flex; gap: 4px;">
+                <button id="btnSuggestUiLayout" class="chip-btn" style="color: var(--color-accent); font-weight: 700; border-color: var(--color-accent);" title="Automatically suggest layout and components based on extension prompt">
+                  ✨ Suggest Layout &amp; UI
+                </button>
+                <button id="btnAiStyleUi" class="chip-btn" title="Use AI to generate custom theme styles and accent colors">
+                  ✨ Style UI with AI
+                </button>
+              </div>
+            </div>
+
+            <!-- Theme Preset & Layout Mode -->
+            <div class="field-row">
+              <div>
+                <label for="uiThemeSelect" style="margin: 0 0 3px; font-size: 10.5px;">Theme Preset</label>
+                <select id="uiThemeSelect" style="padding: 4px 8px; font-size: 11.5px;">
+                  <option value="default">Default Clean</option>
+                  <option value="glassmorphic">iOS / visionOS Glassmorphic</option>
+                  <option value="neon-dark">Cyber Neon Dark</option>
+                  <option value="warm-editorial">Warm Editorial Paper</option>
+                  <option value="compact">Compact Utilitarian</option>
+                </select>
+              </div>
+              <div>
+                <label for="uiLayoutModeSelect" style="margin: 0 0 3px; font-size: 10.5px;">Layout Mode</label>
+                <select id="uiLayoutModeSelect" style="padding: 4px 8px; font-size: 11.5px;">
+                  <option value="stack">Stack (Vertical Flow)</option>
+                  <option value="bento-grid">Bento Grid (2-Column Dashboard)</option>
+                  <option value="two-column">Split Two-Column</option>
+                  <option value="tabbed">Tabbed Sections</option>
+                  <option value="chat-first">Chat-First Agent View</option>
+                  <option value="compact-feed">Compact Utility Feed</option>
                 </select>
               </div>
             </div>
+
+            <!-- Title & Accent Color -->
             <div style="display: flex; align-items: center; gap: 8px;">
-              <label for="uiTitleInput" style="margin: 0; font-size: 11px; white-space: nowrap;">Title:</label>
-              <input type="text" id="uiTitleInput" placeholder="Dashboard Title..." style="padding: 4px 8px; font-size: 11.5px;" />
+              <div style="flex: 1;">
+                <label for="uiTitleInput" style="margin: 0 0 3px; font-size: 10.5px;">Dashboard Title</label>
+                <input type="text" id="uiTitleInput" placeholder="Dashboard Title..." style="padding: 4px 8px; font-size: 11.5px;" />
+              </div>
+              <div style="width: 75px;">
+                <label for="uiAccentColorInput" style="margin: 0 0 3px; font-size: 10.5px;">Accent</label>
+                <input type="color" id="uiAccentColorInput" value="#2563eb" style="height: 28px; padding: 1px 3px; width: 100%; cursor: pointer;" />
+              </div>
             </div>
+
             <div>
-              <label style="margin-bottom: 4px; font-size: 10.5px;">Add UI Component:</label>
-              <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                <button class="chip-btn" data-add-ui-comp="metrics">+ Metrics</button>
-                <button class="chip-btn" data-add-ui-comp="button">+ Button</button>
-                <button class="chip-btn" data-add-ui-comp="alert">+ Alert</button>
-                <button class="chip-btn" data-add-ui-comp="table">+ Table</button>
-                <button class="chip-btn" data-add-ui-comp="list">+ List</button>
-                <button class="chip-btn" data-add-ui-comp="key-value">+ Key-Value</button>
-                <button class="chip-btn" data-add-ui-comp="progress">+ Progress</button>
-                <button class="chip-btn" data-add-ui-comp="action-history">+ Undo Log</button>
+              <label for="uiThemeInspirationInput" style="margin: 0 0 3px; font-size: 10.5px;">Theme Inspiration / Aesthetic Notes</label>
+              <input type="text" id="uiThemeInspirationInput" placeholder="e.g. 'Apple glassmorphism, soft cyan glow, dark violet card backgrounds'..." style="padding: 4px 8px; font-size: 11px;" />
+            </div>
+
+            <!-- Scannable Dynamic UI Component Palette -->
+            <div style="border-top: 1px solid var(--color-border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="font-size: 10.5px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.03em;">
+                Add Dynamic UI Components
+              </div>
+
+              <!-- Inputs Group -->
+              <div>
+                <div style="font-size: 10px; color: var(--color-text-secondary); margin-bottom: 3px; font-weight: 600;">Inputs &amp; Controls:</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                  <button class="chip-btn" data-add-ui-comp="select">+ Select</button>
+                  <button class="chip-btn" data-add-ui-comp="switch">+ Switch</button>
+                  <button class="chip-btn" data-add-ui-comp="radio">+ Radio</button>
+                  <button class="chip-btn" data-add-ui-comp="checkbox">+ Checkbox</button>
+                  <button class="chip-btn" data-add-ui-comp="textarea">+ Textarea</button>
+                  <button class="chip-btn" data-add-ui-comp="password">+ Password</button>
+                  <button class="chip-btn" data-add-ui-comp="date-time">+ Date/Time</button>
+                  <button class="chip-btn" data-add-ui-comp="file">+ File</button>
+                  <button class="chip-btn" data-add-ui-comp="slider">+ Slider</button>
+                </div>
+              </div>
+
+              <!-- Agent / Tasks Group -->
+              <div>
+                <div style="font-size: 10px; color: var(--color-text-secondary); margin-bottom: 3px; font-weight: 600;">Agent &amp; Tasks:</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                  <button class="chip-btn" data-add-ui-comp="chat">+ Agent Chat</button>
+                  <button class="chip-btn" data-add-ui-comp="task-list">+ Task List</button>
+                  <button class="chip-btn" data-add-ui-comp="summary">+ Summary</button>
+                  <button class="chip-btn" data-add-ui-comp="button">+ Action Button</button>
+                  <button class="chip-btn" data-add-ui-comp="action-history">+ Undo Log</button>
+                </div>
+              </div>
+
+              <!-- Containers & Display Group -->
+              <div>
+                <div style="font-size: 10px; color: var(--color-text-secondary); margin-bottom: 3px; font-weight: 600;">Containers &amp; Display:</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                  <button class="chip-btn" data-add-ui-comp="card">+ Card</button>
+                  <button class="chip-btn" data-add-ui-comp="carousel">+ Carousel</button>
+                  <button class="chip-btn" data-add-ui-comp="metrics">+ Metrics</button>
+                  <button class="chip-btn" data-add-ui-comp="table">+ Table</button>
+                  <button class="chip-btn" data-add-ui-comp="dialog">+ Dialog</button>
+                  <button class="chip-btn" data-add-ui-comp="menu">+ Menu</button>
+                  <button class="chip-btn" data-add-ui-comp="alert">+ Alert</button>
+                  <button class="chip-btn" data-add-ui-comp="icon">+ Icon/Image</button>
+                </div>
               </div>
             </div>
           </div>

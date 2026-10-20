@@ -143,8 +143,10 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   allowDeleteArtifacts: true,
 };
 
-export interface StaticConfig {
+export interface ExtensionConfig {
   version?: string;
+  prompt?: string;
+  pack_hash?: string;
   providers?: {
     allowed?: Provider[];
     default?: Provider;
@@ -185,6 +187,8 @@ export interface StaticConfig {
   };
 }
 
+export type StaticConfig = ExtensionConfig;
+
 export interface Config {
   provider: Provider;
   model: string;
@@ -206,8 +210,18 @@ export interface Config {
   agentSettings?: AgentSettingsConfig | null;
 }
 
-export const DEFAULT_STATIC_CONFIG: Required<Omit<StaticConfig, 'agentSettings'>> & { agentSettings: AgentSettingsConfig | null } = {
+export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSettings' | 'permissions' | 'prompt' | 'pack_hash'>> & {
+  agentSettings: AgentSettingsConfig | null;
+  permissions?: {
+    allowed?: string[];
+    blocked?: string[];
+  };
+  prompt?: string;
+  pack_hash?: string;
+} = {
   version: typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest().version : '0.7.0',
+  prompt: 'prompt.md',
+  pack_hash: '',
   providers: {
     allowed: ['anthropic', 'google', 'openai'],
     default: 'google',
@@ -291,18 +305,20 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<StaticConfig, 'agentSettings'>
   },
 };
 
-let cachedStaticConfig: StaticConfig | null = null;
+let cachedStaticConfig: ExtensionConfig | null = null;
 
-export async function getStaticConfig(): Promise<StaticConfig> {
+export async function getExtensionConfig(): Promise<ExtensionConfig> {
   if (cachedStaticConfig) return cachedStaticConfig;
   try {
     const url = chrome.runtime.getURL('config.json');
     const res = await fetch(url);
     if (res.ok) {
-      const data = (await res.json()) as StaticConfig;
+      const data = (await res.json()) as ExtensionConfig;
       cachedStaticConfig = {
         ...DEFAULT_STATIC_CONFIG,
         ...data,
+        prompt: data.prompt ?? DEFAULT_STATIC_CONFIG.prompt,
+        pack_hash: data.pack_hash ?? '',
         providers: { ...DEFAULT_STATIC_CONFIG.providers, ...(data.providers || {}) },
         models: {
           ...DEFAULT_STATIC_CONFIG.models,
@@ -324,11 +340,54 @@ export async function getStaticConfig(): Promise<StaticConfig> {
       return cachedStaticConfig;
     }
   } catch (err) {
-    console.warn('[config] Failed to load config.json, using defaults:', err);
+    console.warn('[config] Failed to load config.json, checking legacy manifest fallback:', err);
   }
+
+  // Legacy fallback: check manifest.prompt_in_a_box if config.json is missing or failed
+  try {
+    const manifest = typeof chrome !== 'undefined' && chrome.runtime?.getManifest
+      ? (chrome.runtime.getManifest() as chrome.runtime.Manifest & {
+          prompt_in_a_box?: {
+            prompt?: string;
+            pack_hash?: string;
+            alarm_minutes?: number;
+            default_provider?: Provider;
+            default_model?: string;
+          };
+        })
+      : null;
+    const legacy = manifest?.prompt_in_a_box;
+    if (legacy) {
+      cachedStaticConfig = {
+        ...DEFAULT_STATIC_CONFIG,
+        prompt: legacy.prompt || 'prompt.md',
+        pack_hash: legacy.pack_hash || '',
+        providers: {
+          ...DEFAULT_STATIC_CONFIG.providers,
+          default: legacy.default_provider || DEFAULT_STATIC_CONFIG.providers.default,
+        },
+        models: {
+          ...DEFAULT_STATIC_CONFIG.models,
+          default: legacy.default_model || DEFAULT_STATIC_CONFIG.models.default,
+        },
+        schedule: {
+          ...DEFAULT_STATIC_CONFIG.schedule,
+          defaultAlarmMinutes: typeof legacy.alarm_minutes === 'number'
+            ? legacy.alarm_minutes
+            : DEFAULT_STATIC_CONFIG.schedule.defaultAlarmMinutes,
+        },
+      };
+      return cachedStaticConfig;
+    }
+  } catch (err) {
+    console.warn('[config] Failed to read manifest legacy fallback:', err);
+  }
+
   cachedStaticConfig = DEFAULT_STATIC_CONFIG;
   return cachedStaticConfig;
 }
+
+export const getStaticConfig = getExtensionConfig;
 
 export function isPolicyLocked(policy: StaticConfig): boolean {
   if (policy.providers?.lockProvider) return true;

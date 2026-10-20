@@ -7,7 +7,8 @@
 
 import { getConfig, type Config } from './config';
 import { CAPABILITIES } from './capabilities';
-import { UIRenderer, extractUIBlockFromPrompt } from './ui-renderer';
+import { UIRenderer, extractUIBlockFromPrompt, sanitizeJsonStringLiterals } from './ui-renderer';
+import generatedExamples from './generated-examples.json';
 import {
   compileExtensionProject,
   downloadBlob,
@@ -20,6 +21,7 @@ import {
   generateExtensionFromInspiration,
   refinePromptWithAI,
   generateIconWithAI,
+  generateThemeStyleWithAI,
   resolveImageModelId,
   DEFAULT_ICON_MODEL,
   chatRefineProjectWithAI,
@@ -160,6 +162,50 @@ const STARTER_PROJECTS: ExtensionProjectData[] = [
     includeStudio: false,
   },
 ];
+
+// Merge generated examples catalog with starter projects, deduplicating by slug
+const ALL_STARTER_TEMPLATES: ExtensionProjectData[] = (() => {
+  const seen = new Set<string>();
+  const list: ExtensionProjectData[] = [];
+  const baseList: ExtensionProjectData[] = [
+    ...STARTER_PROJECTS,
+    ...(generatedExamples as any[]).map((ex) => ({
+      id: ex.id || `example-${ex.slug}`,
+      name: ex.name,
+      slug: ex.slug,
+      version: '1.0.0',
+      description: ex.description,
+      prompt: ex.prompt,
+      alarmMinutes: ex.alarmMinutes ?? 30,
+      permissions: ex.permissions || ['storage', 'alarms'],
+      optional_permissions: ex.optional_permissions || [],
+      host_permissions: ex.host_permissions || ['<all_urls>'],
+      agentSettings: ex.agentSettings,
+      uiConfig: ex.uiConfig,
+      iconBrief: { symbol: 'spark', colors: ['#6366f1', '#a855f7'] },
+      includeStudio: false,
+    })),
+  ];
+
+  for (const item of baseList) {
+    if (!seen.has(item.slug)) {
+      seen.add(item.slug);
+      list.push(item);
+    }
+  }
+  return list;
+})();
+
+let slugManuallyEdited = false;
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'untitled-extension';
+}
 
 // ─── Studio State ──────────────────────────────────────────────────────
 
@@ -323,23 +369,21 @@ function renderProjectDropdown(): void {
   sel.appendChild(myGroup);
 
   const tplGroup = document.createElement('optgroup');
-  tplGroup.label = 'New from Starter Template...';
+  tplGroup.label = `Starter Templates (${ALL_STARTER_TEMPLATES.length} Examples)...`;
 
-  const optSortingHat = document.createElement('option');
-  optSortingHat.value = 'template:sorting-hat';
-  optSortingHat.textContent = '+ Sorting Hat Tab Organizer';
-  tplGroup.appendChild(optSortingHat);
-
-  const optBookmark = document.createElement('option');
-  optBookmark.value = 'template:bookmark-gardener';
-  optBookmark.textContent = '+ Bookmark Gardener';
-  tplGroup.appendChild(optBookmark);
+  for (const tpl of ALL_STARTER_TEMPLATES) {
+    const opt = document.createElement('option');
+    opt.value = `template:${tpl.slug}`;
+    opt.textContent = `+ ${tpl.name}`;
+    tplGroup.appendChild(opt);
+  }
 
   sel.appendChild(tplGroup);
 }
 
 function loadProjectIntoUI(p: ExtensionProjectData): void {
   currentProject = p;
+  slugManuallyEdited = false;
   if (!currentProject.host_permissions || currentProject.host_permissions.length === 0) {
     currentProject.host_permissions = ['<all_urls>'];
   }
@@ -400,8 +444,18 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
   // Visual Dashboard UI Toolbar
   const schema = extractUIBlockFromPrompt(p.prompt || '');
   if (schema) {
-    $select('uiThemeSelect').value = schema.theme || 'glassmorphic';
-    $input('uiTitleInput').value = schema.title || `${p.name} Dashboard`;
+    if ($select('uiThemeSelect')) {
+      $select('uiThemeSelect').value = schema.theme || 'glassmorphic';
+    }
+    if ($select('uiLayoutModeSelect')) {
+      $select('uiLayoutModeSelect').value = (schema as any).layoutMode || 'bento-grid';
+    }
+    if ($input('uiTitleInput')) {
+      $input('uiTitleInput').value = schema.title || `${p.name} Dashboard`;
+    }
+    if (schema.themeConfig?.accentColor && $input('uiAccentColorInput')) {
+      $input('uiAccentColorInput').value = schema.themeConfig.accentColor;
+    }
   }
 
   updatePermissionsCheckboxes();
@@ -777,16 +831,23 @@ function renderIcons(): void {
     clipSquircle: $input('iconClipSquircle').checked,
   };
 
-  const canvasSizes = [
-    { id: 'iconCanvas128', size: 128 },
-    { id: 'iconCanvas48', size: 48 },
-    { id: 'iconCanvas32', size: 32 },
-    { id: 'iconCanvas16', size: 16 },
+  const dpr = window.devicePixelRatio || 1;
+  const canvasConfigs = [
+    { id: 'iconCanvas512', size: 512, displaySize: 56 },
+    { id: 'iconCanvas128', size: 128, displaySize: 44 },
+    { id: 'iconCanvas48', size: 48, displaySize: 32 },
+    { id: 'iconCanvas16', size: 16, displaySize: 16 },
   ];
 
-  for (const { id, size } of canvasSizes) {
+  for (const { id, size, displaySize } of canvasConfigs) {
     const c = $(id) as HTMLCanvasElement;
     if (!c) continue;
+
+    c.width = Math.round(displaySize * dpr);
+    c.height = Math.round(displaySize * dpr);
+    c.style.width = `${displaySize}px`;
+    c.style.height = `${displaySize}px`;
+
     renderIconPngBlob(size, brief).then((png) => {
       const blob = new Blob([png as any], { type: 'image/png' });
       const url = URL.createObjectURL(blob);
@@ -795,6 +856,8 @@ function renderIcons(): void {
         const ctx = c.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, c.width, c.height);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, c.width, c.height);
         }
         URL.revokeObjectURL(url);
@@ -855,7 +918,7 @@ function mutatePromptUiBlock(mutator: (uiObj: Record<string, any>) => void): voi
   let uiObj: Record<string, any>;
   if (match) {
     try {
-      uiObj = JSON.parse(match[1]);
+      uiObj = JSON.parse(sanitizeJsonStringLiterals(match[1]));
     } catch {
       uiObj = {
         title: `${currentProject.name} Dashboard`,
@@ -872,10 +935,13 @@ function mutatePromptUiBlock(mutator: (uiObj: Record<string, any>) => void): voi
   }
 
   if (!Array.isArray(uiObj.components)) {
-    uiObj.components = [];
+    uiObj.components = Array.isArray(uiObj.layout) ? uiObj.layout : [];
   }
 
   mutator(uiObj);
+
+  // Keep components and layout synced
+  uiObj.layout = uiObj.components;
 
   const formattedBlock = '```ui\n' + JSON.stringify(uiObj, null, 2) + '\n```';
   let updatedPrompt: string;
@@ -1767,6 +1833,169 @@ async function sendChatMessage(customText?: string): Promise<void> {
   }
 }
 
+// ─── Intelligent UI Layout & Dynamic Components Suggester ──────────────
+
+function suggestUiLayoutAndComponents(): void {
+  const promptText = (currentProject.prompt || '').toLowerCase();
+  const descText = (currentProject.description || '').toLowerCase();
+  const fullText = `${currentProject.name} ${descText} ${promptText}`.toLowerCase();
+
+  let recommendedLayout: 'stack' | 'bento-grid' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed' = 'bento-grid';
+  let recommendedTheme: 'default' | 'glassmorphic' | 'neon-dark' | 'warm-editorial' | 'compact' = 'glassmorphic';
+  let accentColor = '#3b82f6';
+
+  if (fullText.includes('chat') || fullText.includes('talk') || fullText.includes('assistant') || fullText.includes('conversation')) {
+    recommendedLayout = 'chat-first';
+    recommendedTheme = 'glassmorphic';
+    accentColor = '#8b5cf6';
+  } else if (fullText.includes('clean') || fullText.includes('dead') || fullText.includes('stale') || fullText.includes('tidy')) {
+    recommendedLayout = 'stack';
+    recommendedTheme = 'default';
+    accentColor = '#10b981';
+  } else if (fullText.includes('dark') || fullText.includes('cyber') || fullText.includes('hack') || fullText.includes('dev')) {
+    recommendedLayout = 'bento-grid';
+    recommendedTheme = 'neon-dark';
+    accentColor = '#06b6d4';
+  } else if (fullText.includes('read') || fullText.includes('article') || fullText.includes('digest') || fullText.includes('summary')) {
+    recommendedLayout = 'two-column';
+    recommendedTheme = 'warm-editorial';
+    accentColor = '#d97706';
+  } else if (fullText.includes('metric') || fullText.includes('quick') || fullText.includes('hygiene') || fullText.includes('feed')) {
+    recommendedLayout = 'compact-feed';
+    recommendedTheme = 'compact';
+    accentColor = '#2563eb';
+  }
+
+  // Construct dynamic components tailored to extension
+  const comps: any[] = [
+    { type: 'header', text: currentProject.name },
+    { type: 'text', text: currentProject.description || 'Extension agent is active.' },
+  ];
+
+  if (fullText.includes('tab') || fullText.includes('window') || fullText.includes('group')) {
+    comps.push({
+      type: 'metrics',
+      metrics: [
+        { label: 'Open Tabs', value: '18', subvalue: 'across 2 windows' },
+        { label: 'Groups', value: '3', subvalue: 'active' },
+      ],
+    });
+    comps.push({
+      type: 'select',
+      id: 'window_scope',
+      label: 'Target Window',
+      storageKey: 'selected_window',
+      options: [
+        { label: 'Current Window', value: 'current' },
+        { label: 'All Windows', value: 'all' },
+      ],
+    });
+    comps.push({
+      type: 'task-list',
+      id: 'tab_actions',
+      label: 'Organize Queue',
+      storageKey: 'tab_tasks',
+      items: [
+        { id: '1', title: 'Group GitHub & documentation tabs', done: false },
+        { id: '2', title: 'Collapse inactive video tabs', done: true },
+      ],
+    });
+    comps.push({
+      type: 'button',
+      id: `btn_sort_tabs_${Date.now().toString(36)}`,
+      text: '🪄 Sort & Group Tabs Now',
+      intent: 'info',
+      action: 'trigger-run',
+    });
+    comps.push({
+      type: 'chat',
+      id: 'agent_chat',
+      label: 'Tab Assistant Chat',
+      storageKey: 'agent_chat_log',
+      placeholder: 'Tell agent how to sort your tabs...',
+    });
+  } else if (fullText.includes('bookmark')) {
+    comps.push({
+      type: 'metrics',
+      metrics: [
+        { label: 'Total Bookmarks', value: '142', subvalue: 'healthy' },
+        { label: 'Duplicates', value: '0', subvalue: 'clean' },
+      ],
+    });
+    comps.push({
+      type: 'switch',
+      id: 'auto_archive',
+      label: 'Auto-archive dead links',
+      storageKey: 'auto_archive_enabled',
+      hint: 'Detect and archive 404 links during background alarm',
+    });
+    comps.push({
+      type: 'button',
+      id: `btn_scan_bookmarks_${Date.now().toString(36)}`,
+      text: '🌿 Scan & Clean Bookmarks',
+      intent: 'success',
+      action: 'trigger-run',
+    });
+  } else {
+    comps.push({
+      type: 'metrics',
+      metrics: [
+        { label: 'Status', value: 'Active', subvalue: 'monitoring' },
+        { label: 'Schedule', value: `${currentProject.alarmMinutes}m`, subvalue: 'interval' },
+      ],
+    });
+    comps.push({
+      type: 'switch',
+      id: 'auto_run_switch',
+      label: 'Autonomous Schedule',
+      storageKey: 'auto_run_enabled',
+      hint: 'Run scheduled checks every interval',
+    });
+    comps.push({
+      type: 'button',
+      id: `btn_run_now_${Date.now().toString(36)}`,
+      text: '⚡ Run Operation',
+      intent: 'info',
+      action: 'trigger-run',
+    });
+    comps.push({
+      type: 'chat',
+      id: 'agent_chat',
+      label: 'Agent Chat',
+      storageKey: 'agent_chat_messages',
+      placeholder: 'Send instruction or ask a question...',
+    });
+  }
+
+  comps.push({
+    type: 'action-history',
+    id: 'history_log',
+    text: 'Action Journal & Undo',
+    limit: 15,
+    showUndoAll: true,
+    undoAllLabel: 'Undo Last Action',
+  });
+
+  mutatePromptUiBlock((ui) => {
+    ui.title = `${currentProject.name} Dashboard`;
+    ui.theme = recommendedTheme;
+    ui.layoutMode = recommendedLayout;
+    ui.themeConfig = {
+      ...(ui.themeConfig || {}),
+      accentColor,
+    };
+    ui.components = comps;
+    ui.layout = comps;
+  });
+
+  if ($select('uiThemeSelect')) $select('uiThemeSelect').value = recommendedTheme;
+  if ($select('uiLayoutModeSelect')) $select('uiLayoutModeSelect').value = recommendedLayout;
+  if ($input('uiAccentColorInput')) $input('uiAccentColorInput').value = accentColor;
+  if ($input('uiTitleInput')) $input('uiTitleInput').value = `${currentProject.name} Dashboard`;
+
+  showToast(`Applied ${recommendedLayout} layout with ${recommendedTheme} theme!`, 'ok');
+}
+
 // ─── Event Listeners ───────────────────────────────────────────────────
 
 function setupEventListeners(): void {
@@ -1774,19 +2003,29 @@ function setupEventListeners(): void {
   $('projectSelect').addEventListener('change', (e) => {
     const selVal = (e.target as HTMLSelectElement).value;
     if (selVal.startsWith('template:')) {
-      const tplKey = selVal.replace('template:', '');
-      const base = tplKey === 'sorting-hat' ? STARTER_PROJECTS[0] : STARTER_PROJECTS[1];
+      const tplSlug = selVal.replace('template:', '');
+      const base = ALL_STARTER_TEMPLATES.find((x) => x.slug === tplSlug) || STARTER_PROJECTS[0];
       const newP: ExtensionProjectData = {
-        ...base,
-        id: `${base.slug}-${Date.now().toString(36)}`,
-        name: `${base.name} (Copy)`,
-        host_permissions: base.host_permissions ? [...base.host_permissions] : ['<all_urls>'],
+        id: `project-${Date.now().toString(36)}`,
+        name: base.name,
+        slug: base.slug,
+        version: '1.0.0',
+        description: base.description,
+        prompt: base.prompt,
+        alarmMinutes: base.alarmMinutes ?? 30,
+        permissions: [...(base.permissions || ['storage', 'alarms'])],
+        optional_permissions: [...(base.optional_permissions || [])],
+        host_permissions: [...(base.host_permissions || ['<all_urls>'])],
+        agentSettings: base.agentSettings ? JSON.parse(JSON.stringify(base.agentSettings)) : undefined,
+        iconBrief: base.iconBrief ? JSON.parse(JSON.stringify(base.iconBrief)) : { symbol: 'spark', colors: ['#6366f1', '#a855f7'] },
+        uiConfig: base.uiConfig ? JSON.parse(JSON.stringify(base.uiConfig)) : undefined,
       };
+      slugManuallyEdited = false;
       projects.push(newP);
       renderProjectDropdown();
       loadProjectIntoUI(newP);
       saveProject();
-      showToast(`Created new project from "${base.name}" template`, 'ok');
+      showToast(`Loaded template "${base.name}"`, 'ok');
       return;
     }
 
@@ -1809,10 +2048,13 @@ function setupEventListeners(): void {
       host_permissions: ['<all_urls>'],
       iconBrief: { symbol: 'spark', colors: ['#6366f1', '#a855f7'] },
     };
+    slugManuallyEdited = false;
     projects.push(newP);
     renderProjectDropdown();
     loadProjectIntoUI(newP);
     saveProject();
+    $input('extNameInput').focus();
+    $input('extNameInput').select();
     showToast('Created new extension project', 'ok');
   });
 
@@ -1914,10 +2156,41 @@ function setupEventListeners(): void {
     chrome.tabs.create({ url: 'chrome://extensions' });
   });
 
+  // Extension Name and Slug inputs (live sync & auto-slug generation)
+  $input('extSlugInput').addEventListener('input', () => {
+    slugManuallyEdited = true;
+    currentProject.slug = $input('extSlugInput').value.trim() || 'untitled-extension';
+    saveProject();
+    if (activeEditorTab === 'manifest') renderCodeEditor();
+  });
+
+  $input('extNameInput').addEventListener('input', () => {
+    const rawVal = $input('extNameInput').value;
+    currentProject.name = rawVal.trim() || 'Untitled Extension';
+    if (!slugManuallyEdited) {
+      const slugVal = slugify(currentProject.name);
+      $input('extSlugInput').value = slugVal;
+      currentProject.slug = slugVal;
+    }
+    const activeOpt = $select('projectSelect').querySelector<HTMLOptionElement>(`option[value="${currentProject.id}"]`);
+    if (activeOpt) {
+      activeOpt.textContent = `${currentProject.name} (v${currentProject.version || '1.0.0'})`;
+    }
+    if ($('chatActiveProjectName')) {
+      $('chatActiveProjectName').textContent = currentProject.name;
+    }
+    if ($input('uiTitleInput')) {
+      $input('uiTitleInput').value = `${currentProject.name} Dashboard`;
+    }
+    mutatePromptUiBlock((ui) => {
+      ui.title = `${currentProject.name} Dashboard`;
+    });
+    saveProject();
+    if (activeEditorTab === 'manifest' || activeEditorTab === 'config') renderCodeEditor();
+  });
+
   // Metadata & Icon & UI inputs change listeners
   const metaInputs = [
-    'extNameInput',
-    'extSlugInput',
     'extAlarmInput',
     'extDescInput',
     'iconColor1',
@@ -2005,11 +2278,73 @@ function setupEventListeners(): void {
     });
   });
 
+  $('uiLayoutModeSelect').addEventListener('change', () => {
+    const layout = $select('uiLayoutModeSelect').value;
+    mutatePromptUiBlock((ui) => {
+      ui.layoutMode = layout;
+    });
+  });
+
   $('uiTitleInput').addEventListener('input', () => {
     const title = $input('uiTitleInput').value.trim();
     mutatePromptUiBlock((ui) => {
       ui.title = title;
     });
+  });
+
+  $('uiAccentColorInput').addEventListener('change', () => {
+    const accent = $input('uiAccentColorInput').value;
+    mutatePromptUiBlock((ui) => {
+      ui.themeConfig = ui.themeConfig || {};
+      ui.themeConfig.accentColor = accent;
+    });
+  });
+
+  $('btnAiStyleUi').addEventListener('click', async () => {
+    const cfg = await getConfig();
+    const provider = cfg.provider;
+    const apiKey = cfg.keys[provider];
+    if (!apiKey) {
+      showToast(`No ${provider} API key configured. Open Settings.`, 'error');
+      return;
+    }
+    const notes = $input('uiThemeInspirationInput').value.trim();
+    showToast('Consulting AI designer for theme...', 'ok');
+    try {
+      const style = await generateThemeStyleWithAI({
+        provider,
+        modelId: $select('aiModelSelect').value,
+        apiKey,
+        projectName: currentProject.name,
+        projectDescription: currentProject.description,
+        inspirationNotes: notes,
+      });
+
+      mutatePromptUiBlock((ui) => {
+        ui.theme = style.theme;
+        ui.themeConfig = {
+          ...(ui.themeConfig || {}),
+          accentColor: style.accentColor,
+          backgroundGradient: style.backgroundGradient,
+          blurPx: style.blurPx,
+          cardOpacity: style.cardOpacity,
+          borderRadiusPx: style.borderRadiusPx,
+          customCss: style.customCss,
+        };
+      });
+
+      $select('uiThemeSelect').value = style.theme;
+      if (style.accentColor && $input('uiAccentColorInput')) {
+        $input('uiAccentColorInput').value = style.accentColor;
+      }
+      showToast(`Styled: ${style.themeSummary || style.theme}`, 'ok');
+    } catch (err) {
+      showToast(`Style UI failed: ${(err as Error).message}`, 'error');
+    }
+  });
+
+  $('btnSuggestUiLayout').addEventListener('click', () => {
+    suggestUiLayoutAndComponents();
   });
 
   const addCompButtons = document.querySelectorAll('[data-add-ui-comp]');
@@ -2019,10 +2354,122 @@ function setupEventListeners(): void {
       if (!compType) return;
       mutatePromptUiBlock((ui) => {
         switch (compType) {
-          case 'metrics':
+          case 'select':
             ui.components.push({
-              type: 'metrics',
-              metrics: [{ label: 'Active Items', value: '12', subvalue: 'healthy' }],
+              type: 'select',
+              id: `select_${Date.now().toString(36)}`,
+              label: 'Filter Category',
+              storageKey: 'selected_category',
+              options: [
+                { label: 'All Items', value: 'all' },
+                { label: 'Active', value: 'active' },
+                { label: 'Archived', value: 'archived' },
+              ],
+            });
+            break;
+          case 'switch':
+            ui.components.push({
+              type: 'switch',
+              id: `switch_${Date.now().toString(36)}`,
+              label: 'Autonomous Sync',
+              storageKey: 'auto_sync_enabled',
+              hint: 'Automatically run on periodic alarms',
+            });
+            break;
+          case 'radio':
+            ui.components.push({
+              type: 'radio',
+              id: `radio_${Date.now().toString(36)}`,
+              label: 'Grouping Priority',
+              storageKey: 'group_priority',
+              options: [
+                { label: 'Domain', value: 'domain' },
+                { label: 'Topic', value: 'topic' },
+              ],
+            });
+            break;
+          case 'checkbox':
+            ui.components.push({
+              type: 'checkbox',
+              id: `check_${Date.now().toString(36)}`,
+              label: 'Notify on completed run',
+              storageKey: 'notify_on_complete',
+            });
+            break;
+          case 'textarea':
+            ui.components.push({
+              type: 'textarea',
+              id: `textarea_${Date.now().toString(36)}`,
+              label: 'Custom Guidelines',
+              storageKey: 'user_instructions',
+              placeholder: 'Enter custom rules for agent execution...',
+            });
+            break;
+          case 'password':
+            ui.components.push({
+              type: 'password',
+              id: `secret_${Date.now().toString(36)}`,
+              label: 'Secret Access Token',
+              storageKey: 'user_secret_token',
+              placeholder: 'Enter secret token...',
+            });
+            break;
+          case 'date-time':
+            ui.components.push({
+              type: 'date-time',
+              id: `datetime_${Date.now().toString(36)}`,
+              label: 'Target Execution Time',
+              storageKey: 'target_datetime',
+            });
+            break;
+          case 'file':
+            ui.components.push({
+              type: 'file',
+              id: `file_${Date.now().toString(36)}`,
+              label: 'Attach Reference Spec',
+              storageKey: 'attached_doc',
+            });
+            break;
+          case 'slider':
+            ui.components.push({
+              type: 'slider',
+              id: `slider_${Date.now().toString(36)}`,
+              label: 'Batch Size Limit',
+              storageKey: 'batch_limit',
+              min: 5,
+              max: 50,
+              step: 5,
+              defaultValue: 20,
+            });
+            break;
+          case 'chat':
+            ui.components.push({
+              type: 'chat',
+              id: 'agent_chat',
+              label: 'Talk to Extension Agent',
+              storageKey: 'chat_history',
+              placeholder: 'Ask agent to inspect tabs or run a task...',
+            });
+            break;
+          case 'task-list':
+            ui.components.push({
+              type: 'task-list',
+              id: `tasks_${Date.now().toString(36)}`,
+              label: 'Action Queue',
+              storageKey: 'action_queue',
+              items: [
+                { id: '1', title: 'Inspect active tab', done: false },
+                { id: '2', title: 'Process background items', done: true },
+              ],
+            });
+            break;
+          case 'summary':
+            ui.components.push({
+              type: 'summary',
+              id: `summary_${Date.now().toString(36)}`,
+              label: 'Execution Summary',
+              text: 'All operations executed successfully. 0 errors detected.',
+              intent: 'success',
             });
             break;
           case 'button':
@@ -2034,11 +2481,39 @@ function setupEventListeners(): void {
               action: 'trigger-run',
             });
             break;
-          case 'alert':
+          case 'action-history':
             ui.components.push({
-              type: 'alert',
-              intent: 'info',
-              text: 'System is ready and operational.',
+              type: 'action-history',
+              id: 'recent_actions',
+              text: 'Action History & Undo',
+              limit: 15,
+              showUndoAll: true,
+              undoAllLabel: 'Undo Last Action',
+            });
+            break;
+          case 'card':
+            ui.components.push({
+              type: 'card',
+              id: `card_${Date.now().toString(36)}`,
+              title: 'Status Overview',
+              subtitle: 'System Health',
+              content: 'Autonomous agent is idle and waiting for schedule trigger.',
+            });
+            break;
+          case 'carousel':
+            ui.components.push({
+              type: 'carousel',
+              id: `carousel_${Date.now().toString(36)}`,
+              items: [
+                { title: 'Window 1', description: '8 active tabs' },
+                { title: 'Window 2', description: '4 active tabs' },
+              ],
+            });
+            break;
+          case 'metrics':
+            ui.components.push({
+              type: 'metrics',
+              metrics: [{ label: 'Active Items', value: '12', subvalue: 'healthy' }],
             });
             break;
           case 'table':
@@ -2052,6 +2527,40 @@ function setupEventListeners(): void {
                 { name: 'Alpha Task', status: 'Running' },
                 { name: 'Beta Task', status: 'Idle' },
               ],
+            });
+            break;
+          case 'dialog':
+            ui.components.push({
+              type: 'dialog',
+              id: `dialog_${Date.now().toString(36)}`,
+              title: 'Confirm Operation',
+              message: 'Are you sure you want to execute batch processing?',
+              triggerText: 'Review Action',
+            });
+            break;
+          case 'menu':
+            ui.components.push({
+              type: 'menu',
+              id: `menu_${Date.now().toString(36)}`,
+              label: 'Quick Commands',
+              items: [
+                { label: 'Run Diagnostic', action: 'trigger-run' },
+                { label: 'Clear History', action: 'trigger-run' },
+              ],
+            });
+            break;
+          case 'alert':
+            ui.components.push({
+              type: 'alert',
+              intent: 'info',
+              text: 'System is ready and operational.',
+            });
+            break;
+          case 'icon':
+            ui.components.push({
+              type: 'icon',
+              icon: 'spark',
+              text: 'Autonomous AI Assistant',
             });
             break;
           case 'list':
@@ -2078,16 +2587,6 @@ function setupEventListeners(): void {
               label: 'Overall Progress',
               current: 65,
               max: 100,
-            });
-            break;
-          case 'action-history':
-            ui.components.push({
-              type: 'action-history',
-              id: 'recent_actions',
-              text: 'Action History & Undo',
-              limit: 15,
-              showUndoAll: true,
-              undoAllLabel: 'Undo Last Action',
             });
             break;
         }

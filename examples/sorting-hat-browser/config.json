@@ -116,5 +116,7 @@
     "allowSidePanel": true,
     "allowArtifacts": true,
     "allowManualRun": true
-  }
+  },
+  "pack_hash": "f74d9465f4a7f2c037c61a74e30078880e3d67d14b33d63c96c870a18cf25449",
+  "prompt": "prompt.md"
 }

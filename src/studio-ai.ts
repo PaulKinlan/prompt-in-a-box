@@ -116,7 +116,14 @@ Design a complete, production-grade Chrome Extension based on the inspiration an
 
 ### Platform Architecture & Non-Negotiable Rules:
 1. **Declarative UI (fenced \`\`\`ui block in prompt.md)**:
-   - Provide a visually stunning popup/sidepanel UI with theme ("glassmorphic", "default", or "compact"), header, text, key metrics, alert status, trigger buttons, and an \`action-history\` component (\`showUndoAll: true\`, \`undoAllLabel: "Undo Action"\`, \`limit: 15\`).
+   - Provide a visually stunning popup/sidepanel UI with:
+     - \`theme\`: "glassmorphic" (iOS/visionOS frosted blur), "neon-dark" (cyber neon), "warm-editorial" (warm editorial paper), "compact" (dense utilitarian), or "default" (clean SaaS).
+     - \`themeConfig\`: optional \`{ accentColor: "#...", backgroundGradient: "...", blurPx: 16 }\`.
+     - \`layoutMode\`: "stack", "bento-grid" (2-column cards), "two-column", "tabbed", "chat-first", or "compact-feed".
+     - Rich dynamic components:
+       - Inputs: \`select\`, \`switch\`, \`radio\`, \`checkbox\`, \`textarea\`, \`password\`, \`date-time\`, \`file\`, \`slider\` (use \`storageKey\` to persist dynamic values).
+       - Agent & Tasks: \`chat\` (user talks directly to extension agent), \`task-list\` (checkable action queue), \`summary\`, \`button\`, \`action-history\` (\`showUndoAll: true\`, \`undoAllLabel: "Undo Action"\`, \`limit: 15\`).
+       - Containers & Display: \`card\`, \`carousel\`, \`metrics\`, \`table\`, \`dialog\`, \`menu\`, \`alert\`, \`icon\`.
 2. **Speed & Efficiency via \`code_mode\`**:
    - For batch inspection or tab manipulation, instruct the agent to run an async script via \`code_mode\` with parallel \`Promise.all\`.
    - Always check \`tab.canScript\` from \`tab_list\` before calling \`tab_read\`. Skip discarded/restricted pages and classify by domain/title.
@@ -320,7 +327,7 @@ You have full authority to update prompt.md (including declarative \`\`\`ui bloc
    - For batching, use async scripts in \`code_mode\` with \`Promise.all\` and per-tab \`try/catch\`.
    - Ensure \`<all_urls>\` is in \`host_permissions\` if arbitrary web pages need to be inspected.
 2. When updating prompt.md:
-   - Always preserve the \`\`\`ui ... \`\`\` block and its components (or improve them if requested).
+   - Always preserve or improve the \`\`\`ui ... \`\`\` block. You can specify theme ("glassmorphic", "neon-dark", "warm-editorial", "compact", "default"), themeConfig ({ accentColor, backgroundGradient, blurPx, cardOpacity, borderRadiusPx }), layoutMode ("stack", "bento-grid", "two-column", "tabbed", "chat-first", "compact-feed"), and rich components: select, switch, radio, checkbox, textarea, password, date-time, file, slider, chat, task-list, summary, card, carousel, metrics, table, dialog, menu, alert, icon, button, action-history (using storageKey for dynamic chrome.storage data persistence).
    - Preserve multi-window isolation (\`windowId\` scoping) and undo toasts.
 3. Tool Fidelity: Only reference real tools from the Capability Reference.
 
@@ -363,6 +370,79 @@ ${project.prompt}
     model,
     output: Output.object({ schema: chatRefinementSchema }),
     messages,
+    providerOptions: providerOptions as any,
+  });
+
+  return result.output;
+}
+
+// ─── AI Theme & Visual Styling ─────────────────────────────────────────
+
+export const styleUiSchema = z.object({
+  theme: z.enum(['default', 'glassmorphic', 'neon-dark', 'warm-editorial', 'compact']).default('glassmorphic'),
+  accentColor: z.string().describe('Primary hex accent color, e.g. #3b82f6'),
+  backgroundGradient: z.string().optional().describe('CSS background gradient string or color, e.g. linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'),
+  blurPx: z.number().optional().describe('Backdrop blur in pixels (8 to 24), e.g. 16'),
+  cardOpacity: z.number().optional().describe('Card opacity 0.0 to 1.0, e.g. 0.85'),
+  borderRadiusPx: z.number().optional().describe('Border radius in pixels, e.g. 10'),
+  customCss: z.string().optional().describe('Subtle custom CSS rules'),
+  themeSummary: z.string().describe('Brief 1-sentence aesthetic rationale.'),
+});
+
+export type GeneratedThemeStyle = z.infer<typeof styleUiSchema>;
+
+export async function generateThemeStyleWithAI({
+  provider,
+  modelId,
+  apiKey,
+  projectName,
+  projectDescription,
+  inspirationNotes,
+  onProgress,
+}: {
+  provider: Provider;
+  modelId: string;
+  apiKey: string;
+  projectName: string;
+  projectDescription?: string;
+  inspirationNotes?: string;
+  onProgress?: (status: string) => void;
+}): Promise<GeneratedThemeStyle> {
+  onProgress?.(`Consulting AI designer (${provider} / ${modelId})...`);
+  const model = getModelInstance(provider, modelId, apiKey);
+
+  const prompt = `You are a world-class UI/UX design director specializing in modern browser extension interfaces.
+Create a stunning visual theme for the Chrome Extension "${projectName}".
+Extension description: "${projectDescription || '(No description)'}"
+User aesthetic notes / theme inspiration: "${inspirationNotes || 'Modern sleek aesthetic'}"
+
+Choose the best matching theme preset:
+- 'glassmorphic': Frosted translucency, Apple visionOS / iOS blur, sleek glowing edges
+- 'neon-dark': Deep cyber dark, high-contrast neon accents, glowing borders
+- 'warm-editorial': Serif/paper warmth, refined cream/charcoal palette, literary craft
+- 'compact': Dense utilitarian data layout, low padding, crisp borders
+- 'default': Clean modern SaaS / Material You interface
+
+Provide:
+1. theme: One of the presets above.
+2. accentColor: Hex color (e.g. #6366f1, #10b981, #f43f5e, #38bdf8).
+3. backgroundGradient: Optional subtle CSS gradient.
+4. blurPx: Optional glassmorphic blur (8 to 24).
+5. cardOpacity: Optional card opacity (0.75 to 0.95).
+6. borderRadiusPx: Optional border radius (4 to 14).
+7. customCss: Optional subtle CSS overrides.
+8. themeSummary: 1-sentence design rationale.
+`;
+
+  const providerOptions =
+    provider === 'google'
+      ? { google: { thinkingConfig: { thinkingLevel: 'low' } } }
+      : undefined;
+
+  const result = await generateText({
+    model,
+    output: Output.object({ schema: styleUiSchema }),
+    messages: [{ role: 'user', content: prompt }],
     providerOptions: providerOptions as any,
   });
 

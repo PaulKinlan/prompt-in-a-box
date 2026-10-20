@@ -16,22 +16,102 @@ import {
   type RunLiveStatus,
 } from './logger';
 
+export type UIComponentType =
+  | 'header'
+  | 'text'
+  | 'button'
+  | 'alert'
+  | 'toast'
+  | 'list'
+  | 'input'
+  | 'textarea'
+  | 'password'
+  | 'secret'
+  | 'select'
+  | 'radio'
+  | 'checkbox'
+  | 'switch'
+  | 'toggle'
+  | 'date-time'
+  | 'file'
+  | 'slider'
+  | 'range'
+  | 'metrics'
+  | 'action-list'
+  | 'action-history'
+  | 'divider'
+  | 'chat'
+  | 'task-list'
+  | 'summary'
+  | 'card'
+  | 'cards'
+  | 'carousel'
+  | 'dialog'
+  | 'menu'
+  | 'icon'
+  | 'image';
+
+export interface UISelectOption {
+  label: string;
+  value: string;
+  badge?: string;
+  disabled?: boolean;
+}
+
+export interface UITaskItem {
+  id: string;
+  text: string;
+  done?: boolean;
+  badge?: string;
+}
+
+export interface UICardItem {
+  id?: string;
+  title: string;
+  subtitle?: string;
+  text?: string;
+  badge?: string;
+  image?: string;
+  icon?: string;
+  action?: 'trigger-run' | 'chrome-api' | 'open-studio' | string;
+  actionLabel?: string;
+  payload?: any;
+}
+
+export interface UICarouselSlide {
+  title: string;
+  subtitle?: string;
+  text?: string;
+  image?: string;
+  actionLabel?: string;
+  action?: string;
+  payload?: any;
+}
+
+export interface UIMenuItem {
+  id?: string;
+  label: string;
+  icon?: string;
+  shortcut?: string;
+  action?: string;
+  payload?: any;
+}
+
+export interface UIChatMessage {
+  id?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: number;
+}
+
 export interface UIComponent {
-  type:
-    | 'header'
-    | 'text'
-    | 'button'
-    | 'alert'
-    | 'list'
-    | 'input'
-    | 'metrics'
-    | 'action-list'
-    | 'action-history'
-    | 'divider';
+  type: UIComponentType;
   id?: string;
   text?: string;
+  title?: string;
+  subtitle?: string;
   intent?: 'info' | 'success' | 'warning' | 'danger';
-  action?: 'trigger-run' | 'chrome-api' | 'undo-last' | 'undo-action' | 'open-studio' | 'none';
+  action?: 'trigger-run' | 'chrome-api' | 'undo-last' | 'undo-action' | 'open-studio' | 'chat-message' | 'none' | string;
   actionId?: string;
   apiMethod?: string;
   apiArgs?: any[];
@@ -51,15 +131,161 @@ export interface UIComponent {
     undoable?: boolean;
     undone?: boolean;
   }>;
+
+  // Dynamic data binding
+  storageKey?: string;
+  dataKey?: string;
+  triggerOnChange?: boolean;
+
+  // Specific component properties
+  options?: Array<string | UISelectOption>;
+  value?: any;
+  defaultValue?: any;
+  multiple?: boolean;
+  variant?: 'list' | 'segmented' | 'inline' | 'grid';
+  checked?: boolean;
+  rows?: number;
+  mode?: 'date' | 'time' | 'datetime-local';
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  accept?: string;
+  tasks?: UITaskItem[];
+  cards?: UICardItem[];
+  slides?: UICarouselSlide[];
+  menuItems?: UIMenuItem[];
+  messages?: UIChatMessage[];
+  suggestions?: string[];
+  dismissible?: boolean;
+  icon?: string;
+  src?: string;
+  alt?: string;
+  dialogTitle?: string;
+  dialogContent?: string;
+  dialogButtons?: Array<{ label: string; action?: string; intent?: string }>;
+  components?: UIComponent[];
+  children?: UIComponent[];
+}
+
+export interface UIThemeConfig {
+  accentColor?: string;
+  backgroundGradient?: string;
+  cardOpacity?: number;
+  blurPx?: number;
+  borderRadiusPx?: number;
+  textColor?: string;
+  customCss?: string;
 }
 
 export interface UISchema {
-  title: string;
-  theme?: 'default' | 'glassmorphic' | 'compact';
-  components: UIComponent[];
+  title?: string;
+  theme?: 'default' | 'glassmorphic' | 'compact' | 'neon-dark' | 'warm-editorial' | string;
+  themeConfig?: UIThemeConfig;
+  layoutMode?: 'stack' | 'bento-grid' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed';
+  layout: UIComponent[];
+  components?: UIComponent[];
 }
 
 const DYNAMIC_UI_KEY = '__pib_dynamic_ui';
+
+/**
+ * Sanitizes JSON string literals by escaping unescaped control characters (< 0x20)
+ * such as literal newlines, carriage returns, and tabs that LLMs frequently output
+ * inside JSON string values, preventing "SyntaxError: Bad control character in string literal in JSON".
+ * Also strips illegal trailing commas before closing braces/brackets outside of string literals.
+ */
+export function sanitizeJsonStringLiterals(raw: string): string {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    const code = ch.charCodeAt(0);
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        result += ch;
+      } else if (ch === '\\') {
+        escaped = true;
+        result += ch;
+      } else if (ch === '"') {
+        inString = false;
+        result += ch;
+      } else if (code < 0x20) {
+        if (code === 0x0a) {
+          result += '\\n';
+        } else if (code === 0x0d) {
+          result += '\\r';
+        } else if (code === 0x09) {
+          result += '\\t';
+        } else {
+          result += '\\u' + code.toString(16).padStart(4, '0');
+        }
+      } else {
+        result += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+      }
+      result += ch;
+    }
+  }
+
+  // Outside strings, strip trailing commas before } or ]
+  let cleaned = '';
+  let inStr = false;
+  let esc = false;
+  let seg = '';
+
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i];
+    if (inStr) {
+      seg += ch;
+      if (esc) {
+        esc = false;
+      } else if (ch === '\\') {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+        cleaned += seg;
+        seg = '';
+      }
+    } else {
+      if (ch === '"') {
+        let prev = '';
+        let processed = seg;
+        while (prev !== processed) {
+          prev = processed;
+          processed = processed.replace(/,\s*([}\]])/g, '$1');
+        }
+        cleaned += processed;
+        seg = '"';
+        inStr = true;
+      } else {
+        seg += ch;
+      }
+    }
+  }
+  if (seg) {
+    if (inStr) {
+      cleaned += seg;
+    } else {
+      let prev = '';
+      let processed = seg;
+      while (prev !== processed) {
+        prev = processed;
+        processed = processed.replace(/,\s*([}\]])/g, '$1');
+      }
+      cleaned += processed;
+    }
+  }
+
+  return cleaned;
+}
 
 /**
  * Extracts a declarative UI specification block from a prompt markdown file.
@@ -67,12 +293,22 @@ const DYNAMIC_UI_KEY = '__pib_dynamic_ui';
  */
 export function extractUIBlockFromPrompt(markdown: string): UISchema | null {
   if (!markdown) return null;
-  const match = markdown.match(/```(?:ui|json\s+ui|json:ui)\s*\n([\s\S]*?)\n```/i);
+  const match = markdown.match(/```(?:ui|json\s+ui|json:ui)\s*\n([\s\S]*?)```/i);
   if (!match) return null;
   try {
-    const parsed = JSON.parse(match[1]);
-    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.components)) {
-      return parsed as UISchema;
+    const sanitized = sanitizeJsonStringLiterals(match[1]);
+    const parsed = JSON.parse(sanitized);
+    const layout = Array.isArray(parsed.layout)
+      ? parsed.layout
+      : Array.isArray(parsed.components)
+        ? parsed.components
+        : null;
+    if (parsed && typeof parsed === 'object' && layout) {
+      return {
+        ...parsed,
+        layout,
+        components: layout,
+      } as UISchema;
     }
   } catch (err) {
     console.warn('Failed to parse declarative UI block from prompt.md:', err);
@@ -112,6 +348,8 @@ export class UIRenderer {
   private viewName: string;
   private listeningForHistory = false;
   private listeningForLogs = false;
+  private listeningForStorage = false;
+  private boundStorageMap = new Map<string, Array<{ comp: UIComponent; updater: (val: any) => void }>>();
   private logs: AgentLogEvent[] = [];
   private liveStatus: RunLiveStatus = {
     active: false,
@@ -131,6 +369,69 @@ export class UIRenderer {
     this.viewName = viewName;
     this.setupHistoryListener();
     this.setupLogListener();
+    this.setupStorageListener();
+  }
+
+  private setupStorageListener(): void {
+    if (this.listeningForStorage) return;
+    this.listeningForStorage = true;
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+          if (areaName !== 'local') return;
+          for (const [key, change] of Object.entries(changes)) {
+            const list = this.boundStorageMap.get(key);
+            if (list) {
+              for (const item of list) {
+                try {
+                  item.updater(change.newValue);
+                } catch (err) {
+                  console.warn(`Error updating component for storage key "${key}":`, err);
+                }
+              }
+            }
+          }
+        });
+      }
+    } catch {
+      // Ignored
+    }
+  }
+
+  private bindStorageKey(comp: UIComponent, updater: (val: any) => void): void {
+    const key = comp.storageKey || comp.dataKey;
+    if (!key) return;
+    let list = this.boundStorageMap.get(key);
+    if (!list) {
+      list = [];
+      this.boundStorageMap.set(key, list);
+    }
+    list.push({ comp, updater });
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(key).then((stored) => {
+        if (stored && stored[key] !== undefined) {
+          updater(stored[key]);
+        }
+      }).catch(() => {});
+    }
+  }
+
+  private emitChangeInteraction(comp: UIComponent, val: any): void {
+    if (!comp.triggerOnChange) return;
+    try {
+      chrome.runtime.sendMessage({
+        type: 'ui-interaction',
+        componentId: comp.id || 'unnamed',
+        action: 'change',
+        payload: {
+          value: val,
+          formValues: this.formValues,
+        },
+      }).catch(() => {});
+    } catch {
+      // Ignored
+    }
   }
 
   private setupLogListener(): void {
@@ -207,23 +508,29 @@ export class UIRenderer {
     let spec = data[DYNAMIC_UI_KEY] as UISchema | undefined;
     const promptSpec = await loadPromptUIBlock();
 
-    if (!spec) {
-      if (promptSpec) {
-        spec = promptSpec;
-      } else {
-        this.renderWelcomeState();
-        return;
+    // If prompt.md contains a valid UI block, let that be rendered as the default so an updated prompt.md in the workspace shows its buttons and UI properly.
+    if (promptSpec) {
+      const promptComps = promptSpec.layout || promptSpec.components || [];
+      const specComps = spec ? (spec.layout || spec.components || []) : [];
+
+      if (!spec || specComps.length === 0 || promptComps.length > 0) {
+        // Use promptSpec as base, preserving any action-history component if runtime spec had it
+        const hasActionHistory = promptComps.some((c) => c.type === 'action-history');
+        const runtimeActionHistory = specComps.find((c) => c.type === 'action-history');
+        if (!hasActionHistory && runtimeActionHistory) {
+          const merged = [...promptComps, runtimeActionHistory];
+          spec = {
+            ...promptSpec,
+            layout: merged,
+            components: merged,
+          };
+        } else {
+          spec = promptSpec;
+        }
       }
-    } else if (promptSpec) {
-      // If prompt.md defines an action-history component that is absent from the runtime spec, preserve it
-      const hasActionHistory = spec.components.some((c) => c.type === 'action-history');
-      const promptActionHistory = promptSpec.components.find((c) => c.type === 'action-history');
-      if (!hasActionHistory && promptActionHistory) {
-        spec = {
-          ...spec,
-          components: [...spec.components, promptActionHistory],
-        };
-      }
+    } else if (!spec) {
+      this.renderWelcomeState();
+      return;
     }
 
     this.render(spec);
@@ -286,22 +593,62 @@ export class UIRenderer {
    */
   render(spec: UISchema): void {
     this.container.innerHTML = '';
+    this.container.removeAttribute('style');
     this.formValues = {};
+    this.boundStorageMap.clear();
+
+    const theme = spec.theme || 'default';
 
     // Apply overall theme classes to container
-    this.container.className = `ui-container theme-${spec.theme || 'default'}`;
+    this.container.className = `ui-container theme-${theme}`;
 
-    // 1. Render View Title
-    const titleEl = document.createElement('h1');
-    titleEl.className = 'ui-title';
-    titleEl.textContent = spec.title;
-    this.container.appendChild(titleEl);
+    // Set data-ui-theme attribute on parent container if available
+    this.container.parentElement?.setAttribute('data-ui-theme', theme);
 
-    // 2. Render all components
+    // If themeConfig provided, apply CSS variables and customCss
+    if (spec.themeConfig) {
+      const tc = spec.themeConfig;
+      if (tc.accentColor) {
+        this.container.style.setProperty('--ui-accent', tc.accentColor);
+      }
+      if (tc.backgroundGradient) {
+        this.container.style.setProperty('--ui-bg-gradient', tc.backgroundGradient);
+      }
+      if (tc.cardOpacity !== undefined) {
+        this.container.style.setProperty('--ui-card-opacity', String(tc.cardOpacity));
+      }
+      if (tc.blurPx !== undefined) {
+        this.container.style.setProperty('--ui-blur', `${tc.blurPx}px`);
+      }
+      if (tc.borderRadiusPx !== undefined) {
+        this.container.style.setProperty('--ui-radius', `${tc.borderRadiusPx}px`);
+      }
+      if (tc.textColor) {
+        this.container.style.setProperty('--ui-text', tc.textColor);
+      }
+      if (tc.customCss) {
+        const styleEl = document.createElement('style');
+        styleEl.setAttribute('data-pib-custom-theme', 'true');
+        styleEl.textContent = tc.customCss;
+        this.container.appendChild(styleEl);
+      }
+    }
+
+    // 1. Render View Title (if provided)
+    if (spec.title) {
+      const titleEl = document.createElement('h1');
+      titleEl.className = 'ui-title';
+      titleEl.textContent = spec.title;
+      this.container.appendChild(titleEl);
+    }
+
+    // 2. Render all components inside layout wrapper
     const componentWrapper = document.createElement('div');
-    componentWrapper.className = 'ui-components';
+    const layoutMode = spec.layoutMode || 'stack';
+    componentWrapper.className = `ui-components layout-${layoutMode}`;
 
-    for (const comp of spec.components) {
+    const components = spec.layout || spec.components || [];
+    for (const comp of components) {
       const el = this.createComponent(comp);
       if (el) {
         componentWrapper.appendChild(el);
@@ -499,6 +846,1009 @@ export class UIRenderer {
         return wrapper;
       }
 
+      case 'toast': {
+        const el = document.createElement('div');
+        el.className = `ui-toast-pill intent-${comp.intent || 'info'}`;
+        const icon = document.createElement('span');
+        icon.className = 'toast-icon';
+        icon.innerHTML = this.getAlertIcon(comp.intent || 'info');
+        el.appendChild(icon);
+        const msg = document.createElement('span');
+        msg.className = 'toast-msg';
+        msg.textContent = comp.text || comp.title || '';
+        el.appendChild(msg);
+        if (comp.dismissible) {
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'toast-dismiss-btn';
+          x.innerHTML = '&times;';
+          x.onclick = () => el.remove();
+          el.appendChild(x);
+        }
+        return el;
+      }
+
+      case 'textarea': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-input-wrapper ui-textarea-wrapper';
+        if (comp.text || comp.title) {
+          const label = document.createElement('label');
+          if (comp.id) label.setAttribute('for', comp.id);
+          label.textContent = comp.text || comp.title || '';
+          wrapper.appendChild(label);
+        }
+        const ta = document.createElement('textarea');
+        if (comp.id) ta.id = comp.id;
+        ta.className = 'ui-input-field ui-textarea-field';
+        ta.placeholder = comp.placeholder || '';
+        ta.rows = comp.rows || 3;
+        if (comp.value !== undefined) {
+          ta.value = String(comp.value);
+          if (comp.id) this.formValues[comp.id] = ta.value;
+        }
+        ta.addEventListener('input', () => {
+          if (comp.id) this.formValues[comp.id] = ta.value;
+          this.emitChangeInteraction(comp, ta.value);
+        });
+        this.bindStorageKey(comp, (val) => {
+          ta.value = String(val ?? '');
+          if (comp.id) this.formValues[comp.id] = ta.value;
+        });
+        wrapper.appendChild(ta);
+        return wrapper;
+      }
+
+      case 'password':
+      case 'secret': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-input-wrapper ui-password-wrapper';
+        if (comp.text || comp.title) {
+          const label = document.createElement('label');
+          if (comp.id) label.setAttribute('for', comp.id);
+          label.textContent = comp.text || comp.title || '';
+          wrapper.appendChild(label);
+        }
+        const row = document.createElement('div');
+        row.className = 'ui-password-row';
+        const input = document.createElement('input');
+        input.type = 'password';
+        if (comp.id) input.id = comp.id;
+        input.className = 'ui-input-field ui-password-field';
+        input.placeholder = comp.placeholder || 'Enter password/secret...';
+        if (comp.value !== undefined) {
+          input.value = String(comp.value);
+          if (comp.id) this.formValues[comp.id] = input.value;
+        }
+        input.addEventListener('input', () => {
+          if (comp.id) this.formValues[comp.id] = input.value;
+          this.emitChangeInteraction(comp, input.value);
+        });
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'ui-password-toggle';
+        toggleBtn.title = 'Show/hide secret';
+        toggleBtn.textContent = '👁';
+        toggleBtn.onclick = (e) => {
+          e.preventDefault();
+          input.type = input.type === 'password' ? 'text' : 'password';
+          toggleBtn.textContent = input.type === 'password' ? '👁' : '🔒';
+        };
+        row.appendChild(input);
+        row.appendChild(toggleBtn);
+        wrapper.appendChild(row);
+        this.bindStorageKey(comp, (val) => {
+          input.value = String(val ?? '');
+          if (comp.id) this.formValues[comp.id] = input.value;
+        });
+        return wrapper;
+      }
+
+      case 'select': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-input-wrapper ui-select-wrapper';
+        if (comp.text || comp.title) {
+          const label = document.createElement('label');
+          if (comp.id) label.setAttribute('for', comp.id);
+          label.textContent = comp.text || comp.title || '';
+          wrapper.appendChild(label);
+        }
+        const sel = document.createElement('select');
+        if (comp.id) sel.id = comp.id;
+        sel.className = 'ui-input-field ui-select-field';
+        if (comp.multiple) sel.multiple = true;
+
+        const populateOptions = (opts: Array<string | UISelectOption>) => {
+          sel.innerHTML = '';
+          if (comp.placeholder && !comp.multiple) {
+            const ph = document.createElement('option');
+            ph.value = '';
+            ph.textContent = comp.placeholder;
+            ph.disabled = true;
+            ph.selected = comp.value === undefined;
+            sel.appendChild(ph);
+          }
+          for (const opt of opts) {
+            const optEl = document.createElement('option');
+            if (typeof opt === 'string') {
+              optEl.value = opt;
+              optEl.textContent = opt;
+              if (comp.value === opt) optEl.selected = true;
+            } else {
+              optEl.value = opt.value;
+              optEl.textContent = opt.label + (opt.badge ? ` (${opt.badge})` : '');
+              if (opt.disabled) optEl.disabled = true;
+              if (comp.value === opt.value) optEl.selected = true;
+            }
+            sel.appendChild(optEl);
+          }
+        };
+        populateOptions(comp.options || []);
+        if (comp.id) {
+          this.formValues[comp.id] = comp.multiple
+            ? Array.from(sel.selectedOptions).map((o) => o.value)
+            : sel.value;
+        }
+        sel.addEventListener('change', () => {
+          const v = comp.multiple
+            ? Array.from(sel.selectedOptions).map((o) => o.value)
+            : sel.value;
+          if (comp.id) this.formValues[comp.id] = v;
+          this.emitChangeInteraction(comp, v);
+        });
+        this.bindStorageKey(comp, (val) => {
+          if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
+            populateOptions(val);
+          } else if (val !== undefined) {
+            sel.value = String(val);
+            if (comp.id) this.formValues[comp.id] = sel.value;
+          }
+        });
+        wrapper.appendChild(sel);
+        return wrapper;
+      }
+
+      case 'radio': {
+        const wrapper = document.createElement('div');
+        wrapper.className = `ui-input-wrapper ${comp.variant === 'segmented' ? 'ui-segmented-control-wrapper' : 'ui-radio-group-wrapper'}`;
+        if (comp.text || comp.title) {
+          const label = document.createElement('label');
+          label.textContent = comp.text || comp.title || '';
+          wrapper.appendChild(label);
+        }
+        const groupContainer = document.createElement('div');
+        groupContainer.className = comp.variant === 'segmented' ? 'ui-segmented-control' : 'ui-radio-group';
+
+        const name = comp.id || `radio_${Math.random().toString(36).substring(2, 8)}`;
+        const opts = comp.options || [];
+
+        const renderOptions = (optionsList: Array<string | UISelectOption>, activeVal: any) => {
+          groupContainer.innerHTML = '';
+          for (const opt of optionsList) {
+            const val = typeof opt === 'string' ? opt : opt.value;
+            const text = typeof opt === 'string' ? opt : opt.label;
+
+            if (comp.variant === 'segmented') {
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = `ui-segment-btn ${val === activeVal ? 'active' : ''}`;
+              btn.textContent = text;
+              btn.onclick = () => {
+                groupContainer.querySelectorAll('.ui-segment-btn').forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+                if (comp.id) this.formValues[comp.id] = val;
+                this.emitChangeInteraction(comp, val);
+              };
+              groupContainer.appendChild(btn);
+            } else {
+              const itemLabel = document.createElement('label');
+              itemLabel.className = 'ui-radio-item';
+              const r = document.createElement('input');
+              r.type = 'radio';
+              r.name = name;
+              r.value = val;
+              if (val === activeVal) r.checked = true;
+              r.addEventListener('change', () => {
+                if (r.checked) {
+                  if (comp.id) this.formValues[comp.id] = val;
+                  this.emitChangeInteraction(comp, val);
+                }
+              });
+              itemLabel.appendChild(r);
+              const span = document.createElement('span');
+              span.textContent = text;
+              itemLabel.appendChild(span);
+              groupContainer.appendChild(itemLabel);
+            }
+          }
+        };
+
+        const initialVal = comp.value !== undefined ? comp.value : (opts[0] ? (typeof opts[0] === 'string' ? opts[0] : opts[0].value) : '');
+        if (comp.id) this.formValues[comp.id] = initialVal;
+        renderOptions(opts, initialVal);
+
+        this.bindStorageKey(comp, (val) => {
+          if (Array.isArray(val)) {
+            renderOptions(val, initialVal);
+          } else if (val !== undefined) {
+            if (comp.id) this.formValues[comp.id] = val;
+            renderOptions(opts, val);
+          }
+        });
+
+        wrapper.appendChild(groupContainer);
+        return wrapper;
+      }
+
+      case 'checkbox': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-input-wrapper ui-checkbox-wrapper';
+
+        if (comp.options && comp.options.length > 0) {
+          if (comp.text || comp.title) {
+            const groupTitle = document.createElement('label');
+            groupTitle.textContent = comp.text || comp.title || '';
+            wrapper.appendChild(groupTitle);
+          }
+          const group = document.createElement('div');
+          group.className = 'ui-checkbox-group';
+          const selectedSet = new Set(Array.isArray(comp.value) ? comp.value : []);
+
+          for (const opt of comp.options) {
+            const val = typeof opt === 'string' ? opt : opt.value;
+            const text = typeof opt === 'string' ? opt : opt.label;
+            const lbl = document.createElement('label');
+            lbl.className = 'ui-checkbox-label';
+            const chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.value = val;
+            chk.checked = selectedSet.has(val);
+            chk.addEventListener('change', () => {
+              if (chk.checked) selectedSet.add(val);
+              else selectedSet.delete(val);
+              const arr = Array.from(selectedSet);
+              if (comp.id) this.formValues[comp.id] = arr;
+              this.emitChangeInteraction(comp, arr);
+            });
+            lbl.appendChild(chk);
+            const span = document.createElement('span');
+            span.textContent = text;
+            lbl.appendChild(span);
+            group.appendChild(lbl);
+          }
+          wrapper.appendChild(group);
+          if (comp.id) this.formValues[comp.id] = Array.from(selectedSet);
+        } else {
+          const lbl = document.createElement('label');
+          lbl.className = 'ui-checkbox-label single';
+          const chk = document.createElement('input');
+          chk.type = 'checkbox';
+          if (comp.id) chk.id = comp.id;
+          chk.checked = Boolean(comp.checked ?? comp.value);
+          if (comp.id) this.formValues[comp.id] = chk.checked;
+          chk.addEventListener('change', () => {
+            if (comp.id) this.formValues[comp.id] = chk.checked;
+            this.emitChangeInteraction(comp, chk.checked);
+          });
+          lbl.appendChild(chk);
+          const span = document.createElement('span');
+          span.textContent = comp.text || comp.title || '';
+          lbl.appendChild(span);
+          wrapper.appendChild(lbl);
+          this.bindStorageKey(comp, (val) => {
+            chk.checked = Boolean(val);
+            if (comp.id) this.formValues[comp.id] = chk.checked;
+          });
+        }
+        return wrapper;
+      }
+
+      case 'switch':
+      case 'toggle': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-switch-wrapper';
+
+        const textCol = document.createElement('div');
+        textCol.className = 'ui-switch-text-col';
+
+        const titleEl = document.createElement('span');
+        titleEl.className = 'ui-switch-title';
+        titleEl.textContent = comp.text || comp.title || '';
+        textCol.appendChild(titleEl);
+
+        if (comp.subtitle) {
+          const sub = document.createElement('span');
+          sub.className = 'ui-switch-subtitle';
+          sub.textContent = comp.subtitle;
+          textCol.appendChild(sub);
+        }
+        wrapper.appendChild(textCol);
+
+        const label = document.createElement('label');
+        label.className = 'ui-switch-control';
+
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        if (comp.id) chk.id = comp.id;
+        chk.checked = Boolean(comp.checked ?? comp.value);
+        if (comp.id) this.formValues[comp.id] = chk.checked;
+
+        chk.addEventListener('change', () => {
+          if (comp.id) this.formValues[comp.id] = chk.checked;
+          this.emitChangeInteraction(comp, chk.checked);
+        });
+
+        const slider = document.createElement('span');
+        slider.className = 'ui-switch-slider';
+        label.appendChild(chk);
+        label.appendChild(slider);
+        wrapper.appendChild(label);
+
+        this.bindStorageKey(comp, (val) => {
+          chk.checked = Boolean(val);
+          if (comp.id) this.formValues[comp.id] = chk.checked;
+        });
+
+        return wrapper;
+      }
+
+      case 'slider':
+      case 'range': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-slider-wrapper';
+
+        const headerRow = document.createElement('div');
+        headerRow.className = 'ui-slider-header';
+
+        const label = document.createElement('label');
+        label.textContent = comp.text || comp.title || '';
+        headerRow.appendChild(label);
+
+        const valBadge = document.createElement('span');
+        valBadge.className = 'ui-slider-badge';
+        const unit = comp.unit || '';
+        const initialVal = comp.value !== undefined ? comp.value : (comp.min || 0);
+        valBadge.textContent = `${initialVal}${unit}`;
+        headerRow.appendChild(valBadge);
+        wrapper.appendChild(headerRow);
+
+        const rangeInput = document.createElement('input');
+        rangeInput.type = 'range';
+        if (comp.id) rangeInput.id = comp.id;
+        rangeInput.className = 'ui-slider-field';
+        rangeInput.min = String(comp.min ?? 0);
+        rangeInput.max = String(comp.max ?? 100);
+        rangeInput.step = String(comp.step ?? 1);
+        rangeInput.value = String(initialVal);
+        if (comp.id) this.formValues[comp.id] = Number(initialVal);
+
+        rangeInput.addEventListener('input', () => {
+          valBadge.textContent = `${rangeInput.value}${unit}`;
+          if (comp.id) this.formValues[comp.id] = Number(rangeInput.value);
+          this.emitChangeInteraction(comp, Number(rangeInput.value));
+        });
+
+        wrapper.appendChild(rangeInput);
+        this.bindStorageKey(comp, (val) => {
+          if (val !== undefined) {
+            rangeInput.value = String(val);
+            valBadge.textContent = `${val}${unit}`;
+            if (comp.id) this.formValues[comp.id] = Number(val);
+          }
+        });
+        return wrapper;
+      }
+
+      case 'date-time': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-input-wrapper ui-datetime-wrapper';
+        if (comp.text || comp.title) {
+          const label = document.createElement('label');
+          if (comp.id) label.setAttribute('for', comp.id);
+          label.textContent = comp.text || comp.title || '';
+          wrapper.appendChild(label);
+        }
+        const inp = document.createElement('input');
+        inp.type = comp.mode || 'date';
+        if (comp.id) inp.id = comp.id;
+        inp.className = 'ui-input-field ui-datetime-field';
+        if (comp.value) inp.value = String(comp.value);
+        if (comp.id) this.formValues[comp.id] = inp.value;
+
+        inp.addEventListener('input', () => {
+          if (comp.id) this.formValues[comp.id] = inp.value;
+          this.emitChangeInteraction(comp, inp.value);
+        });
+        wrapper.appendChild(inp);
+        this.bindStorageKey(comp, (val) => {
+          if (val !== undefined) {
+            inp.value = String(val);
+            if (comp.id) this.formValues[comp.id] = inp.value;
+          }
+        });
+        return wrapper;
+      }
+
+      case 'file': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-file-wrapper';
+        if (comp.text || comp.title) {
+          const label = document.createElement('label');
+          label.textContent = comp.text || comp.title || '';
+          wrapper.appendChild(label);
+        }
+        const dropzone = document.createElement('div');
+        dropzone.className = 'ui-file-dropzone';
+
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        if (comp.id) fileInput.id = comp.id;
+        if (comp.accept) fileInput.accept = comp.accept;
+        fileInput.style.display = 'none';
+
+        const preview = document.createElement('div');
+        preview.className = 'ui-file-preview';
+        preview.textContent = comp.placeholder || 'Choose or drop a file here';
+
+        dropzone.appendChild(preview);
+        dropzone.appendChild(fileInput);
+
+        dropzone.onclick = () => fileInput.click();
+        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); };
+        dropzone.ondragleave = () => dropzone.classList.remove('drag-over');
+        dropzone.ondrop = (e) => {
+          e.preventDefault();
+          dropzone.classList.remove('drag-over');
+          if (e.dataTransfer?.files?.length) {
+            handleFile(e.dataTransfer.files[0]);
+          }
+        };
+        fileInput.onchange = () => {
+          if (fileInput.files?.length) {
+            handleFile(fileInput.files[0]);
+          }
+        };
+
+        const handleFile = (f: File) => {
+          preview.textContent = `📄 ${f.name} (${Math.round(f.size / 1024)} KB)`;
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (comp.id) {
+              this.formValues[comp.id] = {
+                name: f.name,
+                size: f.size,
+                type: f.type,
+                content: reader.result,
+              };
+            }
+            this.emitChangeInteraction(comp, this.formValues[comp.id!]);
+          };
+          reader.readAsText(f);
+        };
+
+        wrapper.appendChild(dropzone);
+        return wrapper;
+      }
+
+      case 'chat': {
+        const container = document.createElement('div');
+        container.className = 'ui-chat-container';
+
+        if (comp.title) {
+          const titleEl = document.createElement('h3');
+          titleEl.className = 'ui-section-header';
+          titleEl.textContent = comp.title;
+          container.appendChild(titleEl);
+        }
+
+        const msgList = document.createElement('div');
+        msgList.className = 'ui-chat-messages';
+
+        const renderMessages = (messages: UIChatMessage[]) => {
+          msgList.innerHTML = '';
+          if (messages.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'ui-empty-state';
+            empty.textContent = comp.emptyText || 'Start chatting with your agent below.';
+            msgList.appendChild(empty);
+            return;
+          }
+          for (const m of messages) {
+            const bubble = document.createElement('div');
+            bubble.className = `ui-chat-bubble role-${m.role}`;
+            bubble.textContent = m.content;
+            msgList.appendChild(bubble);
+          }
+          msgList.scrollTop = msgList.scrollHeight;
+        };
+
+        let currentMessages: UIChatMessage[] = comp.messages ? [...comp.messages] : [];
+        renderMessages(currentMessages);
+        container.appendChild(msgList);
+
+        if (comp.suggestions && comp.suggestions.length > 0) {
+          const suggContainer = document.createElement('div');
+          suggContainer.className = 'ui-chat-suggestions';
+          for (const s of comp.suggestions) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'ui-chat-chip';
+            chip.textContent = s;
+            chip.onclick = () => void sendMsg(s);
+            suggContainer.appendChild(chip);
+          }
+          container.appendChild(suggContainer);
+        }
+
+        const inputBar = document.createElement('div');
+        inputBar.className = 'ui-chat-input-bar';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'ui-input-field ui-chat-input';
+        input.placeholder = comp.placeholder || 'Type message to agent...';
+
+        const sendBtn = document.createElement('button');
+        sendBtn.type = 'button';
+        sendBtn.className = 'ui-btn btn-intent-info ui-chat-send-btn';
+        sendBtn.textContent = 'Send';
+
+        const sendMsg = async (text: string) => {
+          if (!text.trim()) return;
+          currentMessages.push({ role: 'user', content: text, timestamp: Date.now() });
+          renderMessages(currentMessages);
+          input.value = '';
+
+          try {
+            await chrome.runtime.sendMessage({
+              type: 'ui-interaction',
+              componentId: comp.id || 'chat',
+              action: 'chat-message',
+              payload: {
+                message: text,
+                formValues: this.formValues,
+              },
+            });
+          } catch (err) {
+            console.error('Failed to send chat message:', err);
+          }
+        };
+
+        sendBtn.onclick = () => void sendMsg(input.value);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void sendMsg(input.value);
+          }
+        });
+
+        inputBar.appendChild(input);
+        inputBar.appendChild(sendBtn);
+        container.appendChild(inputBar);
+
+        this.bindStorageKey(comp, (val) => {
+          if (Array.isArray(val)) {
+            currentMessages = val;
+            renderMessages(currentMessages);
+          }
+        });
+
+        return container;
+      }
+
+      case 'task-list': {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ui-task-list-wrapper';
+
+        const topRow = document.createElement('div');
+        topRow.className = 'ui-section-header-row';
+
+        const title = document.createElement('h3');
+        title.className = 'ui-section-header';
+        title.textContent = comp.text || comp.title || 'Tasks';
+        topRow.appendChild(title);
+
+        const countBadge = document.createElement('span');
+        countBadge.className = 'ui-count-badge';
+        topRow.appendChild(countBadge);
+        wrapper.appendChild(topRow);
+
+        const listEl = document.createElement('div');
+        listEl.className = 'ui-task-list';
+
+        let currentTasks = comp.tasks ? [...comp.tasks] : [];
+
+        const renderTasks = (tasks: UITaskItem[]) => {
+          listEl.innerHTML = '';
+          const doneCount = tasks.filter((t) => t.done).length;
+          countBadge.textContent = `${doneCount}/${tasks.length} done`;
+
+          if (tasks.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'ui-empty-state';
+            empty.textContent = comp.emptyText || 'No tasks currently scheduled.';
+            listEl.appendChild(empty);
+            return;
+          }
+
+          for (const task of tasks) {
+            const row = document.createElement('label');
+            row.className = `ui-task-item ${task.done ? 'task-done' : ''}`;
+
+            const chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.className = 'ui-task-check';
+            chk.checked = Boolean(task.done);
+
+            chk.addEventListener('change', () => {
+              task.done = chk.checked;
+              row.classList.toggle('task-done', chk.checked);
+              const d = tasks.filter((t) => t.done).length;
+              countBadge.textContent = `${d}/${tasks.length} done`;
+              if (comp.id) this.formValues[comp.id] = tasks;
+              if (comp.storageKey) {
+                chrome.storage.local.set({ [comp.storageKey]: tasks }).catch(() => {});
+              }
+              this.emitChangeInteraction(comp, tasks);
+            });
+
+            row.appendChild(chk);
+
+            const span = document.createElement('span');
+            span.className = 'ui-task-text';
+            span.textContent = task.text;
+            row.appendChild(span);
+
+            if (task.badge) {
+              const b = document.createElement('span');
+              b.className = 'ui-tool-badge';
+              b.textContent = task.badge;
+              row.appendChild(b);
+            }
+
+            listEl.appendChild(row);
+          }
+        };
+
+        renderTasks(currentTasks);
+        wrapper.appendChild(listEl);
+
+        this.bindStorageKey(comp, (val) => {
+          if (Array.isArray(val)) {
+            currentTasks = val;
+            renderTasks(currentTasks);
+          }
+        });
+
+        return wrapper;
+      }
+
+      case 'summary': {
+        const details = document.createElement('details');
+        details.className = 'ui-summary-card';
+
+        const summary = document.createElement('summary');
+        summary.className = 'ui-summary-header';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'ui-summary-title';
+        titleSpan.textContent = comp.title || comp.text || 'Details';
+        summary.appendChild(titleSpan);
+
+        if (comp.subtitle) {
+          const badge = document.createElement('span');
+          badge.className = 'ui-count-badge';
+          badge.textContent = comp.subtitle;
+          summary.appendChild(badge);
+        }
+        details.appendChild(summary);
+
+        const content = document.createElement('div');
+        content.className = 'ui-summary-content';
+        if (comp.text && comp.title) {
+          const p = document.createElement('p');
+          p.className = 'ui-text-element';
+          p.textContent = comp.text;
+          content.appendChild(p);
+        }
+        const children = comp.components || comp.children;
+        if (children && Array.isArray(children)) {
+          for (const child of children) {
+            const childEl = this.createComponent(child);
+            if (childEl) content.appendChild(childEl);
+          }
+        }
+        details.appendChild(content);
+        return details;
+      }
+
+      case 'card':
+      case 'cards': {
+        if (comp.type === 'cards' || (comp.cards && comp.cards.length > 0)) {
+          const grid = document.createElement('div');
+          grid.className = 'ui-cards-grid';
+          const cardsList = comp.cards || [];
+          for (const c of cardsList) {
+            const cardEl = this.createCardElement(c);
+            grid.appendChild(cardEl);
+          }
+          this.bindStorageKey(comp, (val) => {
+            if (Array.isArray(val)) {
+              grid.innerHTML = '';
+              for (const c of val) {
+                grid.appendChild(this.createCardElement(c));
+              }
+            }
+          });
+          return grid;
+        } else {
+          return this.createCardElement({
+            title: comp.title || comp.text || '',
+            subtitle: comp.subtitle,
+            text: comp.title ? comp.text : undefined,
+            badge: comp.placeholder,
+            action: comp.action,
+            actionLabel: comp.placeholder || 'Open',
+            payload: comp.payload,
+          });
+        }
+      }
+
+      case 'carousel': {
+        const container = document.createElement('div');
+        container.className = 'ui-carousel-container';
+
+        const slidesList = comp.slides || [];
+        if (slidesList.length === 0) return null;
+
+        let activeIndex = 0;
+
+        const track = document.createElement('div');
+        track.className = 'ui-carousel-track';
+
+        const dotsContainer = document.createElement('div');
+        dotsContainer.className = 'ui-carousel-dots';
+
+        const renderSlides = () => {
+          track.innerHTML = '';
+          slidesList.forEach((slide, idx) => {
+            const slideEl = document.createElement('div');
+            slideEl.className = `ui-carousel-slide ${idx === activeIndex ? 'active' : ''}`;
+
+            if (slide.image) {
+              const img = document.createElement('img');
+              img.src = slide.image;
+              img.className = 'ui-carousel-img';
+              slideEl.appendChild(img);
+            }
+            const body = document.createElement('div');
+            body.className = 'ui-carousel-body';
+
+            const h4 = document.createElement('h4');
+            h4.className = 'ui-carousel-title';
+            h4.textContent = slide.title;
+            body.appendChild(h4);
+
+            if (slide.subtitle) {
+              const sub = document.createElement('div');
+              sub.className = 'ui-carousel-sub';
+              sub.textContent = slide.subtitle;
+              body.appendChild(sub);
+            }
+            if (slide.text) {
+              const p = document.createElement('p');
+              p.className = 'ui-carousel-text';
+              p.textContent = slide.text;
+              body.appendChild(p);
+            }
+            if (slide.actionLabel) {
+              const btn = document.createElement('button');
+              btn.className = 'ui-btn btn-intent-info';
+              btn.textContent = slide.actionLabel;
+              btn.onclick = () => {
+                chrome.runtime.sendMessage({
+                  type: 'ui-interaction',
+                  componentId: comp.id || 'carousel',
+                  action: slide.action || 'click',
+                  payload: slide.payload,
+                });
+              };
+              body.appendChild(btn);
+            }
+            slideEl.appendChild(body);
+            track.appendChild(slideEl);
+          });
+
+          dotsContainer.innerHTML = '';
+          slidesList.forEach((_, idx) => {
+            const dot = document.createElement('span');
+            dot.className = `ui-carousel-dot ${idx === activeIndex ? 'active' : ''}`;
+            dot.onclick = () => {
+              activeIndex = idx;
+              renderSlides();
+            };
+            dotsContainer.appendChild(dot);
+          });
+        };
+
+        container.appendChild(track);
+
+        const navRow = document.createElement('div');
+        navRow.className = 'ui-carousel-nav';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'ui-carousel-nav-btn';
+        prevBtn.innerHTML = '‹';
+        prevBtn.onclick = () => {
+          activeIndex = (activeIndex - 1 + slidesList.length) % slidesList.length;
+          renderSlides();
+        };
+
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.className = 'ui-carousel-nav-btn';
+        nextBtn.innerHTML = '›';
+        nextBtn.onclick = () => {
+          activeIndex = (activeIndex + 1) % slidesList.length;
+          renderSlides();
+        };
+
+        navRow.appendChild(prevBtn);
+        navRow.appendChild(dotsContainer);
+        navRow.appendChild(nextBtn);
+        container.appendChild(navRow);
+
+        renderSlides();
+        return container;
+      }
+
+      case 'dialog': {
+        const triggerBtn = document.createElement('button');
+        triggerBtn.className = `ui-btn btn-intent-${comp.intent || 'info'}`;
+        triggerBtn.textContent = comp.text || comp.title || 'Open Dialog';
+
+        const dialogEl = document.createElement('dialog');
+        dialogEl.className = 'ui-dialog-modal';
+
+        const modalBox = document.createElement('div');
+        modalBox.className = 'ui-dialog-box';
+
+        const header = document.createElement('div');
+        header.className = 'ui-dialog-header';
+        const h3 = document.createElement('h3');
+        h3.textContent = comp.dialogTitle || comp.title || 'Dialog';
+        header.appendChild(h3);
+
+        const closeX = document.createElement('button');
+        closeX.type = 'button';
+        closeX.className = 'ui-dialog-close';
+        closeX.innerHTML = '&times;';
+        closeX.onclick = () => dialogEl.close();
+        header.appendChild(closeX);
+        modalBox.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'ui-dialog-body';
+        if (comp.dialogContent || comp.text) {
+          const p = document.createElement('p');
+          p.textContent = comp.dialogContent || comp.text || '';
+          body.appendChild(p);
+        }
+        modalBox.appendChild(body);
+
+        const footer = document.createElement('div');
+        footer.className = 'ui-dialog-footer';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'ui-btn';
+        closeBtn.textContent = 'Close';
+        closeBtn.onclick = () => dialogEl.close();
+        footer.appendChild(closeBtn);
+
+        if (comp.dialogButtons) {
+          for (const b of comp.dialogButtons) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `ui-btn btn-intent-${b.intent || 'info'}`;
+            btn.textContent = b.label;
+            btn.onclick = () => {
+              dialogEl.close();
+              if (b.action) {
+                chrome.runtime.sendMessage({
+                  type: 'ui-interaction',
+                  componentId: comp.id || 'dialog',
+                  action: b.action,
+                  payload: { formValues: this.formValues },
+                });
+              }
+            };
+            footer.appendChild(btn);
+          }
+        }
+        modalBox.appendChild(footer);
+        dialogEl.appendChild(modalBox);
+
+        triggerBtn.onclick = () => {
+          document.body.appendChild(dialogEl);
+          dialogEl.showModal();
+        };
+        return triggerBtn;
+      }
+
+      case 'menu': {
+        const bar = document.createElement('div');
+        bar.className = 'ui-menu-toolbar';
+        for (const item of comp.menuItems || []) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ui-menu-btn';
+          if (item.icon) {
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'ui-menu-icon';
+            iconSpan.textContent = item.icon;
+            btn.appendChild(iconSpan);
+          }
+          const textSpan = document.createElement('span');
+          textSpan.textContent = item.label;
+          btn.appendChild(textSpan);
+
+          if (item.shortcut) {
+            const sc = document.createElement('kbd');
+            sc.className = 'ui-menu-shortcut';
+            sc.textContent = item.shortcut;
+            btn.appendChild(sc);
+          }
+          btn.onclick = () => {
+            if (item.action) {
+              chrome.runtime.sendMessage({
+                type: 'ui-interaction',
+                componentId: item.id || comp.id || 'menu',
+                action: item.action,
+                payload: item.payload,
+              });
+            }
+          };
+          bar.appendChild(btn);
+        }
+        return bar;
+      }
+
+      case 'icon': {
+        const iconWrap = document.createElement('div');
+        iconWrap.className = `ui-icon-badge intent-${comp.intent || 'info'}`;
+        if (comp.icon) {
+          iconWrap.innerHTML = comp.icon.startsWith('<svg') ? comp.icon : `<span>${comp.icon}</span>`;
+        }
+        if (comp.text) {
+          const label = document.createElement('span');
+          label.className = 'ui-icon-label';
+          label.textContent = comp.text;
+          iconWrap.appendChild(label);
+        }
+        return iconWrap;
+      }
+
+      case 'image': {
+        const fig = document.createElement('figure');
+        fig.className = 'ui-image-figure';
+        const img = document.createElement('img');
+        img.className = 'ui-image-img';
+        img.src = comp.src || comp.value || '';
+        img.alt = comp.alt || comp.text || 'Image';
+        fig.appendChild(img);
+        if (comp.text || comp.title) {
+          const cap = document.createElement('figcaption');
+          cap.className = 'ui-image-caption';
+          cap.textContent = comp.text || comp.title || '';
+          fig.appendChild(cap);
+        }
+        this.bindStorageKey(comp, (val) => {
+          if (val) img.src = String(val);
+        });
+        return fig;
+      }
+
       case 'button': {
         const el = document.createElement('button');
         el.className = `ui-btn btn-intent-${comp.intent || 'info'}`;
@@ -517,7 +1867,14 @@ export class UIRenderer {
 
           try {
             if (comp.action === 'open-studio') {
-              await chrome.tabs.create({ url: chrome.runtime.getURL('dist/studio.html') });
+              const url = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
+                ? chrome.runtime.getURL('dist/studio.html')
+                : 'dist/studio.html';
+              if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+                await chrome.tabs.create({ url });
+              } else {
+                window.open(url, '_blank');
+              }
             } else if (comp.action === 'undo-last') {
               await chrome.runtime.sendMessage({ type: 'action-toast-undo' });
             } else if (comp.action === 'undo-action' && comp.actionId) {
@@ -571,6 +1928,91 @@ export class UIRenderer {
       default:
         return null;
     }
+  }
+
+  private createCardElement(cardData: UICardItem): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'ui-card-element';
+
+    if (cardData.image) {
+      const img = document.createElement('img');
+      img.className = 'ui-card-img';
+      img.src = cardData.image;
+      card.appendChild(img);
+    }
+
+    const header = document.createElement('div');
+    header.className = 'ui-card-header';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'ui-card-title-row';
+
+    if (cardData.icon) {
+      const icon = document.createElement('span');
+      icon.className = 'ui-card-icon';
+      icon.textContent = cardData.icon;
+      titleRow.appendChild(icon);
+    }
+
+    const titleEl = document.createElement('h4');
+    titleEl.className = 'ui-card-title';
+    titleEl.textContent = cardData.title;
+    titleRow.appendChild(titleEl);
+    header.appendChild(titleRow);
+
+    if (cardData.badge) {
+      const b = document.createElement('span');
+      b.className = 'ui-tool-badge';
+      b.textContent = cardData.badge;
+      header.appendChild(b);
+    }
+    card.appendChild(header);
+
+    if (cardData.subtitle) {
+      const sub = document.createElement('div');
+      sub.className = 'ui-card-subtitle';
+      sub.textContent = cardData.subtitle;
+      card.appendChild(sub);
+    }
+
+    if (cardData.text) {
+      const p = document.createElement('p');
+      p.className = 'ui-card-text';
+      p.textContent = cardData.text;
+      card.appendChild(p);
+    }
+
+    if (cardData.actionLabel || cardData.action) {
+      const footer = document.createElement('div');
+      footer.className = 'ui-card-footer';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ui-btn btn-intent-info';
+      btn.textContent = cardData.actionLabel || 'Execute';
+      btn.onclick = async () => {
+        if (cardData.action === 'open-studio') {
+          const url = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
+            ? chrome.runtime.getURL('dist/studio.html')
+            : 'dist/studio.html';
+          if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+            await chrome.tabs.create({ url });
+          } else {
+            window.open(url, '_blank');
+          }
+        } else {
+          await chrome.runtime.sendMessage({
+            type: 'ui-interaction',
+            componentId: cardData.id || 'card',
+            action: cardData.action || 'click',
+            payload: cardData.payload,
+          });
+        }
+      };
+      footer.appendChild(btn);
+      card.appendChild(footer);
+    }
+
+    return card;
   }
 
   /**

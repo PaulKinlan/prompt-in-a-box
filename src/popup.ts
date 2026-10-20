@@ -352,10 +352,25 @@ const openArtifactsBrowser = () => {
 if ($('openArtifacts')) $('openArtifacts').addEventListener('click', openArtifactsBrowser);
 if ($('openArtifactsTop')) $('openArtifactsTop').addEventListener('click', openArtifactsBrowser);
 
-if ($('openStudio')) {
-  $('openStudio').addEventListener('click', () => {
-    void chrome.tabs.create({ url: chrome.runtime.getURL('dist/studio.html') });
-  });
+export function openExtensionStudio(): void {
+  const url = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
+    ? chrome.runtime.getURL('dist/studio.html')
+    : 'studio.html';
+  if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    chrome.tabs.create({ url });
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+const openStudioTopBtn = $('openStudioTop');
+if (openStudioTopBtn) {
+  openStudioTopBtn.addEventListener('click', () => openExtensionStudio());
+}
+
+const openStudioBtn = $('openStudio');
+if (openStudioBtn) {
+  openStudioBtn.addEventListener('click', () => openExtensionStudio());
 }
 
 // ─── Dynamic View Toggle Controller ─────────────────────────────────
@@ -366,19 +381,28 @@ const standardTab = $('switchToStandard');
 const dynamicTab = $('switchToDynamic');
 const renderer = new UIRenderer(dynamicContainer, 'popup');
 
+function getComponents(spec?: UISchema | null): any[] {
+  if (!spec) return [];
+  if (Array.isArray(spec.layout)) return spec.layout;
+  if (Array.isArray(spec.components)) return spec.components;
+  return [];
+}
+
 async function checkDynamicUI(): Promise<void> {
   const data = (await chrome.storage.local.get('__pib_dynamic_ui')) as {
     __pib_dynamic_ui?: UISchema;
   };
   let spec = data.__pib_dynamic_ui;
-  if (!spec || !spec.components || spec.components.length === 0) {
+  let comps = getComponents(spec);
+  if (comps.length === 0) {
     const promptSpec = await loadPromptUIBlock();
-    if (promptSpec && promptSpec.components && promptSpec.components.length > 0) {
+    if (promptSpec && getComponents(promptSpec).length > 0) {
       spec = promptSpec;
+      comps = getComponents(spec);
     }
   }
 
-  if (spec && spec.components && spec.components.length > 0) {
+  if (spec && comps.length > 0) {
     viewSwitcher.style.display = 'flex';
     const activeData = (await chrome.storage.local.get('__pib_active_view')) as {
       __pib_active_view?: string;

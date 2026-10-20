@@ -36,13 +36,14 @@ export function computeExtensionContentHash(targetDir = '.') {
     hash.update(readFileSync(promptPath));
   }
 
-  // 2. config.json (normalized without version)
+  // 2. config.json (normalized without version and pack_hash)
   const configPath = join(targetDir, 'config.json');
   if (existsSync(configPath)) {
     try {
       const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
       const normalizedCfg = { ...cfg };
       delete normalizedCfg.version;
+      delete normalizedCfg.pack_hash;
       hash.update('--- config.json ---\n');
       hash.update(JSON.stringify(normalizedCfg));
     } catch {
@@ -70,7 +71,7 @@ export function computeExtensionContentHash(targetDir = '.') {
   }
 
   // 4. Icons
-  const iconFiles = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png'];
+  const iconFiles = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png', 'icon-512.png'];
   for (const ic of iconFiles) {
     const icPath = join(targetDir, ic);
     if (existsSync(icPath)) {
@@ -173,9 +174,8 @@ export function updateMainProductVersion(newVersion, newHash) {
   // 3. manifest.json
   updateJsonField('manifest.json', (m) => {
     m.version = newVersion;
-    if (newHash) {
-      m.prompt_in_a_box = m.prompt_in_a_box || {};
-      m.prompt_in_a_box.pack_hash = newHash;
+    if (m.prompt_in_a_box) {
+      delete m.prompt_in_a_box;
     }
   });
 
@@ -183,6 +183,12 @@ export function updateMainProductVersion(newVersion, newHash) {
   if (existsSync('config.json')) {
     updateJsonField('config.json', (cfg) => {
       cfg.version = newVersion;
+      if (newHash) {
+        cfg.pack_hash = newHash;
+      }
+      if (!cfg.prompt) {
+        cfg.prompt = 'prompt.md';
+      }
     });
   }
 
@@ -190,6 +196,9 @@ export function updateMainProductVersion(newVersion, newHash) {
   if (existsSync('scripts/templates/manifest.json')) {
     updateJsonField('scripts/templates/manifest.json', (m) => {
       m.version = newVersion;
+      if (m.prompt_in_a_box) {
+        delete m.prompt_in_a_box;
+      }
     });
   }
   if (existsSync('scripts/templates/config.json')) {
@@ -206,9 +215,8 @@ export function updateExampleVersion(exampleName, newVersion, newHash) {
   const manifestPath = join(exampleDir, 'manifest.json');
   updateJsonField(manifestPath, (m) => {
     m.version = newVersion;
-    if (newHash) {
-      m.prompt_in_a_box = m.prompt_in_a_box || {};
-      m.prompt_in_a_box.pack_hash = newHash;
+    if (m.prompt_in_a_box) {
+      delete m.prompt_in_a_box;
     }
   });
 
@@ -216,6 +224,12 @@ export function updateExampleVersion(exampleName, newVersion, newHash) {
   if (existsSync(configPath)) {
     updateJsonField(configPath, (cfg) => {
       cfg.version = newVersion;
+      if (newHash) {
+        cfg.pack_hash = newHash;
+      }
+      if (!cfg.prompt) {
+        cfg.prompt = 'prompt.md';
+      }
     });
   }
 }
@@ -225,14 +239,22 @@ export function updateExampleVersion(exampleName, newVersion, newHash) {
 export function syncVersionOnPack(exampleName, options = {}) {
   const targetDir = exampleName ? join('examples', exampleName) : '.';
   const manifestPath = join(targetDir, 'manifest.json');
+  const configPath = join(targetDir, 'config.json');
 
   if (!existsSync(manifestPath)) {
     throw new Error(`manifest.json not found in ${targetDir}`);
   }
 
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const currentVersion = manifest.version || '0.0.1';
-  const previousHash = manifest.prompt_in_a_box?.pack_hash;
+  let config = {};
+  if (existsSync(configPath)) {
+    try {
+      config = JSON.parse(readFileSync(configPath, 'utf8'));
+    } catch {}
+  }
+
+  const currentVersion = manifest.version || config.version || '0.0.1';
+  const previousHash = config.pack_hash || manifest.prompt_in_a_box?.pack_hash;
   const currentHash = computeExtensionContentHash(targetDir);
 
   if (options.noBump) {
@@ -304,8 +326,14 @@ function printStatus() {
   // Root
   try {
     const rootManifest = JSON.parse(readFileSync('manifest.json', 'utf8'));
+    let rootConfig = {};
+    if (existsSync('config.json')) {
+      try {
+        rootConfig = JSON.parse(readFileSync('config.json', 'utf8'));
+      } catch {}
+    }
     const rootHash = computeExtensionContentHash('.');
-    const savedHash = rootManifest.prompt_in_a_box?.pack_hash || 'not set';
+    const savedHash = rootConfig.pack_hash || rootManifest.prompt_in_a_box?.pack_hash || 'not set';
     const match = savedHash === rootHash ? '✅ current' : '⚠️ modified';
     console.log(`Main Product (prompt-in-a-box):`);
     console.log(`  Version:      v${rootManifest.version}`);
@@ -326,11 +354,18 @@ function printStatus() {
     for (const ex of examples) {
       const exDir = join('examples', ex);
       const mPath = join(exDir, 'manifest.json');
+      const cPath = join(exDir, 'config.json');
       if (existsSync(mPath)) {
         try {
           const exM = JSON.parse(readFileSync(mPath, 'utf8'));
+          let exC = {};
+          if (existsSync(cPath)) {
+            try {
+              exC = JSON.parse(readFileSync(cPath, 'utf8'));
+            } catch {}
+          }
           const exHash = computeExtensionContentHash(exDir);
-          const saved = exM.prompt_in_a_box?.pack_hash || 'not set';
+          const saved = exC.pack_hash || exM.prompt_in_a_box?.pack_hash || 'not set';
           const match = saved === exHash ? '✅ current' : '⚠️ modified';
           console.log(`Example: ${ex}`);
           console.log(`  Version:      v${exM.version}`);

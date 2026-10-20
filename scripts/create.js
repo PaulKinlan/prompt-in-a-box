@@ -192,17 +192,12 @@ function createExampleManifest(analysis) {
     name: analysis.name,
     version: '1.0.0',
     description: analysis.description,
-    prompt_in_a_box: {
-      prompt: 'prompt.md',
-      alarm_minutes: analysis.triggers?.alarmMinutes ?? 30,
-      default_provider: 'google',
-      default_model: GEMINI_MODELS.FLASH,
-    },
     action: {
       ...(baseManifest.action || {}),
       default_title: analysis.name,
     },
   };
+  delete manifest.prompt_in_a_box;
 
   // Merge permissions uniquely
   const corePerms = new Set(['storage', 'alarms', 'offscreen']);
@@ -244,6 +239,8 @@ function createExampleConfig(analysis) {
   const config = {
     ...baseConfig,
     version: '1.0.0',
+    prompt: 'prompt.md',
+    pack_hash: '',
     providers: {
       allowed: ['google', 'anthropic', 'openai'],
       default: 'google',

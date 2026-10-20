@@ -19,6 +19,8 @@ export type IconArtStyle =
   | 'pixel-art'
   | 'metallic';
 
+export const MASTER_ICON_SIZE = 512;
+
 export interface IconBrief {
   mode?: 'ai' | 'vector' | 'upload';
   model?: string;
@@ -28,6 +30,7 @@ export interface IconBrief {
   styleDescription?: string;
   clipSquircle?: boolean;
   customImageDataUrl?: string;
+  aiImageDataUrl?: string;
 }
 
 export interface ExtensionProjectData {
@@ -45,6 +48,7 @@ export interface ExtensionProjectData {
   agentSettings?: any[];
   iconBrief?: IconBrief;
   uiConfig?: Record<string, boolean>;
+  themeConfig?: Record<string, unknown>;
   includeStudio?: boolean;
   lockProvider?: boolean;
   lockModel?: boolean;
@@ -52,6 +56,8 @@ export interface ExtensionProjectData {
   defaultModel?: string;
   lastContentHash?: string;
 }
+
+export type CompileSpec = ExtensionProjectData;
 
 // ─── CRC32 & PKZIP Implementation ──────────────────────────────────────
 
@@ -203,7 +209,10 @@ const GLYPH_PATHS: Record<string, string> = {
   terminal: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-12-3l-1.41-1.41L9.17 11 6.59 8.41 8 7l4 4-4 4zm4 0h6v2h-6v-2z',
 };
 
-export function traceSquirclePath(ctx: CanvasRenderingContext2D, size: number): void {
+export function traceSquirclePath(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  size: number
+): void {
   const radius = Math.round(size * 0.22);
   ctx.beginPath();
   ctx.moveTo(radius, 0);
@@ -218,22 +227,36 @@ export function traceSquirclePath(ctx: CanvasRenderingContext2D, size: number): 
   ctx.closePath();
 }
 
-export async function renderIconPngBlob(size: number, brief?: IconBrief): Promise<Uint8Array> {
-  const canvas = document.createElement('canvas');
+/**
+ * Renders the master 512×512 icon canvas.
+ * Handles AI/custom image uploads (with optional squircle clipping)
+ * or renders modern vector squircle background + glyph centered at 512×512.
+ */
+export async function renderMasterIconCanvas(
+  brief?: IconBrief
+): Promise<OffscreenCanvas | HTMLCanvasElement> {
+  const size = MASTER_ICON_SIZE;
+  const canvas: OffscreenCanvas | HTMLCanvasElement =
+    typeof document !== 'undefined'
+      ? document.createElement('canvas')
+      : new OffscreenCanvas(size, size);
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
   if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-  if (brief?.customImageDataUrl && brief.mode !== 'vector') {
+  const imageUrl = brief?.aiImageDataUrl || brief?.customImageDataUrl;
+  if (imageUrl && brief?.mode !== 'vector') {
     const img = new Image();
-    img.src = brief.customImageDataUrl;
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+    await new Promise<void>((resolve, reject) => {
+      if (img.complete) return resolve();
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Failed to load icon image data'));
     });
 
-    if (brief.clipSquircle !== false) {
+    if (brief?.clipSquircle !== false) {
       ctx.save();
       traceSquirclePath(ctx, size);
       ctx.clip();
@@ -247,7 +270,7 @@ export async function renderIconPngBlob(size: number, brief?: IconBrief): Promis
       ctx.drawImage(img, 0, 0, size, size);
     }
   } else {
-    // Render modern gradient squircle
+    // Render modern gradient squircle scaled to 512x512 master
     const colors = brief?.colors && brief.colors.length >= 2 ? brief.colors : ['#8b5cf6', '#d946ef'];
 
     ctx.save();
@@ -291,12 +314,91 @@ export async function renderIconPngBlob(size: number, brief?: IconBrief): Promis
     ctx.restore();
   }
 
-  return new Promise<Uint8Array>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) return reject(new Error('Failed to create PNG blob'));
-      blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)));
-    }, 'image/png');
-  });
+  return canvas;
+}
+
+/**
+ * Multi-step progressive downsampler that steps down by halves
+ * (512 -> 256 -> 128 -> 64 -> targetSize) with imageSmoothingQuality = 'high'
+ * at each step to prevent aliasing and blurriness on small icon sizes (48, 32, 16px).
+ */
+export function downsampleCanvas(
+  source: OffscreenCanvas | HTMLCanvasElement,
+  targetSize: number
+): OffscreenCanvas | HTMLCanvasElement {
+  if (source.width === targetSize && source.height === targetSize) {
+    return source;
+  }
+
+  let currentCanvas: OffscreenCanvas | HTMLCanvasElement = source;
+  let currentWidth = source.width;
+  let currentHeight = source.height;
+
+  // Step down by halves while half of current size is strictly greater than targetSize
+  while (Math.floor(currentWidth / 2) > targetSize) {
+    const nextWidth = Math.floor(currentWidth / 2);
+    const nextHeight = Math.floor(currentHeight / 2);
+
+    const stepCanvas: OffscreenCanvas | HTMLCanvasElement =
+      typeof document !== 'undefined'
+        ? document.createElement('canvas')
+        : new OffscreenCanvas(nextWidth, nextHeight);
+    stepCanvas.width = nextWidth;
+    stepCanvas.height = nextHeight;
+
+    const ctx = stepCanvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+    if (!ctx) throw new Error('Canvas 2D context unavailable during downsampling');
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(currentCanvas, 0, 0, currentWidth, currentHeight, 0, 0, nextWidth, nextHeight);
+
+    currentCanvas = stepCanvas;
+    currentWidth = nextWidth;
+    currentHeight = nextHeight;
+  }
+
+  // Final step down to exact targetSize
+  if (currentWidth !== targetSize || currentHeight !== targetSize) {
+    const finalCanvas: OffscreenCanvas | HTMLCanvasElement =
+      typeof document !== 'undefined'
+        ? document.createElement('canvas')
+        : new OffscreenCanvas(targetSize, targetSize);
+    finalCanvas.width = targetSize;
+    finalCanvas.height = targetSize;
+
+    const ctx = finalCanvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+    if (!ctx) throw new Error('Canvas 2D context unavailable during downsampling');
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(currentCanvas, 0, 0, currentWidth, currentHeight, 0, 0, targetSize, targetSize);
+
+    currentCanvas = finalCanvas;
+  }
+
+  return currentCanvas;
+}
+
+export async function canvasToBlob(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<Blob> {
+  if ('convertToBlob' in canvas && typeof (canvas as any).convertToBlob === 'function') {
+    return await (canvas as OffscreenCanvas).convertToBlob({ type: 'image/png' });
+  }
+  if ('toBlob' in canvas && typeof (canvas as any).toBlob === 'function') {
+    return new Promise<Blob>((resolve, reject) => {
+      (canvas as HTMLCanvasElement).toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Failed to create PNG blob from canvas'));
+      }, 'image/png');
+    });
+  }
+  throw new Error('Unsupported canvas type for toBlob');
+}
+
+export async function renderIconPngBlob(size: number, brief?: IconBrief): Promise<Blob> {
+  const master = await renderMasterIconCanvas(brief);
+  const canvas = size === MASTER_ICON_SIZE ? master : downsampleCanvas(master, size);
+  return canvasToBlob(canvas);
 }
 
 // ─── Content Hashing & Version Bump ────────────────────────────────────
@@ -371,6 +473,8 @@ export async function compileExtensionProject(
   // 2. Build config.json
   const baseConfig: Record<string, unknown> = {
     version: project.version || '1.0.0',
+    prompt: 'prompt.md',
+    pack_hash: '',
     providers: {
       allowed: ['google', 'anthropic', 'openai'],
       default: project.defaultProvider || 'google',
@@ -432,6 +536,10 @@ export async function compileExtensionProject(
     },
   };
 
+  if (project.themeConfig) {
+    baseConfig.themeConfig = project.themeConfig;
+  }
+
   if (project.uiConfig) {
     Object.assign(baseConfig.ui as Record<string, unknown>, project.uiConfig);
   }
@@ -465,8 +573,9 @@ export async function compileExtensionProject(
     effectiveVersion = bumpPatchVersion(effectiveVersion);
   }
   baseConfig.version = effectiveVersion;
+  baseConfig.pack_hash = contentHash;
 
-  // 4. Build manifest.json
+  // 4. Build manifest.json (pure standard MV3 manifest without non-standard prompt_in_a_box)
   const corePerms = new Set(['storage', 'alarms', 'offscreen']);
   for (const p of project.permissions || []) corePerms.add(p);
 
@@ -485,6 +594,7 @@ export async function compileExtensionProject(
       '32': 'icon-32.png',
       '48': 'icon-48.png',
       '128': 'icon-128.png',
+      '512': 'icon-512.png',
     },
     action: {
       default_title: project.name,
@@ -494,6 +604,7 @@ export async function compileExtensionProject(
         '32': 'icon-32.png',
         '48': 'icon-48.png',
         '128': 'icon-128.png',
+        '512': 'icon-512.png',
       },
     },
     background: {
@@ -514,15 +625,23 @@ export async function compileExtensionProject(
       extension_pages: "script-src 'self'; object-src 'self';",
       sandbox: "sandbox allow-scripts; script-src 'self' 'unsafe-eval' blob:; connect-src 'none';",
     },
-    prompt_in_a_box: {
-      prompt: 'prompt.md',
-      alarm_minutes: project.alarmMinutes ?? 30,
-      default_provider: project.defaultProvider || 'google',
-      default_model: project.defaultModel || 'gemini-3.8-flash',
-      _contentHash: contentHash,
-    },
     permissions: Array.from(corePerms),
     optional_permissions: Array.from(optPerms),
+    web_accessible_resources: [
+      {
+        resources: [
+          'config.json',
+          'prompt.md',
+          'icon.png',
+          'icon-16.png',
+          'icon-32.png',
+          'icon-48.png',
+          'icon-128.png',
+          'icon-512.png',
+        ],
+        matches: ['<all_urls>'],
+      },
+    ],
   };
 
   const baseHostPerms = [
@@ -551,13 +670,14 @@ export async function compileExtensionProject(
   files.set('manifest.json', new TextEncoder().encode(JSON.stringify(manifestData, null, 2) + '\n'));
   files.set('config.json', new TextEncoder().encode(JSON.stringify(baseConfig, null, 2) + '\n'));
 
-  // 6. Generate crisp icons
-  const iconSizes = [16, 32, 48, 128];
+  // 6. Generate crisp icons (512 master progressively downsampled)
+  const iconSizes = [512, 128, 48, 32, 16];
   for (const s of iconSizes) {
-    const png = await renderIconPngBlob(s, project.iconBrief);
-    files.set(`icon-${s}.png`, png);
-    if (s === 128) {
-      files.set('icon.png', png);
+    const blob = await renderIconPngBlob(s, project.iconBrief);
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    files.set(`icon-${s}.png`, buf);
+    if (s === 512) {
+      files.set('icon.png', buf);
     }
   }
 
@@ -594,6 +714,8 @@ export async function compileExtensionProject(
     config: baseConfig,
   };
 }
+
+export const compileExtensionZip = compileExtensionProject;
 
 // ─── Export Utilities ──────────────────────────────────────────────────
 

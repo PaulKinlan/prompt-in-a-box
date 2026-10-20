@@ -16,6 +16,195 @@ import { resolve, join } from 'node:path';
 const watch = process.argv.includes('--watch');
 const prod = process.argv.includes('--prod');
 
+/**
+ * Scans all examples/ subdirectories and generates a catalog of starter templates
+ * saved to src/generated-examples.json for Studio consumption.
+ */
+export function generateExamplesCatalog() {
+  const examplesDir = resolve('examples');
+  if (!existsSync(examplesDir)) {
+    return [];
+  }
+  const dirents = readdirSync(examplesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && !dirent.name.startsWith('.'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const catalog = [];
+
+  for (const dirent of dirents) {
+    const slug = dirent.name;
+    const exampleDir = join(examplesDir, slug);
+
+    const manifestPath = join(exampleDir, 'manifest.json');
+    const configPath = join(exampleDir, 'config.json');
+    const promptPath = join(exampleDir, 'prompt.md');
+
+    let manifest = {};
+    if (existsSync(manifestPath)) {
+      try {
+        manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      } catch (err) {
+        console.warn(`Warning: Could not parse manifest for example ${slug}:`, err.message);
+      }
+    }
+
+    let config = {};
+    if (existsSync(configPath)) {
+      try {
+        config = JSON.parse(readFileSync(configPath, 'utf8'));
+      } catch (err) {
+        console.warn(`Warning: Could not parse config for example ${slug}:`, err.message);
+      }
+    }
+
+    let prompt = '';
+    if (existsSync(promptPath)) {
+      try {
+        prompt = readFileSync(promptPath, 'utf8');
+      } catch (err) {
+        console.warn(`Warning: Could not read prompt for example ${slug}:`, err.message);
+      }
+    }
+
+    // Determine clean name
+    let name = manifest.name;
+    if (!name && prompt) {
+      const match = prompt.match(/^#\s+(.+)$/m);
+      if (match) {
+        name = match[1].trim();
+      }
+    }
+    if (!name) {
+      name = slug
+        .split('-')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
+
+    // Determine clean description
+    let description = manifest.description;
+    if (!description && prompt) {
+      const lines = prompt.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('```')) {
+          description = trimmed;
+          break;
+        }
+      }
+    }
+    if (!description) {
+      description = `Standalone ${name} Chrome Extension built with prompt-in-a-box.`;
+    }
+
+    // Determine permissions
+    let permissions = manifest.permissions;
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+      permissions = ['storage', 'alarms'];
+    }
+
+    let optional_permissions = Array.isArray(manifest.optional_permissions)
+      ? manifest.optional_permissions
+      : [];
+
+    // If prompt mentions permissions and manifest wasn't explicit, check prompt
+    if (!existsSync(manifestPath) && prompt) {
+      const permMatch = prompt.match(/##\s+Required permissions\s*\n+([^#\n]+)/i);
+      if (permMatch) {
+        const rawPerms = permMatch[1].match(/`([^`]+)`/g);
+        if (rawPerms) {
+          for (const raw of rawPerms) {
+            const p = raw.replace(/`/g, '').trim();
+            if (p && !permissions.includes(p) && !optional_permissions.includes(p)) {
+              if (p === 'storage' || p === 'alarms') {
+                permissions.push(p);
+              } else {
+                optional_permissions.push(p);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    let host_permissions = Array.isArray(manifest.host_permissions)
+      ? manifest.host_permissions
+      : ['<all_urls>'];
+
+    let alarmMinutes = 30;
+    if (config.schedule?.defaultAlarmMinutes !== undefined) {
+      alarmMinutes = config.schedule.defaultAlarmMinutes;
+    } else if (manifest.prompt_in_a_box?.alarm_minutes !== undefined) {
+      alarmMinutes = manifest.prompt_in_a_box.alarm_minutes;
+    }
+
+    const agentSettings = Array.isArray(config.agentSettings) ? config.agentSettings : undefined;
+    const uiConfig = config.ui || undefined;
+
+    catalog.push({
+      id: `example-${slug}`,
+      slug,
+      name,
+      description,
+      prompt,
+      permissions,
+      optional_permissions,
+      host_permissions,
+      alarmMinutes,
+      agentSettings,
+      uiConfig,
+    });
+  }
+
+  const outputPath = resolve('src/generated-examples.json');
+  writeFileSync(outputPath, JSON.stringify(catalog, null, 2) + '\n', 'utf8');
+  console.log(`📦 Generated examples catalog (${catalog.length} templates) → src/generated-examples.json`);
+  return catalog;
+}
+
+/**
+ * Packs/prepares a standalone example, writing pack_hash into config.json
+ * and stripping prompt_in_a_box from manifest.json.
+ */
+export function packExample(exampleName) {
+  const exampleDir = join('examples', exampleName);
+  const exampleManifest = join(exampleDir, 'manifest.json');
+  const exampleConfig = join(exampleDir, 'config.json');
+
+  let packHash = null;
+
+  // If manifest has prompt_in_a_box, extract pack_hash if present, then strip prompt_in_a_box
+  if (existsSync(exampleManifest)) {
+    try {
+      const manifest = JSON.parse(readFileSync(exampleManifest, 'utf8'));
+      if (manifest.prompt_in_a_box) {
+        if (manifest.prompt_in_a_box.pack_hash) {
+          packHash = manifest.prompt_in_a_box.pack_hash;
+        }
+        delete manifest.prompt_in_a_box;
+        writeFileSync(exampleManifest, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+        console.log(`🧹 Stripped prompt_in_a_box from ${exampleManifest}`);
+      }
+    } catch (err) {
+      console.warn(`Warning: Could not process manifest in packExample:`, err.message);
+    }
+  }
+
+  // Write pack_hash into config.json
+  if (existsSync(exampleConfig)) {
+    try {
+      const config = JSON.parse(readFileSync(exampleConfig, 'utf8'));
+      if (packHash) {
+        config.pack_hash = packHash;
+      }
+      writeFileSync(exampleConfig, JSON.stringify(config, null, 2) + '\n', 'utf8');
+      console.log(`📝 Updated pack_hash in ${exampleConfig}`);
+    } catch (err) {
+      console.warn(`Warning: Could not update config in packExample:`, err.message);
+    }
+  }
+}
+
 // Parse target example
 const args = process.argv.slice(2);
 let exampleName = null;
@@ -80,6 +269,7 @@ if (exampleName) {
             ...exampleContent.prompt_in_a_box
           };
         }
+        delete manifestContent.prompt_in_a_box;
         
         if (exampleContent.permissions) {
           const mergedPerms = new Set([...manifestContent.permissions, ...exampleContent.permissions]);
@@ -158,6 +348,9 @@ if (exampleName) {
       console.log(`🎨 Copied ${iconFile} to ${exampleIcon}`);
     }
   }
+
+  // Pack/prepare example: write pack_hash into config.json and strip prompt_in_a_box from manifest.json
+  packExample(exampleName);
 } else {
   console.log('🔨 Building default workspace extension → dist/...');
 }
@@ -219,6 +412,7 @@ if (includeStudio) {
 }
 
 async function run() {
+  generateExamplesCatalog();
   mkdirSync(outDir, { recursive: true });
   // Copy static assets that aren't TS sources.
   cpSync('src/popup.html', join(outDir, 'popup.html'));

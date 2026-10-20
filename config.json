@@ -1,5 +1,7 @@
 {
   "version": "0.7.2",
+  "prompt": "prompt.md",
+  "pack_hash": "e946a6f61b1718147a0789b0363bf0fae7ce798b75741f069ce6953de21d848f",
   "providers": {
     "allowed": [
       "anthropic",
