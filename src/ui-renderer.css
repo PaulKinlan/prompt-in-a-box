@@ -1795,7 +1795,8 @@
 
 /* ─── 1. Default Clean (Modern Crisp Slate) ──────────────────────── */
 .ui-container.theme-default,
-.ui-container.theme-light {
+.ui-container.theme-light,
+.ui-container.theme-glassmorphic {
   color-scheme: light;
   --color-bg-base: #f8fafc;
   --color-card-base: #ffffff;
@@ -1859,9 +1860,8 @@
 }
 
 /* ─── 2. Studio Dark (Clean High-Contrast Dark Mode) ─────────────── */
-/* Also aliases legacy 'glassmorphic' and 'neon-dark' */
+/* Also aliases 'neon-dark' */
 .ui-container.theme-dark,
-.ui-container.theme-glassmorphic,
 .ui-container.theme-neon-dark {
   color-scheme: dark;
   --color-bg-base: #0b0d13;
@@ -1927,25 +1927,21 @@
 }
 
 .theme-dark .ui-title,
-.theme-glassmorphic .ui-title,
 .theme-neon-dark .ui-title {
   color: #f8fafc;
 }
 
 .theme-dark .ui-header-element,
-.theme-glassmorphic .ui-header-element,
 .theme-neon-dark .ui-header-element {
   color: #f8fafc;
 }
 
 .theme-dark .ui-text-element,
-.theme-glassmorphic .ui-text-element,
 .theme-neon-dark .ui-text-element {
   color: #cbd5e1;
 }
 
 .theme-dark .ui-divider,
-.theme-glassmorphic .ui-divider,
 .theme-neon-dark .ui-divider {
   border-top-color: #262f40;
 }
@@ -1962,18 +1958,6 @@
 .theme-dark .ui-summary-card,
 .theme-dark .ui-carousel-container,
 .theme-dark .ui-task-item,
-.theme-glassmorphic .ui-metric-card,
-.theme-glassmorphic .ui-action-row,
-.theme-glassmorphic .ui-list li,
-.theme-glassmorphic .ui-undo-banner,
-.theme-glassmorphic .ui-live-console-drawer,
-.theme-glassmorphic .ui-empty-state,
-.theme-glassmorphic .ui-card-element,
-.theme-glassmorphic .ui-switch-wrapper,
-.theme-glassmorphic .ui-chat-container,
-.theme-glassmorphic .ui-summary-card,
-.theme-glassmorphic .ui-carousel-container,
-.theme-glassmorphic .ui-task-item,
 .theme-neon-dark .ui-metric-card,
 .theme-neon-dark .ui-action-row,
 .theme-neon-dark .ui-list li,
@@ -1994,27 +1978,22 @@
 }
 
 .theme-dark .ui-metric-label,
-.theme-glassmorphic .ui-metric-label,
 .theme-neon-dark .ui-metric-label {
   color: #94a3b8;
 }
 
 .theme-dark .ui-metric-value,
-.theme-glassmorphic .ui-metric-value,
 .theme-neon-dark .ui-metric-value {
   color: #f8fafc;
 }
 
 .theme-dark .ui-metric-subvalue,
-.theme-glassmorphic .ui-metric-subvalue,
 .theme-neon-dark .ui-metric-subvalue {
   color: #cbd5e1;
 }
 
 .theme-dark .ui-input-field,
 .theme-dark .ui-segmented-control,
-.theme-glassmorphic .ui-input-field,
-.theme-glassmorphic .ui-segmented-control,
 .theme-neon-dark .ui-input-field,
 .theme-neon-dark .ui-segmented-control {
   background: #1c2230;
@@ -2024,21 +2003,18 @@
 }
 
 .theme-dark .ui-input-field:focus,
-.theme-glassmorphic .ui-input-field:focus,
 .theme-neon-dark .ui-input-field:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.32);
 }
 
 .theme-dark .ui-action-row:hover,
-.theme-glassmorphic .ui-action-row:hover,
 .theme-neon-dark .ui-action-row:hover {
   border-color: #3b82f6;
   background: #1c2230;
 }
 
 .theme-dark .ui-chat-bubble.role-assistant,
-.theme-glassmorphic .ui-chat-bubble.role-assistant,
 .theme-neon-dark .ui-chat-bubble.role-assistant {
   background: #1c2230;
   border: 1px solid #262f40;
@@ -2046,14 +2022,12 @@
 }
 
 .theme-dark .ui-console-body,
-.theme-glassmorphic .ui-console-body,
 .theme-neon-dark .ui-console-body {
   background: #0b0d13;
   color: #f8fafc;
 }
 
 .theme-dark .ui-console-log-item,
-.theme-glassmorphic .ui-console-log-item,
 .theme-neon-dark .ui-console-log-item {
   background: #131722;
   border-color: #262f40;
@@ -2287,4 +2261,127 @@
   padding: 6px 9px;
   border-radius: var(--ui-radius, 5px);
 }
+
+/* ─── Live Run Progress Card & Expectations ───────────────────────── */
+.ui-run-progress-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--ui-radius, 8px);
+  background: var(--color-card-base, #ffffff);
+  border: 1px solid var(--color-border, #cbd5e1);
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.08);
+  margin-top: 4px;
+  animation: fadeIn 0.2s ease;
+}
+
+.ui-progress-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ui-progress-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ui-progress-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent, #2563eb);
+  animation: spin 1s linear infinite;
+}
+
+.status-complete .ui-progress-spinner {
+  display: none;
+}
+
+.ui-progress-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary, #0f172a);
+  letter-spacing: -0.01em;
+}
+
+.ui-progress-timer {
+  font-family: var(--pib-font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-card-muted, #f1f5f9);
+  color: var(--color-text-muted, #475569);
+  border: 1px solid var(--color-border, #cbd5e1);
+}
+
+.ui-progress-expectation {
+  font-size: 12px;
+  color: var(--color-text-secondary, #334155);
+  line-height: 1.4;
+}
+
+.ui-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-card-muted, #f1f5f9);
+  overflow: hidden;
+  position: relative;
+}
+
+.ui-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent, #2563eb), #38bdf8);
+  border-radius: 999px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.status-complete .ui-progress-fill {
+  background: var(--color-success, #16a34a);
+}
+
+.status-error .ui-progress-fill {
+  background: var(--color-danger, #dc2626);
+}
+
+.ui-progress-steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.ui-progress-step {
+  flex: 1;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--color-card-muted, #f1f5f9);
+  color: var(--color-text-muted, #64748b);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-progress-step.step-active {
+  background: var(--color-accent-tint, rgba(37, 99, 235, 0.08));
+  color: var(--color-accent, #2563eb);
+  border-color: var(--color-accent-ring, rgba(37, 99, 235, 0.3));
+}
+
+.ui-progress-step.step-done {
+  background: var(--color-success-bg, rgba(22, 163, 74, 0.08));
+  color: var(--color-success, #16a34a);
+  border-color: var(--color-success-border, rgba(22, 163, 74, 0.25));
+}
+
 

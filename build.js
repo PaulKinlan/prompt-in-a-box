@@ -272,8 +272,7 @@ if (exampleName) {
         delete manifestContent.prompt_in_a_box;
         
         if (exampleContent.permissions) {
-          const mergedPerms = new Set([...manifestContent.permissions, ...exampleContent.permissions]);
-          manifestContent.permissions = Array.from(mergedPerms);
+          manifestContent.permissions = Array.from(new Set(exampleContent.permissions));
         }
         
         if (exampleContent.host_permissions) {

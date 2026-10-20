@@ -192,8 +192,8 @@ export function normalizeThemeName(raw?: string): 'compact' | 'warm-paper' | 'da
   const t = raw.toLowerCase().trim();
   if (t === 'compact') return 'compact';
   if (t === 'warm-paper' || t === 'warm-editorial') return 'warm-paper';
-  if (t === 'dark' || t === 'glassmorphic' || t === 'neon-dark') return 'dark';
-  if (t === 'default' || t === 'light') return 'default';
+  if (t === 'dark' || t === 'neon-dark') return 'dark';
+  if (t === 'default' || t === 'light' || t === 'glassmorphic') return 'default';
   return 'default';
 }
 
@@ -375,6 +375,14 @@ export class UIRenderer {
   private consoleCountBadgeEl: HTMLElement | null = null;
   private activeActionButton: { el: HTMLButtonElement; originalText: string } | null = null;
   private baseContainerClasses: string[];
+  private runProgressEl: HTMLElement | null = null;
+  private runProgressFillEl: HTMLElement | null = null;
+  private runProgressTimeEl: HTMLElement | null = null;
+  private runProgressStatusEl: HTMLElement | null = null;
+  private runProgressExpectationEl: HTMLElement | null = null;
+  private runProgressStepsContainerEl: HTMLElement | null = null;
+  private runProgressTimer: any = null;
+  private runProgressStartTime = 0;
 
   constructor(container: HTMLElement, viewName: string) {
     this.container = container;
@@ -464,8 +472,19 @@ export class UIRenderer {
             this.updateLiveStatus(msg.status);
           }
 
-          if (msg.event.channel === 'run-start' && this.consoleDrawerEl) {
-            this.consoleDrawerEl.classList.add('expanded');
+          if (msg.event.channel === 'run-start') {
+            this.startRunProgress(msg.event.title || 'Starting agent task...');
+            if (this.consoleDrawerEl) {
+              this.consoleDrawerEl.classList.add('expanded');
+            }
+          } else if (msg.event.channel === 'step-start') {
+            this.advanceRunProgress('step-start', `Analyzing tabs (step ${msg.event.step !== undefined ? msg.event.step + 1 : 1})...`);
+          } else if (msg.event.channel === 'tool-call') {
+            this.advanceRunProgress('tool-call', `Applying ${msg.event.title || 'tool action'}...`);
+          } else if (msg.event.channel === 'run-complete') {
+            this.finishRunProgress(true, msg.event.title || 'Task completed successfully');
+          } else if (msg.event.channel === 'error') {
+            this.finishRunProgress(false, msg.event.title || 'Task error');
           }
 
           if (this.activeActionButton) {
@@ -485,6 +504,9 @@ export class UIRenderer {
             }
           }
         } else if (msg?.type === 'agent-stream-delta') {
+          if (msg.kind === 'reasoning' && msg.fullText) {
+            this.advanceRunProgress('stream', `Thinking: ${msg.fullText}`);
+          }
           if (this.consoleStreamingBoxEl) {
             this.consoleStreamingBoxEl.classList.add('visible');
             const prefix = msg.kind === 'reasoning' ? 'Thinking: ' : 'Output: ';
@@ -572,7 +594,12 @@ export class UIRenderer {
       this.logs = logs || [];
       if (status) this.liveStatus = status;
       this.populateLiveLogs();
-      if (this.liveStatus) this.updateLiveStatus(this.liveStatus);
+      if (this.liveStatus) {
+        this.updateLiveStatus(this.liveStatus);
+        if (this.liveStatus.active) {
+          this.startRunProgress(this.liveStatus.statusText || 'Agent run in progress...');
+        }
+      }
     } catch {
       // ignore
     }
@@ -705,7 +732,8 @@ export class UIRenderer {
 
     this.container.appendChild(componentWrapper);
 
-    // 3. Render Live Console Drawer
+    // 3. Render Live Progress Card & Live Console Drawer
+    this.container.appendChild(this.createRunProgressCard());
     this.container.appendChild(this.createLiveConsoleDrawer());
   }
 
@@ -1942,6 +1970,8 @@ export class UIRenderer {
             } else if (comp.action === 'trigger-run') {
               this.activeActionButton = { el, originalText: originalText || 'Action' };
               el.textContent = 'Sorting tabs...';
+              const cleanTaskTitle = comp.text ? comp.text.replace(/^[^\w\s]+/, '').trim() : 'Organizing tabs';
+              this.startRunProgress(`${cleanTaskTitle}...`);
               if (this.consoleDrawerEl) {
                 this.consoleDrawerEl.classList.add('expanded');
               }
@@ -2074,7 +2104,10 @@ export class UIRenderer {
    * and renders both a prominent Undo button and individual per-action undo buttons.
    */
   private async populateActionHistory(container: HTMLElement, comp: UIComponent): Promise<void> {
-    const history = await listActionHistory(comp.limit ?? 15);
+    const rawHistory = await listActionHistory((comp.limit ?? 15) * 3);
+    const history = rawHistory
+      .filter((e) => (comp as any).includeStorage === true || e.toolName !== 'storage_set')
+      .slice(0, comp.limit ?? 15);
     container.innerHTML = '';
 
     const nonUndoneCount = history.filter((e) => !e.undone).length;
@@ -2370,6 +2403,36 @@ export class UIRenderer {
     });
     right.appendChild(clearBtn);
 
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'ui-console-btn';
+    copyBtn.textContent = 'Copy';
+    copyBtn.title = 'Copy formatted logs to clipboard';
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await this.copyLogsToClipboard();
+      const orig = copyBtn.textContent;
+      copyBtn.textContent = '✓ Copied';
+      setTimeout(() => {
+        copyBtn.textContent = orig;
+      }, 1500);
+    });
+    right.appendChild(copyBtn);
+
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'ui-console-btn';
+    exportBtn.textContent = 'Export';
+    exportBtn.title = 'Export all logs as JSON';
+    exportBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await this.exportLogsToFile();
+      const orig = exportBtn.textContent;
+      exportBtn.textContent = '✓ Exported';
+      setTimeout(() => {
+        exportBtn.textContent = orig;
+      }, 1500);
+    });
+    right.appendChild(exportBtn);
+
     const toggleBtn = document.createElement('button');
     toggleBtn.className = 'ui-console-btn';
     toggleBtn.textContent = 'Logs ▾';
@@ -2492,5 +2555,264 @@ export class UIRenderer {
     }
 
     return item;
+  }
+
+  // ─── Live Run Progress Card & Expectations ──────────────────────────
+
+  private createRunProgressCard(): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'ui-run-progress-card';
+    card.style.display = 'none';
+    this.runProgressEl = card;
+
+    const headerRow = document.createElement('div');
+    headerRow.className = 'ui-progress-header-row';
+
+    const left = document.createElement('div');
+    left.className = 'ui-progress-header-left';
+
+    const spinner = document.createElement('span');
+    spinner.className = 'ui-progress-spinner';
+    spinner.innerHTML = `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+      </svg>
+    `;
+    left.appendChild(spinner);
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'ui-progress-title';
+    titleEl.textContent = 'Sorting open tabs...';
+    this.runProgressStatusEl = titleEl;
+    left.appendChild(titleEl);
+
+    headerRow.appendChild(left);
+
+    const timeBadge = document.createElement('span');
+    timeBadge.className = 'ui-progress-timer';
+    timeBadge.textContent = '0.0s';
+    this.runProgressTimeEl = timeBadge;
+    headerRow.appendChild(timeBadge);
+
+    card.appendChild(headerRow);
+
+    const expText = document.createElement('div');
+    expText.className = 'ui-progress-expectation';
+    expText.textContent = 'Analyzing open tabs with AI — usually takes 4–8 seconds.';
+    this.runProgressExpectationEl = expText;
+    card.appendChild(expText);
+
+    const track = document.createElement('div');
+    track.className = 'ui-progress-track';
+
+    const fill = document.createElement('div');
+    fill.className = 'ui-progress-fill';
+    fill.style.width = '15%';
+    this.runProgressFillEl = fill;
+    track.appendChild(fill);
+
+    card.appendChild(track);
+
+    const stepsRow = document.createElement('div');
+    stepsRow.className = 'ui-progress-steps';
+    this.runProgressStepsContainerEl = stepsRow;
+
+    const step1 = document.createElement('div');
+    step1.className = 'ui-progress-step step-active';
+    step1.dataset.step = '1';
+    step1.textContent = '1. Read Tabs';
+    stepsRow.appendChild(step1);
+
+    const step2 = document.createElement('div');
+    step2.className = 'ui-progress-step';
+    step2.dataset.step = '2';
+    step2.textContent = '2. AI Categorize';
+    stepsRow.appendChild(step2);
+
+    const step3 = document.createElement('div');
+    step3.className = 'ui-progress-step';
+    step3.dataset.step = '3';
+    step3.textContent = '3. Apply Groups';
+    stepsRow.appendChild(step3);
+
+    card.appendChild(stepsRow);
+
+    return card;
+  }
+
+  private startRunProgress(initialText = 'Executing agent task...'): void {
+    if (!this.runProgressEl) return;
+    this.runProgressEl.style.display = 'flex';
+    this.runProgressEl.classList.remove('status-complete', 'status-error');
+    this.runProgressEl.classList.add('status-running');
+
+    if (this.runProgressStatusEl) {
+      this.runProgressStatusEl.textContent = initialText;
+    }
+    if (this.runProgressExpectationEl) {
+      this.runProgressExpectationEl.textContent = 'Analyzing open tabs with AI — usually takes 4–8 seconds.';
+    }
+    if (this.runProgressFillEl) {
+      this.runProgressFillEl.style.width = '20%';
+    }
+
+    if (this.runProgressStepsContainerEl) {
+      const steps = this.runProgressStepsContainerEl.querySelectorAll('.ui-progress-step');
+      steps.forEach((s, idx) => {
+        s.classList.remove('step-active', 'step-done');
+        if (idx === 0) s.classList.add('step-active');
+      });
+    }
+
+    if (this.runProgressTimer) {
+      clearInterval(this.runProgressTimer);
+    }
+    this.runProgressStartTime = Date.now();
+    if (this.runProgressTimeEl) this.runProgressTimeEl.textContent = '0.0s';
+
+    this.runProgressTimer = setInterval(() => {
+      if (!this.runProgressStartTime) return;
+      const elapsedSec = ((Date.now() - this.runProgressStartTime) / 1000).toFixed(1);
+      if (this.runProgressTimeEl) {
+        this.runProgressTimeEl.textContent = `${elapsedSec}s`;
+      }
+    }, 100);
+  }
+
+  private advanceRunProgress(phase: 'step-start' | 'tool-call' | 'stream', detailText?: string): void {
+    if (!this.runProgressEl || this.runProgressEl.style.display === 'none') return;
+
+    if (phase === 'step-start') {
+      if (this.runProgressFillEl) this.runProgressFillEl.style.width = '55%';
+      if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
+      if (this.runProgressStepsContainerEl) {
+        const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
+        const s2 = this.runProgressStepsContainerEl.querySelector('[data-step="2"]');
+        s1?.classList.add('step-done');
+        s1?.classList.remove('step-active');
+        s2?.classList.add('step-active');
+      }
+    } else if (phase === 'tool-call') {
+      if (this.runProgressFillEl) this.runProgressFillEl.style.width = '85%';
+      if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
+      if (this.runProgressStepsContainerEl) {
+        const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
+        const s2 = this.runProgressStepsContainerEl.querySelector('[data-step="2"]');
+        const s3 = this.runProgressStepsContainerEl.querySelector('[data-step="3"]');
+        s1?.classList.add('step-done');
+        s2?.classList.add('step-done');
+        s2?.classList.remove('step-active');
+        s3?.classList.add('step-active');
+      }
+    } else if (phase === 'stream' && detailText && this.runProgressExpectationEl) {
+      this.runProgressExpectationEl.textContent = detailText.slice(0, 90) + '...';
+    }
+  }
+
+  private finishRunProgress(success: boolean, summaryText: string): void {
+    if (!this.runProgressEl) return;
+    if (this.runProgressTimer) {
+      clearInterval(this.runProgressTimer);
+      this.runProgressTimer = null;
+    }
+
+    const elapsed = this.runProgressStartTime
+      ? ((Date.now() - this.runProgressStartTime) / 1000).toFixed(1)
+      : '0.0';
+
+    this.runProgressEl.classList.remove('status-running');
+    if (success) {
+      this.runProgressEl.classList.add('status-complete');
+      if (this.runProgressFillEl) this.runProgressFillEl.style.width = '100%';
+      if (this.runProgressStatusEl) {
+        this.runProgressStatusEl.textContent = `✓ Done in ${elapsed}s!`;
+      }
+      if (this.runProgressExpectationEl) {
+        this.runProgressExpectationEl.textContent = summaryText || 'Tabs organized successfully.';
+      }
+      if (this.runProgressStepsContainerEl) {
+        const steps = this.runProgressStepsContainerEl.querySelectorAll('.ui-progress-step');
+        steps.forEach((s) => {
+          s.classList.remove('step-active');
+          s.classList.add('step-done');
+        });
+      }
+    } else {
+      this.runProgressEl.classList.add('status-error');
+      if (this.runProgressStatusEl) {
+        this.runProgressStatusEl.textContent = 'Run error';
+      }
+      if (this.runProgressExpectationEl) {
+        this.runProgressExpectationEl.textContent = summaryText || 'Failed to complete run.';
+      }
+    }
+
+    setTimeout(() => {
+      if (this.runProgressEl && !this.liveStatus.active) {
+        this.runProgressEl.style.display = 'none';
+      }
+    }, 5000);
+  }
+
+  // ─── Export and Copy Logs Utilities ─────────────────────────────────
+
+  private async copyLogsToClipboard(): Promise<void> {
+    try {
+      const lines = this.logs.map((l) => {
+        const time = new Date(l.timestamp).toISOString();
+        const header = `[${time}] [${l.channel.toUpperCase()}] ${l.title}`;
+        let details = '';
+        if (l.body) details += `\n  Body: ${l.body}`;
+        if (l.data !== undefined) {
+          try {
+            details += `\n  Data: ${JSON.stringify(l.data, null, 2).replace(/\n/g, '\n  ')}`;
+          } catch {
+            details += `\n  Data: ${String(l.data)}`;
+          }
+        }
+        return header + details;
+      });
+      const text = lines.length > 0 ? lines.join('\n\n') : 'No logs recorded.';
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.warn('Failed to copy logs to clipboard:', err);
+    }
+  }
+
+  private async exportLogsToFile(): Promise<void> {
+    try {
+      let auditIndex: any[] = [];
+      let actionHistory: any[] = [];
+      try {
+        auditIndex = (await chrome.runtime.sendMessage({ type: 'get-audit-index' })) || [];
+      } catch {}
+      try {
+        const hRes = await chrome.runtime.sendMessage({ type: 'get-action-history', limit: 50 });
+        actionHistory = hRes?.history || [];
+      } catch {}
+
+      const exportPayload = {
+        exportedAt: new Date().toISOString(),
+        manifest: typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest() : null,
+        view: this.viewName,
+        liveStatus: this.liveStatus,
+        logs: this.logs,
+        actionHistory,
+        auditIndex,
+      };
+
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const extName = (exportPayload.manifest?.name || 'agent').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      a.href = url;
+      a.download = `${extName}-console-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export logs:', err);
+    }
   }
 }

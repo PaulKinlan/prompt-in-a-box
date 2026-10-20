@@ -173,11 +173,13 @@ async function checkUndoToast(): Promise<void> {
 }
 
 // Live update Undo Toast banner when tabs are grouped
-chrome.storage?.onChanged?.addListener((changes, areaName) => {
-  if (areaName === 'local' && (changes.activeUndoToast || changes.lastSortSnapshot)) {
-    void checkUndoToast();
-  }
-});
+if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && (changes.activeUndoToast || changes.lastSortSnapshot)) {
+      void checkUndoToast();
+    }
+  });
+}
 
 async function loadAgentSettings(): Promise<void> {
   const cfg = await getConfig();
@@ -422,6 +424,42 @@ if (openStudioTopBtn) {
 const openStudioBtn = $('openStudio');
 if (openStudioBtn) {
   openStudioBtn.addEventListener('click', () => openExtensionStudio());
+}
+
+const exportLogsBtn = $('exportLogsBtn');
+if (exportLogsBtn) {
+  exportLogsBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      const liveRes = (await chrome.runtime.sendMessage({ type: 'get-live-logs' })) || {};
+      const auditRes = (await chrome.runtime.sendMessage({ type: 'get-audit-index' })) || [];
+      const historyRes = (await chrome.runtime.sendMessage({ type: 'get-action-history', limit: 50 })) || {};
+      const manifest = chrome.runtime.getManifest();
+
+      const bundle = {
+        exportedAt: new Date().toISOString(),
+        manifest,
+        liveStatus: liveRes.status,
+        logs: liveRes.logs || [],
+        actionHistory: historyRes.history || [],
+        auditIndex: auditRes,
+      };
+
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const extName = (manifest.name || 'agent').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      a.href = url;
+      a.download = `${extName}-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showStatus('Logs exported successfully', 'ok');
+    } catch (err) {
+      showStatus(`Export failed: ${(err as Error).message}`, 'error');
+    }
+  });
 }
 
 // ─── Dynamic View Toggle Controller ─────────────────────────────────

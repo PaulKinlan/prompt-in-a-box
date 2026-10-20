@@ -1,5 +1,5 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.7",
   "providers": {
     "allowed": [
       "google"
@@ -118,6 +118,6 @@
     "allowArtifacts": true,
     "allowManualRun": true
   },
-  "pack_hash": "5f04ac8534e80d5786aeaf65155ea6ba99c8457cfdd5b6310cd7c64df61201fb",
+  "pack_hash": "4a75179b86af78981d7f579c28485a3898cfa0d591438a19c90e20101f4bcf6b",
   "prompt": "prompt.md"
 }

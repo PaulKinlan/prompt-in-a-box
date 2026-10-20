@@ -88,6 +88,7 @@ import {
   handleCodeModeLog,
   buildRuntimeCodeModePrompt,
 } from './code-mode';
+import { removeContextMenuIndex } from './tools/context-menu-list';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
 const LAST_SCHEDULED_RUN_KEY = '__pib_last_scheduled_run_at';
@@ -132,26 +133,43 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   const cfg = await getConfig();
   await ensureScheduled(cfg.alarmMinutes, true);
 
+  // Clear stale cached UI schema so updated prompt.md UI blocks render immediately
+  try {
+    await chrome.storage.local.remove('__pib_dynamic_ui');
+  } catch {
+    // ignore
+  }
+
   if (details.reason === 'install' || !cfg.onboarded) {
     chrome.runtime.openOptionsPage();
   }
 
-  // Fire a bootstrap run so the prompt can set up context menus,
-  // seed defaults, register commands, etc. on install/update/reload.
-  // run() no-ops with a 'skipped' audit if there's no API key yet.
-  const trigger: AuditEntry['trigger'] =
-    details.reason === 'update' ? 'update' : 'install';
-  await run(trigger).catch((err) => console.warn('[prompt-in-a-box] bootstrap run failed:', err));
+  // Only fire a bootstrap run if the prompt actually registers context menus or commands
+  try {
+    const promptText = await loadPrompt();
+    if (promptText.includes('context_menu_create') || promptText.includes('contextMenus')) {
+      const trigger: AuditEntry['trigger'] =
+        details.reason === 'update' ? 'update' : 'install';
+      await run(trigger).catch((err) => console.warn('[prompt-in-a-box] bootstrap run failed:', err));
+    } else {
+      // Clean up any stale context menus if prompt no longer uses them
+      try {
+        if (typeof chrome.contextMenus?.removeAll === 'function') {
+          chrome.contextMenus.removeAll();
+        }
+        await removeContextMenuIndex({ all: true });
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // ignore
+  }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   const cfg = await getConfig();
   await ensureScheduled(cfg.alarmMinutes);
-  // Startup run so the prompt can check state, drain any events that
-  // queued between sessions, and re-assert context menus / commands.
-  if (cfg.alarmMinutes > 0) {
-    await run('startup').catch((err) => console.warn('[prompt-in-a-box] startup run failed:', err));
-  }
 });
 
 chrome.alarms?.onAlarm?.addListener(async (alarm) => {

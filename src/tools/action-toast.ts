@@ -92,12 +92,15 @@ export const actionToast = tool({
   inputSchema: z.object({
     message: z.string().describe('Toast message to display, e.g. "Sorted 8 tabs into 3 groups"'),
     undoLabel: z.string().optional().describe('Label for the undo button, e.g. "Undo Sort" (default: "Undo")'),
-    badgeText: z.string().optional().describe('Text to show on extension icon badge, e.g. "UNDO" or "DONE" (default: "UNDO")'),
+    badgeText: z.string().optional().describe('Short 1-2 char badge text for the toolbar icon (default: "↺")'),
     openPopup: z.boolean().optional().describe('Whether to attempt opening the extension popup directly (default: true)'),
   }),
   execute: async ({ message, undoLabel, badgeText, openPopup }) => {
     const label = undoLabel || 'Undo';
-    const badge = badgeText || 'UNDO';
+    let badge = (badgeText || '↺').trim();
+    if (badge.toUpperCase() === 'UNDO' || badge.length > 2) {
+      badge = '↺';
+    }
     const shouldOpen = openPopup !== false;
 
     // Retrieve the most recent sort snapshot if recorded
@@ -124,7 +127,10 @@ export const actionToast = tool({
     // Set extension action badge & title
     try {
       await chrome.action.setBadgeText({ text: badge });
-      await chrome.action.setBadgeBackgroundColor({ color: '#d97706' }); // Warm amber
+      await chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
+      if (typeof (chrome.action as any).setBadgeTextColor === 'function') {
+        await (chrome.action as any).setBadgeTextColor({ color: '#ffffff' });
+      }
       await chrome.action.setTitle({ title: `${message} — Click to ${label}` });
     } catch {
       // ignore

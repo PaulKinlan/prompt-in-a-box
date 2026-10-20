@@ -258,7 +258,7 @@ export const tabGroup = tool({
           {
             message: autoMessage,
             undoLabel: 'Undo Sort',
-            badgeText: 'UNDO',
+            badgeText: '↺',
             openPopup: false,
           },
           { toolCallId: 'auto-toast', messages: [] },
@@ -306,7 +306,7 @@ export const tabGroup = tool({
           {
             message: toastMessage,
             undoLabel: 'Undo Sort',
-            badgeText: 'UNDO',
+            badgeText: '↺',
             openPopup: false,
           },
           { toolCallId: 'auto-toast', messages: [] },

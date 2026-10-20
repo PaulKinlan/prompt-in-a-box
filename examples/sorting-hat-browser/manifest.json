@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sorting Hat Browser",
-  "version": "1.0.3",
+  "version": "1.0.7",
   "description": "Automatically categorizes and organizes your browser tabs into dynamic groups based on real-time content analysis and user intent.",
   "background": {
     "service_worker": "dist/background.js",
@@ -36,8 +36,7 @@
     "idle",
     "offscreen",
     "sidePanel",
-    "history",
-    "contextMenus"
+    "history"
   ],
   "side_panel": {
     "default_path": "dist/sidepanel.html"
@@ -48,6 +47,7 @@
     "tts",
     "declarativeNetRequest",
     "bookmarks",
+    "contextMenus",
     "downloads",
     "sessions",
     "webNavigation",

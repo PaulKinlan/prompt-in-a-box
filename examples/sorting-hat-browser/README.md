@@ -4,11 +4,10 @@ Automatically categorizes and organizes your browser tabs into dynamic groups ba
 
 ## Trigger
 - **Scheduled**: Runs automatically every 15 minutes via a Chrome alarm.
-- **Manual**: Can be triggered on-demand via a custom right-click context menu item ("Sort Un-grouped Tabs Now").
+- **Manual**: Can be triggered on-demand via the extension popup or Agent UI ("Sort Tabs Now").
 
 ## Writes
 - Uses `tab_group` to group tabs logically, assigning titles and colors.
-- Uses `context_menu_create` to install the manual trigger menu item.
 - Uses `storage_set` to remember the mapping of active groups.
 - Uses `alarm_set` to schedule automated periodic tab clean-up.
 
@@ -26,5 +25,4 @@ Automatically categorizes and organizes your browser tabs into dynamic groups ba
 - `activeTab`
 - `history`
 - `alarms`
-- `contextMenus`
 - `<all_urls>` (Host permission)

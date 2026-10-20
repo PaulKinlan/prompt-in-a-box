@@ -595,6 +595,43 @@ function wireEventHandlers(): void {
     });
   }
 
+  const exportConsoleLogsBtn = $('exportConsoleLogs');
+  if (exportConsoleLogsBtn) {
+    exportConsoleLogsBtn.addEventListener('click', async () => {
+      exportConsoleLogsBtn.textContent = 'Exporting…';
+      try {
+        const liveRes = (await chrome.runtime.sendMessage({ type: 'get-live-logs' })) || {};
+        const historyRes = (await chrome.runtime.sendMessage({ type: 'get-action-history', limit: 50 })) || {};
+        const manifest = chrome.runtime.getManifest();
+
+        const bundle = {
+          exportedAt: new Date().toISOString(),
+          manifest,
+          liveStatus: liveRes.status,
+          logs: liveRes.logs || [],
+          actionHistory: historyRes.history || [],
+          auditIndex: allAuditIndex,
+        };
+
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const extName = (manifest.name || 'agent').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        a.href = url;
+        a.download = `${extName}-console-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast('Console logs exported successfully');
+      } catch (err) {
+        toast(`Export failed: ${(err as Error).message}`, 'error');
+      } finally {
+        exportConsoleLogsBtn.textContent = 'Export Console Logs';
+      }
+    });
+  }
+
   const exportBtn = $('exportAudit');
   if (exportBtn) {
     exportBtn.addEventListener('click', async () => {
