@@ -1,12 +1,30 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { recordSortSnapshotIfNeeded } from './action-toast';
+import { recordSortSnapshotIfNeeded, actionToast } from './action-toast';
 import { recordAction, type TabGroupColor } from '../action-history';
 
 export const tabGroup = tool({
   description:
-    'Group tabs together safely. Groups tabs per-window, reuses existing groups with matching titles in the same window, preserves collapsed state, and ignores pinned tabs.',
+    'Group tabs together safely. Supports single-group mode or batch mode (creating multiple tab groups across windows in one call), auto-reuses existing groups with matching titles in the same window, preserves collapsed state, and ignores pinned tabs.',
   inputSchema: z.object({
+    groups: z
+      .array(
+        z.object({
+          title: z.string().describe('Group title.'),
+          color: z
+            .enum(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'])
+            .optional(),
+          tabIds: z.array(z.any()).describe('Tab IDs or objects to place in this group.'),
+          windowId: z.number().optional().describe('Window ID for this group.'),
+          collapsed: z.boolean().optional(),
+        }),
+      )
+      .optional()
+      .describe('Batch mode: define multiple tab groups to apply across windows in a single fast call.'),
+    toastMessage: z
+      .string()
+      .optional()
+      .describe('Optional Undo Toast message (e.g. "Sorted 12 tabs into 3 groups") to show immediately after grouping.'),
     tabIds: z.array(z.any()).optional().describe('Tab ids or tab objects to add to the group.'),
     ids: z.array(z.any()).optional().describe('Alias for tabIds.'),
     tabs: z.array(z.any()).optional().describe('Alias for tabIds (can be tab objects or ids).'),
@@ -24,41 +42,73 @@ export const tabGroup = tool({
       .describe('Whether the group should be collapsed. If omitted when adding to an existing group, the group\'s current collapsed state is preserved.'),
     includePinned: z.boolean().optional().describe('Whether to allow grouping pinned tabs (default false).'),
   }),
-  execute: async ({ tabIds, ids, tabs, groupId, id, windowId, title, name, color, collapsed, includePinned }) => {
+  execute: async ({
+    groups,
+    toastMessage,
+    tabIds,
+    ids,
+    tabs,
+    groupId,
+    id,
+    windowId,
+    title,
+    name,
+    color,
+    collapsed,
+    includePinned,
+  }) => {
     // Record snapshot before modifying tab groups for undo support
     await recordSortSnapshotIfNeeded();
 
-    const rawList = tabIds ?? ids ?? tabs ?? [];
-    const requestedIds: number[] = rawList
-      .map((item) => {
-        if (typeof item === 'number') return item;
-        if (typeof item === 'object' && item !== null) {
-          const num = item.id ?? item.tabId;
-          if (typeof num === 'number') return num;
-        }
-        return NaN;
-      })
-      .filter((n) => Number.isFinite(n));
+    // Fetch all current tabs and tab groups in parallel for instant in-memory lookup
+    const [allTabs, allGroups] = await Promise.all([
+      chrome.tabs.query({}),
+      chrome.tabGroups.query({}).catch(() => []),
+    ]);
 
-    const resolvedGroupId = groupId ?? id;
-    const resolvedTitle = title ?? name;
+    const tabMap = new Map<number, chrome.tabs.Tab>();
+    for (const t of allTabs) {
+      if (t.id !== undefined) tabMap.set(t.id, t);
+    }
+    const groupMap = new Map<number, chrome.tabGroups.TabGroup>();
+    for (const g of allGroups) {
+      groupMap.set(g.id, g);
+    }
 
-    // Fetch live tab records
-    const liveTabs: chrome.tabs.Tab[] = [];
-    const previousTabs: Array<{
-      tabId: number;
-      groupId: number;
-      index: number;
-      windowId: number;
-      groupTitle?: string;
-      groupColor?: TabGroupColor;
-      groupCollapsed?: boolean;
-    }> = [];
+    // Helper to process a single group definition
+    const processGroup = async (spec: {
+      requestedTabItems: any[];
+      targetGroupId?: number;
+      targetTitle?: string;
+      targetColor?: 'grey' | 'blue' | 'red' | 'yellow' | 'green' | 'pink' | 'purple' | 'cyan' | 'orange';
+      targetWindowId?: number;
+      targetCollapsed?: boolean;
+    }) => {
+      const requestedIds: number[] = spec.requestedTabItems
+        .map((item) => {
+          if (typeof item === 'number') return item;
+          if (typeof item === 'object' && item !== null) {
+            const num = item.id ?? item.tabId;
+            if (typeof num === 'number') return num;
+          }
+          return NaN;
+        })
+        .filter((n) => Number.isFinite(n));
 
-    for (const tid of requestedIds) {
-      try {
-        const t = await chrome.tabs.get(tid);
-        // Skip pinned tabs unless explicitly requested
+      const liveTabs: chrome.tabs.Tab[] = [];
+      const previousTabs: Array<{
+        tabId: number;
+        groupId: number;
+        index: number;
+        windowId: number;
+        groupTitle?: string;
+        groupColor?: TabGroupColor;
+        groupCollapsed?: boolean;
+      }> = [];
+
+      for (const tid of requestedIds) {
+        const t = tabMap.get(tid);
+        if (!t) continue;
         if (t.pinned && !includePinned) continue;
 
         let gTitle: string | undefined;
@@ -66,13 +116,11 @@ export const tabGroup = tool({
         let gCollapsed: boolean | undefined;
 
         if (t.groupId && t.groupId > 0) {
-          try {
-            const g = await chrome.tabGroups.get(t.groupId);
+          const g = groupMap.get(t.groupId);
+          if (g) {
             gTitle = g.title;
             gColor = g.color as TabGroupColor;
             gCollapsed = g.collapsed;
-          } catch {
-            // ignore
           }
         }
 
@@ -87,116 +135,196 @@ export const tabGroup = tool({
         });
 
         liveTabs.push(t);
-      } catch {
-        // Tab no longer exists
       }
+
+      if (liveTabs.length === 0 && spec.targetGroupId === undefined) {
+        return null;
+      }
+
+      const effectiveWindowId = spec.targetWindowId ?? (liveTabs[0]?.windowId || chrome.windows.WINDOW_ID_CURRENT);
+      let finalGroupId = spec.targetGroupId;
+      let wasCollapsed: boolean | undefined;
+      let prevGroupMeta: { title?: string; color?: TabGroupColor; collapsed?: boolean } | undefined;
+
+      if (finalGroupId !== undefined) {
+        const eg = groupMap.get(finalGroupId);
+        if (eg) {
+          wasCollapsed = eg.collapsed;
+          prevGroupMeta = {
+            title: eg.title,
+            color: eg.color as TabGroupColor,
+            collapsed: eg.collapsed,
+          };
+        }
+      }
+
+      // Check matching title in the same window
+      if (finalGroupId === undefined && spec.targetTitle && effectiveWindowId !== undefined) {
+        const cleanTarget = spec.targetTitle.trim().toLowerCase();
+        for (const g of allGroups) {
+          if (g.windowId === effectiveWindowId && (g.title || '').trim().toLowerCase() === cleanTarget) {
+            finalGroupId = g.id;
+            wasCollapsed = g.collapsed;
+            prevGroupMeta = {
+              title: g.title,
+              color: g.color as TabGroupColor,
+              collapsed: g.collapsed,
+            };
+            break;
+          }
+        }
+      }
+
+      const targetTabIds = liveTabs
+        .filter((t) => effectiveWindowId === undefined || t.windowId === effectiveWindowId)
+        .map((t) => t.id!);
+
+      if (targetTabIds.length > 0) {
+        const groupProps: { tabIds: [number, ...number[]]; groupId?: number; createProperties?: { windowId?: number } } = {
+          tabIds: targetTabIds as [number, ...number[]],
+        };
+        if (finalGroupId !== undefined) {
+          groupProps.groupId = finalGroupId;
+        } else if (effectiveWindowId !== undefined) {
+          groupProps.createProperties = { windowId: effectiveWindowId };
+        }
+
+        finalGroupId = await chrome.tabs.group(groupProps as any);
+      }
+
+      const hasActiveTab = liveTabs.some((t) => t.active);
+      let targetCollapsed = spec.targetCollapsed !== undefined ? spec.targetCollapsed : wasCollapsed;
+      if (hasActiveTab && spec.targetCollapsed === undefined) {
+        targetCollapsed = false;
+      }
+
+      if (finalGroupId !== undefined) {
+        const updateProps: chrome.tabGroups.UpdateProperties = {};
+        if (spec.targetTitle !== undefined) updateProps.title = spec.targetTitle;
+        if (spec.targetColor !== undefined) updateProps.color = spec.targetColor;
+        if (targetCollapsed !== undefined) updateProps.collapsed = targetCollapsed;
+        try {
+          await chrome.tabGroups.update(finalGroupId, updateProps);
+        } catch {
+          // ignore
+        }
+      }
+
+      await recordAction({
+        toolName: 'tab_group',
+        label: spec.targetTitle ? `Grouped ${targetTabIds.length} tabs into "${spec.targetTitle}"` : `Grouped ${targetTabIds.length} tabs`,
+        detail: `${targetTabIds.length} tabs into group ${finalGroupId} (window ${effectiveWindowId})`,
+        undo: {
+          kind: 'tab_group',
+          createdNewGroup: spec.targetGroupId === undefined,
+          groupId: finalGroupId,
+          previousGroupMeta: prevGroupMeta,
+          previousTabs,
+        },
+      });
+
+      return {
+        id: finalGroupId,
+        groupId: finalGroupId,
+        windowId: effectiveWindowId,
+        title: spec.targetTitle,
+        color: spec.targetColor,
+        collapsed: targetCollapsed ?? false,
+        tabCount: targetTabIds.length,
+      };
+    };
+
+    // 1. Batch mode
+    if (Array.isArray(groups) && groups.length > 0) {
+      const results: any[] = [];
+      let totalTabs = 0;
+      for (const g of groups) {
+        const res = await processGroup({
+          requestedTabItems: g.tabIds,
+          targetTitle: g.title,
+          targetColor: g.color,
+          targetWindowId: g.windowId,
+          targetCollapsed: g.collapsed,
+        });
+        if (res) {
+          results.push(res);
+          totalTabs += res.tabCount;
+        }
+      }
+
+      const autoMessage = toastMessage || `Sorted ${totalTabs} tabs into ${results.length} groups`;
+      try {
+        await (actionToast.execute as any)(
+          {
+            message: autoMessage,
+            undoLabel: 'Undo Sort',
+            badgeText: 'UNDO',
+            openPopup: false,
+          },
+          { toolCallId: 'auto-toast', messages: [] },
+        );
+      } catch {
+        // ignore
+      }
+
+      try {
+        chrome.runtime.sendMessage({ type: 'action-history-updated' }).catch(() => {});
+      } catch {
+        // ignore
+      }
+
+      return {
+        ok: true,
+        batch: true,
+        groups: results,
+        totalTabsGrouped: totalTabs,
+        toastMessage: autoMessage,
+      };
     }
 
-    if (liveTabs.length === 0 && resolvedGroupId === undefined) {
+    // 2. Single group mode
+    const rawList = tabIds ?? ids ?? tabs ?? [];
+    const resolvedGroupId = groupId ?? id;
+    const resolvedTitle = title ?? name;
+
+    const singleRes = await processGroup({
+      requestedTabItems: rawList,
+      targetGroupId: resolvedGroupId,
+      targetTitle: resolvedTitle,
+      targetColor: color,
+      targetWindowId: windowId,
+      targetCollapsed: collapsed,
+    });
+
+    if (!singleRes) {
       return { ok: false, error: 'No accessible unpinned tabs to group', tabCount: 0 };
     }
 
-    // Determine target window
-    const targetWindowId = windowId ?? (liveTabs[0]?.windowId || chrome.windows.WINDOW_ID_CURRENT);
-
-    let finalGroupId = resolvedGroupId;
-    let wasCollapsed: boolean | undefined;
-    let prevGroupMeta: { title?: string; color?: TabGroupColor; collapsed?: boolean } | undefined;
-
-    // 1. If groupId is provided, inspect existing group
-    if (finalGroupId !== undefined) {
+    if (toastMessage) {
       try {
-        const existingGroup = await chrome.tabGroups.get(finalGroupId);
-        wasCollapsed = existingGroup.collapsed;
-        prevGroupMeta = {
-          title: existingGroup.title,
-          color: existingGroup.color as TabGroupColor,
-          collapsed: existingGroup.collapsed,
-        };
-      } catch {
-        finalGroupId = undefined;
-      }
-    }
-
-    // 2. If no groupId is provided, check if a group with the exact title already exists in this window
-    if (finalGroupId === undefined && resolvedTitle && targetWindowId !== undefined) {
-      try {
-        const windowGroups = await chrome.tabGroups.query({ windowId: targetWindowId });
-        const cleanTarget = resolvedTitle.trim().toLowerCase();
-        const match = windowGroups.find((g) => (g.title || '').trim().toLowerCase() === cleanTarget);
-        if (match) {
-          finalGroupId = match.id;
-          wasCollapsed = match.collapsed;
-          prevGroupMeta = {
-            title: match.title,
-            color: match.color as TabGroupColor,
-            collapsed: match.collapsed,
-          };
-        }
+        await (actionToast.execute as any)(
+          {
+            message: toastMessage,
+            undoLabel: 'Undo Sort',
+            badgeText: 'UNDO',
+            openPopup: false,
+          },
+          { toolCallId: 'auto-toast', messages: [] },
+        );
       } catch {
         // ignore
       }
     }
 
-    // 3. Group tabs inside the target window
-    const targetTabIds = liveTabs
-      .filter((t) => targetWindowId === undefined || t.windowId === targetWindowId)
-      .map((t) => t.id!);
-
-    if (targetTabIds.length > 0) {
-      const groupProps: { tabIds: [number, ...number[]]; groupId?: number; createProperties?: { windowId?: number } } = {
-        tabIds: targetTabIds as [number, ...number[]],
-      };
-      if (finalGroupId !== undefined) {
-        groupProps.groupId = finalGroupId;
-      } else if (targetWindowId !== undefined) {
-        groupProps.createProperties = { windowId: targetWindowId };
-      }
-
-      finalGroupId = await chrome.tabs.group(groupProps as any);
+    try {
+      chrome.runtime.sendMessage({ type: 'action-history-updated' }).catch(() => {});
+    } catch {
+      // ignore
     }
-
-    // 4. Determine collapsed state safely (never force-collapse a group containing the active tab)
-    const hasActiveTab = liveTabs.some((t) => t.active);
-    let targetCollapsed = collapsed !== undefined ? collapsed : wasCollapsed;
-    if (hasActiveTab && collapsed === undefined) {
-      targetCollapsed = false; // preserve active tab visibility
-    }
-
-    if (finalGroupId !== undefined) {
-      const updateProps: chrome.tabGroups.UpdateProperties = {};
-      if (resolvedTitle !== undefined) updateProps.title = resolvedTitle;
-      if (color !== undefined) updateProps.color = color;
-      if (targetCollapsed !== undefined) updateProps.collapsed = targetCollapsed;
-      try {
-        await chrome.tabGroups.update(finalGroupId, updateProps);
-      } catch {
-        // ignore
-      }
-    }
-
-    // Record action in journal
-    await recordAction({
-      toolName: 'tab_group',
-      label: resolvedTitle ? `Grouped ${targetTabIds.length} tabs into "${resolvedTitle}"` : `Grouped ${targetTabIds.length} tabs`,
-      detail: `${targetTabIds.length} tabs into group ${finalGroupId} (window ${targetWindowId})`,
-      undo: {
-        kind: 'tab_group',
-        createdNewGroup: resolvedGroupId === undefined,
-        groupId: finalGroupId,
-        previousGroupMeta: prevGroupMeta,
-        previousTabs,
-      },
-    });
 
     return {
-      id: finalGroupId,
-      groupId: finalGroupId,
-      windowId: targetWindowId,
-      title: resolvedTitle,
-      color,
-      collapsed: targetCollapsed ?? false,
-      tabCount: targetTabIds.length,
+      ...singleRes,
+      ok: true,
     };
   },
 });

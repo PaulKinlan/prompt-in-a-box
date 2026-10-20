@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "providers": {
     "allowed": [
       "google"
@@ -50,16 +50,16 @@
       {
         "id": "usePageContent",
         "label": "Use page content (tab_read)",
-        "hint": "Gather rendered text, headings, and descriptions from pages for smarter topic grouping.",
+        "hint": "Inspect page body text for ambiguous tabs (slower). Off by default for instant single-step sorting.",
         "type": "boolean",
-        "default": true
+        "default": false
       },
       {
         "id": "waitForIdle",
         "label": "Wait for browser idle",
         "hint": "Only run automatic scheduled sorting when the browser is idle so active work isn't interrupted.",
         "type": "boolean",
-        "default": true
+        "default": false
       }
     ]
   },
@@ -117,6 +117,6 @@
     "allowArtifacts": true,
     "allowManualRun": true
   },
-  "pack_hash": "60c03e1ce6d9d35c4902ae6e0786600eaf3078a3b524ec6bb03ddd24cb652828",
+  "pack_hash": "3820ff9ebb1cb050678c628b7c6866351ebe76e1d98d74c2e04f0c4f6a9ca2cb",
   "prompt": "prompt.md"
 }

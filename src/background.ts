@@ -110,6 +110,15 @@ async function ensureScheduled(alarmMinutes?: number, forceReset = false): Promi
     return;
   }
 
+  // Clear any stale or rogue non-system alarms (e.g. earlier 1-minute agent timers)
+  const allAlarms = await chrome.alarms.getAll();
+  for (const a of allAlarms) {
+    if (a.name !== ALARM_NAME && (forceReset || (a.periodInMinutes !== undefined && a.periodInMinutes < minutes))) {
+      await chrome.alarms.clear(a.name);
+      log('Cleared stale/rogue alarm:', a.name);
+    }
+  }
+
   await chrome.alarms.create(ALARM_NAME, {
     delayInMinutes: minutes,
     periodInMinutes: minutes,
@@ -237,7 +246,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const userMsg = `The user has opened the dynamic UI view: '${msg.view}'. Inspect the current state of the browser, bookmarks, tabs, or whatever is relevant, and define the layout, styling, and action triggers by calling the ui_update tool.`;
         sendResponse(await run('manual', userMsg));
       } else if (msg?.type === 'ui-interaction') {
-        const userMsg = `The user interacted with the dynamic UI element.\n- Component ID: '${msg.componentId}'\n- Action: '${msg.action}'\n- Payload: ${JSON.stringify(msg.payload ?? {})}\nExecute the requested tasks (calling any necessary Chrome API tools) and then update the UI view by calling the ui_update tool with the new state.`;
+        const userMsg = `The user clicked UI component '${msg.componentId}' (action: '${msg.action}', payload: ${JSON.stringify(msg.payload ?? {})}). Execute the requested action immediately in a single step if possible. Do NOT call ui_update unless the prompt explicitly requires replacing the UI layout.`;
         sendResponse(await run('manual', userMsg));
       } else if (msg?.type === 'reschedule-alarm') {
         const cfg = await getConfig();
@@ -342,7 +351,7 @@ async function run(
   }
 
   const basePrompt = await loadPrompt();
-  const customTools = await buildToolSet();
+  const customTools = await buildToolSet(basePrompt);
   const providerTools = filterProviderTools(
     getProviderTools(cfg.provider, apiKey),
     cfg.disabledProviderTools,
@@ -706,6 +715,50 @@ async function composeUserMessage(
       effective[field.id] = userValues[field.id] !== undefined ? userValues[field.id] : field.default;
     }
     parts.push(`Current user-configured agent settings:\n\`\`\`json\n${JSON.stringify(effective, null, 2)}\n\`\`\``);
+  }
+
+  // Pre-inject live open tabs and groups for instant single-turn tab management
+  const manifestPerms = chrome.runtime.getManifest().permissions ?? [];
+  if (manifestPerms.includes('tabs') && chrome.tabs?.query) {
+    try {
+      const allTabs = await chrome.tabs.query({});
+      const compactTabs = allTabs.map((t) => {
+        const urlStr = t.url || t.pendingUrl || '';
+        let domain = '';
+        let canScript = false;
+        try {
+          const u = new URL(urlStr);
+          domain = u.hostname.toLowerCase().replace(/^www\./i, '');
+          canScript = (u.protocol === 'http:' || u.protocol === 'https:') && !domain.includes('chromewebstore') && !t.discarded;
+        } catch {}
+        return {
+          id: t.id,
+          windowId: t.windowId,
+          groupId: t.groupId ?? -1,
+          pinned: t.pinned ?? false,
+          active: t.active ?? false,
+          domain,
+          title: (t.title ?? '').slice(0, 120),
+          url: urlStr.slice(0, 200),
+          canScript,
+        };
+      });
+      parts.push(`Current open browser tabs (${compactTabs.length}):\n\`\`\`json\n${JSON.stringify(compactTabs)}\n\`\`\``);
+
+      if (manifestPerms.includes('tabGroups') && chrome.tabGroups?.query) {
+        const allGroups = await chrome.tabGroups.query({});
+        const compactGroups = allGroups.map((g) => ({
+          id: g.id,
+          windowId: g.windowId,
+          title: g.title || '',
+          color: g.color,
+          collapsed: g.collapsed,
+        }));
+        parts.push(`Current tab groups (${compactGroups.length}):\n\`\`\`json\n${JSON.stringify(compactGroups)}\n\`\`\``);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   if (events.length > 0) {

@@ -373,6 +373,7 @@ export class UIRenderer {
   private consoleStatusTextEl: HTMLElement | null = null;
   private consoleDotEl: HTMLElement | null = null;
   private consoleCountBadgeEl: HTMLElement | null = null;
+  private activeActionButton: { el: HTMLButtonElement; originalText: string } | null = null;
 
   constructor(container: HTMLElement, viewName: string) {
     this.container = container;
@@ -461,6 +462,23 @@ export class UIRenderer {
 
           if (msg.event.channel === 'run-start' && this.consoleDrawerEl) {
             this.consoleDrawerEl.classList.add('expanded');
+          }
+
+          if (this.activeActionButton) {
+            if (msg.event.channel === 'tool-call') {
+              const toolTitle = String(msg.event.title || '').toLowerCase();
+              if (toolTitle.includes('tab_group')) {
+                this.activeActionButton.el.textContent = 'Grouping tabs...';
+              } else if (toolTitle.includes('tab_read')) {
+                this.activeActionButton.el.textContent = 'Reading tabs...';
+              } else if (toolTitle.includes('code_mode')) {
+                this.activeActionButton.el.textContent = 'Running batch...';
+              } else {
+                this.activeActionButton.el.textContent = 'Processing...';
+              }
+            } else if (msg.event.channel === 'step-start') {
+              this.activeActionButton.el.textContent = 'Analyzing tabs...';
+            }
           }
         } else if (msg?.type === 'agent-stream-delta') {
           if (this.consoleStreamingBoxEl) {
@@ -1907,6 +1925,8 @@ export class UIRenderer {
               });
               await this.executeChromeAPI(comp.apiMethod, parsedArgs);
             } else if (comp.action === 'trigger-run') {
+              this.activeActionButton = { el, originalText: originalText || 'Action' };
+              el.textContent = 'Sorting tabs...';
               if (this.consoleDrawerEl) {
                 this.consoleDrawerEl.classList.add('expanded');
               }
@@ -1931,9 +1951,13 @@ export class UIRenderer {
           } catch (err) {
             console.error('Interaction execution error:', err);
           } finally {
+            this.activeActionButton = null;
             el.classList.remove('btn-loading');
-            el.textContent = originalText;
-            el.disabled = false;
+            el.textContent = '✓ Done!';
+            setTimeout(() => {
+              el.textContent = originalText;
+              el.disabled = false;
+            }, 1200);
           }
         });
 

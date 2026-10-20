@@ -148,6 +148,13 @@ async function checkUndoToast(): Promise<void> {
   }
 }
 
+// Live update Undo Toast banner when tabs are grouped
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName === 'local' && (changes.activeUndoToast || changes.lastSortSnapshot)) {
+    void checkUndoToast();
+  }
+});
+
 async function loadAgentSettings(): Promise<void> {
   const cfg = await getConfig();
   const card = $('agentSettingsCard');

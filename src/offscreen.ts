@@ -124,6 +124,10 @@ function executeCodeInSandbox(opts: SandboxRunOptions): Promise<{
     const onMessage = (event: MessageEvent) => {
       if (event.source !== iframe.contentWindow) return;
       const data = event.data;
+      if (data?.type === 'pib:sandbox-ready') {
+        sendExecute();
+        return;
+      }
       if (!data || data.execId !== opts.execId || data.nonce !== opts.nonce) return;
 
       switch (data.type) {

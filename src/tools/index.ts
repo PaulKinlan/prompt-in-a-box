@@ -93,12 +93,9 @@ import { codeMode, codeScripts } from './code-mode';
 const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   __always__: {
     code_mode: codeMode,
-    run_code: codeMode,
     code_scripts: codeScripts,
     storage_get: storageGet,
     storage_set: storageSet,
-    get_state: storageGet,
-    set_state: storageSet,
     opfs_read: opfsRead,
     opfs_write: opfsWrite,
     opfs_list: opfsList,
@@ -106,7 +103,6 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
     ui_update: uiUpdate,
     action_history: actionHistory,
     action_undo: actionUndo,
-    undo_action: actionUndo,
     window_list: windowList,
     window_create: windowCreate,
     window_close: windowClose,
@@ -132,7 +128,6 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   },
   scripting: {
     tab_read: tabRead,
-    read_page: tabRead,
     capture_page: capturePage,
     find_elements: findElements,
     click_element: clickElement,
@@ -148,7 +143,6 @@ const TOOLS_BY_PERMISSION: Record<string, ToolSet> = {
   },
   notifications: {
     notification_show: notificationShow,
-    notify: notificationShow,
   },
   bookmarks: {
     bookmark_search: bookmarkSearch,
@@ -242,11 +236,12 @@ function isApiAvailable(perm: string): boolean {
   return true;
 }
 
-export async function buildToolSet(): Promise<ToolSet> {
+export async function buildToolSet(promptText?: string): Promise<ToolSet> {
   const granted = new Set(await listGrantedPermissions());
   const staticCfg = await getStaticConfig().catch(() => null);
   const blockedPerms = new Set(staticCfg?.permissions?.blocked || []);
   const allowedPerms = staticCfg?.permissions?.allowed ? new Set(staticCfg.permissions.allowed) : null;
+  const promptLower = (promptText || '').toLowerCase();
 
   const tools: ToolSet = {};
 
@@ -270,7 +265,8 @@ export async function buildToolSet(): Promise<ToolSet> {
             }
           },
         };
-      } else {
+      } else if (promptLower && (promptLower.includes(toolName.toLowerCase()) || promptLower.includes(perm.toLowerCase()))) {
+        // Only include helpful ungranted fallback stubs if the prompt actually mentions this tool or permission
         const errorReason = isPolicyBlocked
           ? `The tool '${toolName}' is blocked by extension configuration policy (${perm}).`
           : !isAvailable
