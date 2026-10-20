@@ -1,5 +1,5 @@
 {
-  "version": "0.7.1",
+  "version": "0.7.2",
   "providers": {
     "allowed": [
       "anthropic",
@@ -121,6 +121,6 @@
     "allowArtifacts": true,
     "allowManualRun": true
   },
-  "pack_hash": "2b2db302ea1d477e922f3f334e3c55358028a52287f9176ba8a3dd6968691efd",
+  "pack_hash": "c84bdf8d92b25c0584fca69f8ec351b9376658bd671058157c3be60c5a8170c7",
   "prompt": "prompt.md"
 }

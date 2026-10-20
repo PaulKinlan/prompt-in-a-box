@@ -15,8 +15,14 @@
         background: var(--color-bg-base);
         color: var(--color-text-primary);
         box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
       }
       * { box-sizing: border-box; }
+
+      #dynamicPopup {
+        margin: 12px 16px 16px;
+      }
 
       /* Top Header */
       .popup-header {
@@ -353,7 +359,7 @@
   </head>
   <body>
     <!-- Top Header Bar -->
-    <header class="popup-header">
+    <header class="popup-header" id="popupHeader">
       <div class="brand-box">
         <img id="extIcon" src="../icon-32.png" alt="icon" />
         <h1 class="brand-title">
@@ -368,7 +374,7 @@
             <line x1="15" y1="3" x2="15" y2="21"></line>
           </svg>
         </button>
-        <button id="openStudioTop" class="icon-btn" title="Open Extension Studio" aria-label="Open Extension Studio">
+        <button id="openStudioTop" class="icon-btn" title="Open Extension Studio" aria-label="Open Extension Studio" style="display: none;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
           </svg>
@@ -400,7 +406,7 @@
     <!-- Standard Dashboard View -->
     <div id="standardPopup" class="popup-content">
       <!-- Runtime Status Card -->
-      <div class="status-card">
+      <div id="runtimeStatusCard" class="status-card">
         <div class="status-header">
           <div class="provider-chip">
             <span id="summaryProvider">—</span>
@@ -452,8 +458,8 @@
       </div>
 
       <!-- Footer Navigation -->
-      <div class="popup-footer">
-        <a id="openStudio" class="footer-link">
+      <div class="popup-footer" id="popupFooter">
+        <a id="openStudio" class="footer-link" style="display: none;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path>
           </svg>

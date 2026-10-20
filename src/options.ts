@@ -49,7 +49,7 @@ async function loadUI(): Promise<void> {
   currentProvider = currentConfig.provider;
 
   // Policy indicator badge
-  if (isPolicyLocked(staticCfg)) {
+  if (isPolicyLocked(staticCfg) && currentConfig.ui?.showPolicyBadge !== false) {
     const policyBadge = $('policyBadge');
     if (policyBadge) policyBadge.style.display = 'inline-flex';
   }
@@ -57,7 +57,7 @@ async function loadUI(): Promise<void> {
   // Feature toggles from policy and granular UI flags
   applyFeatureGating();
 
-  if (!currentConfig.onboarded) {
+  if (!currentConfig.onboarded && currentConfig.ui?.showOnboardingBanner !== false) {
     const onboardingEl = $('onboarding');
     if (onboardingEl) onboardingEl.hidden = false;
   }
@@ -95,7 +95,8 @@ function applyFeatureGating(): void {
   // Granular UI config flags
   const ui = currentConfig.ui;
   if (ui) {
-    if (ui.showStudio === false) setDisplay('navStudio', 'none');
+    if (ui.showStudio === true) setDisplay('navStudio', '');
+    else setDisplay('navStudio', 'none');
     if (ui.showProviderSelector === false) setDisplay('providerFieldset', 'none');
     if (ui.showApiKeyInput === false) setDisplay('apiKeyFieldGroup', 'none');
     if (ui.showModelSelector === false) setDisplay('modelFieldGroup', 'none');
@@ -108,6 +109,18 @@ function applyFeatureGating(): void {
     if (ui.allowClearAudit === false) setDisplay('clearAudit', 'none');
     if (ui.allowExportAudit === false) setDisplay('exportAudit', 'none');
     if (ui.showHistory === false) setDisplay('auditList', 'none');
+    if (ui.showVersionBadge === false) setDisplay('versionBadge', 'none');
+    if (ui.showPolicyBadge === false) setDisplay('policyBadge', 'none');
+    if (ui.allowTestConnection === false) setDisplay('test', 'none');
+    if (ui.allowManualRun === false) setDisplay('runNow', 'none');
+    if (ui.allowSidePanel === false) setDisplay('navSidePanel', 'none');
+    if (ui.allowArtifacts === false) setDisplay('navArtifacts', 'none');
+    if (ui.showCosts === false) {
+      const statCost = $('stat-cost');
+      if (statCost && statCost.parentElement) {
+        statCost.parentElement.style.display = 'none';
+      }
+    }
   }
 }
 

@@ -38,13 +38,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     const artBtn = $('openArtifactsBtn');
     if (artBtn) artBtn.style.display = 'none';
   }
-  if (cfg.ui?.showStudio === false) {
-    const studioBtn = $('openStudioBtn');
-    if (studioBtn) studioBtn.style.display = 'none';
+  const openStudioBtnEl = $('openStudioBtn');
+  if (openStudioBtnEl) {
+    openStudioBtnEl.style.display = cfg.ui?.showStudio === true ? '' : 'none';
   }
   if (cfg.ui?.showSidePanelStatusBar === false) {
     const sb = document.querySelector('.sp-status-bar') as HTMLElement | null;
     if (sb) sb.style.display = 'none';
+  }
+  if (cfg.ui?.showSidePanelHeader === false) {
+    const hdr = document.querySelector('.sp-header') as HTMLElement | null;
+    if (hdr) hdr.style.display = 'none';
+  }
+  if (cfg.ui?.showVersionBadge === false && $('version')) {
+    $('version').style.display = 'none';
+  }
+  if (cfg.ui?.showActivityDrawer === false) {
+    const drawer = document.querySelector('.sp-drawer') as HTMLElement | null;
+    if (drawer) drawer.style.display = 'none';
+  }
+  if (cfg.ui?.allowSettingsAccess === false && $('openOptionsBtn')) {
+    $('openOptionsBtn').style.display = 'none';
   }
 
   async function updateStatusBar(currentCfg?: Config): Promise<void> {

@@ -92,20 +92,44 @@ async function loadSummary(): Promise<void> {
   if (staticCfg.features?.allowArtifacts === false || cfg.ui?.allowArtifacts === false || cfg.ui?.showRecentArtifacts === false) {
     if ($('artifactsSection')) $('artifactsSection').style.display = 'none';
     if ($('openArtifacts')) $('openArtifacts').style.display = 'none';
+    if ($('openArtifactsTop')) $('openArtifactsTop').style.display = 'none';
   }
   if (staticCfg.features?.allowSidePanel === false || cfg.ui?.allowSidePanel === false) {
     if ($('openSidePanelBtn')) $('openSidePanelBtn').style.display = 'none';
     if ($('openSidePanel')) $('openSidePanel').style.display = 'none';
   }
   if (cfg.ui?.showStatusCard === false) {
-    const sc = document.querySelector('.status-card') as HTMLElement | null;
-    if (sc) sc.style.display = 'none';
+    if ($('runtimeStatusCard')) $('runtimeStatusCard').style.display = 'none';
+    else {
+      const sc = document.querySelector('.status-card') as HTMLElement | null;
+      if (sc) sc.style.display = 'none';
+    }
   }
   if (cfg.ui?.showScheduleSummary === false && $('summarySchedule')) {
     $('summarySchedule').style.display = 'none';
   }
-  if (cfg.ui?.showStudio === false && $('openStudio')) {
-    $('openStudio').style.display = 'none';
+  if (cfg.ui?.showKeyStatusBadge === false && $('keyStatusBadge')) {
+    $('keyStatusBadge').style.display = 'none';
+  }
+  if (cfg.ui?.showVersionBadge === false && $('version')) {
+    $('version').style.display = 'none';
+  }
+  if (cfg.ui?.showPopupHeader === false && $('popupHeader')) {
+    $('popupHeader').style.display = 'none';
+  }
+  if (cfg.ui?.showPopupFooter === false && $('popupFooter')) {
+    $('popupFooter').style.display = 'none';
+  }
+  if (cfg.ui?.allowSettingsAccess === false) {
+    if ($('openOptionsTop')) $('openOptionsTop').style.display = 'none';
+    if ($('openOptions')) $('openOptions').style.display = 'none';
+  }
+  if (cfg.ui?.showStudio === true) {
+    if ($('openStudioTop')) $('openStudioTop').style.display = '';
+    if ($('openStudio')) $('openStudio').style.display = '';
+  } else {
+    if ($('openStudioTop')) $('openStudioTop').style.display = 'none';
+    if ($('openStudio')) $('openStudio').style.display = 'none';
   }
 
   // Load Undo Toast Banner
@@ -313,8 +337,10 @@ $('runNow').addEventListener('click', async () => {
     })) as AuditEntry;
 
     if (result.status === 'ok') {
+      const cfg = await getConfig();
+      const costSuffix = cfg.ui?.showCosts !== false ? ` · $${result.tokens.estimatedCost.toFixed(4)}` : '';
       showStatus(
-        `✓ OK · ${result.toolCalls.length} tool call(s) · $${result.tokens.estimatedCost.toFixed(4)}`,
+        `✓ OK · ${result.toolCalls.length} tool call(s)${costSuffix}`,
         'ok',
       );
     } else {
@@ -428,7 +454,12 @@ async function checkDynamicUI(): Promise<void> {
   }
 
   if (spec && comps.length > 0) {
-    viewSwitcher.style.display = 'flex';
+    const cfg = await getConfig();
+    if (cfg.ui?.showViewSwitcher === false) {
+      viewSwitcher.style.display = 'none';
+    } else {
+      viewSwitcher.style.display = 'flex';
+    }
     const activeData = (await chrome.storage.local.get('__pib_active_view')) as {
       __pib_active_view?: string;
     };

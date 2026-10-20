@@ -263,7 +263,7 @@
           </svg>
           <span>Run</span>
         </button>
-        <button id="openStudioBtn" class="icon-btn" title="Extension Studio" aria-label="Studio">
+        <button id="openStudioBtn" class="icon-btn" title="Extension Studio" aria-label="Studio" style="display: none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path>
           </svg>
@@ -313,7 +313,9 @@
     </div>
 
     <!-- Main dynamic agent UI mount -->
-    <main id="app-root" class="sp-main"></main>
+    <main class="sp-main">
+      <div id="app-root"></div>
+    </main>
 
     <!-- Collapsible Recent Activity Drawer -->
     <footer class="sp-drawer">

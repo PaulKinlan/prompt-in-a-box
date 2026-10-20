@@ -1,5 +1,5 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "providers": {
     "allowed": [
       "google"
@@ -64,6 +64,7 @@
     ]
   },
   "ui": {
+    "showStudio": false,
     "showCosts": false,
     "showTokenUsage": false,
     "showToolCallDetails": true,
@@ -87,12 +88,12 @@
     "showProviderSelector": true,
     "showApiKeyInput": true,
     "showModelSelector": true,
-    "showProviderTools": true,
-    "showPermissionsManager": true,
+    "showProviderTools": false,
+    "showPermissionsManager": false,
     "showSchedule": true,
     "allowTestConnection": true,
     "allowManualRun": true,
-    "showAuditLog": true,
+    "showAuditLog": false,
     "showAuditStats": true,
     "showAuditFilters": true,
     "allowExportAudit": true,
@@ -113,10 +114,10 @@
     "showAuditLog": false,
     "allowExportAudit": true,
     "allowClearAudit": true,
-    "allowSidePanel": true,
+    "allowSidePanel": false,
     "allowArtifacts": true,
     "allowManualRun": true
   },
-  "pack_hash": "3820ff9ebb1cb050678c628b7c6866351ebe76e1d98d74c2e04f0c4f6a9ca2cb",
+  "pack_hash": "5f04ac8534e80d5786aeaf65155ea6ba99c8457cfdd5b6310cd7c64df61201fb",
   "prompt": "prompt.md"
 }

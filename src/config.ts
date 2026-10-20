@@ -314,6 +314,36 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
     const res = await fetch(url);
     if (res.ok) {
       const data = (await res.json()) as ExtensionConfig;
+      const featureKeys = [
+        'showProviderSelector',
+        'showModelSelector',
+        'showProviderTools',
+        'showPermissionsManager',
+        'showSchedule',
+        'showAuditLog',
+        'allowExportAudit',
+        'allowClearAudit',
+        'allowSidePanel',
+        'allowArtifacts',
+        'allowManualRun',
+      ] as const;
+
+      const rawUi = data.ui || {};
+      const rawFeatures = data.features || {};
+      const resolvedFeatures: Record<string, boolean> = {};
+
+      for (const k of featureKeys) {
+        if (rawUi[k] === false || rawFeatures[k] === false) {
+          resolvedFeatures[k] = false;
+        } else if (rawUi[k] !== undefined) {
+          resolvedFeatures[k] = Boolean(rawUi[k]);
+        } else if (rawFeatures[k] !== undefined) {
+          resolvedFeatures[k] = Boolean(rawFeatures[k]);
+        } else {
+          resolvedFeatures[k] = DEFAULT_UI_CONFIG[k];
+        }
+      }
+
       cachedStaticConfig = {
         ...DEFAULT_STATIC_CONFIG,
         ...data,
@@ -333,9 +363,17 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
           ...DEFAULT_STATIC_CONFIG.providerTools,
           ...(data.providerTools || {}),
         },
-        ui: { ...DEFAULT_STATIC_CONFIG.ui, ...(data.ui || {}) },
+        ui: {
+          ...DEFAULT_UI_CONFIG,
+          ...rawUi,
+          ...resolvedFeatures,
+        },
         agentSettings: data.agentSettings ?? null,
-        features: { ...DEFAULT_STATIC_CONFIG.features, ...(data.features || {}) },
+        features: {
+          ...DEFAULT_STATIC_CONFIG.features,
+          ...rawFeatures,
+          ...resolvedFeatures,
+        },
       };
       return cachedStaticConfig;
     }
@@ -520,7 +558,12 @@ export async function getConfig(): Promise<Config> {
   const overrideRes = await chrome.storage.local.get('studioLiveOverride');
   const liveOverride = overrideRes.studioLiveOverride as StudioLiveOverride | undefined;
   const staticCfg: StaticConfig = (liveOverride?.enabled && liveOverride.config)
-    ? { ...baseStaticCfg, ...liveOverride.config }
+    ? {
+        ...baseStaticCfg,
+        ...liveOverride.config,
+        ui: { ...(baseStaticCfg.ui || {}), ...(liveOverride.config.ui || {}) },
+        features: { ...(baseStaticCfg.features || {}), ...(liveOverride.config.features || {}) },
+      }
     : baseStaticCfg;
 
   const stored = await chrome.storage.local.get([
@@ -579,20 +622,34 @@ export async function getConfig(): Promise<Config> {
     ? (staticCfg.providerTools.disabledByDefault ?? [])
     : ((stored.disabledProviderTools as string[]) ?? staticCfg.providerTools?.disabledByDefault ?? FALLBACKS.disabledProviderTools);
 
+  const resolveFlag = (k: keyof UIConfig, featKey?: keyof NonNullable<StaticConfig['features']>): boolean => {
+    const fk = featKey ?? (k as keyof NonNullable<StaticConfig['features']>);
+    if (staticCfg.ui?.[k] === false || staticCfg.features?.[fk] === false) {
+      return false;
+    }
+    if (staticCfg.ui?.[k] !== undefined) {
+      return Boolean(staticCfg.ui[k]);
+    }
+    if (staticCfg.features?.[fk] !== undefined) {
+      return Boolean(staticCfg.features[fk]);
+    }
+    return DEFAULT_UI_CONFIG[k];
+  };
+
   const ui: UIConfig = {
     ...DEFAULT_UI_CONFIG,
     ...(staticCfg.ui || {}),
-    ...(staticCfg.features?.showProviderSelector !== undefined ? { showProviderSelector: staticCfg.features.showProviderSelector } : {}),
-    ...(staticCfg.features?.showModelSelector !== undefined ? { showModelSelector: staticCfg.features.showModelSelector } : {}),
-    ...(staticCfg.features?.showProviderTools !== undefined ? { showProviderTools: staticCfg.features.showProviderTools } : {}),
-    ...(staticCfg.features?.showPermissionsManager !== undefined ? { showPermissionsManager: staticCfg.features.showPermissionsManager } : {}),
-    ...(staticCfg.features?.showSchedule !== undefined ? { showSchedule: staticCfg.features.showSchedule } : {}),
-    ...(staticCfg.features?.showAuditLog !== undefined ? { showAuditLog: staticCfg.features.showAuditLog } : {}),
-    ...(staticCfg.features?.allowExportAudit !== undefined ? { allowExportAudit: staticCfg.features.allowExportAudit } : {}),
-    ...(staticCfg.features?.allowClearAudit !== undefined ? { allowClearAudit: staticCfg.features.allowClearAudit } : {}),
-    ...(staticCfg.features?.allowSidePanel !== undefined ? { allowSidePanel: staticCfg.features.allowSidePanel } : {}),
-    ...(staticCfg.features?.allowArtifacts !== undefined ? { allowArtifacts: staticCfg.features.allowArtifacts } : {}),
-    ...(staticCfg.features?.allowManualRun !== undefined ? { allowManualRun: staticCfg.features.allowManualRun } : {}),
+    showProviderSelector: resolveFlag('showProviderSelector'),
+    showModelSelector: resolveFlag('showModelSelector'),
+    showProviderTools: resolveFlag('showProviderTools'),
+    showPermissionsManager: resolveFlag('showPermissionsManager'),
+    showSchedule: resolveFlag('showSchedule'),
+    showAuditLog: resolveFlag('showAuditLog'),
+    allowExportAudit: resolveFlag('allowExportAudit'),
+    allowClearAudit: resolveFlag('allowClearAudit'),
+    allowSidePanel: resolveFlag('allowSidePanel'),
+    allowArtifacts: resolveFlag('allowArtifacts'),
+    allowManualRun: resolveFlag('allowManualRun'),
   };
 
   return {

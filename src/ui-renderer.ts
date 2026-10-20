@@ -374,10 +374,14 @@ export class UIRenderer {
   private consoleDotEl: HTMLElement | null = null;
   private consoleCountBadgeEl: HTMLElement | null = null;
   private activeActionButton: { el: HTMLButtonElement; originalText: string } | null = null;
+  private baseContainerClasses: string[];
 
   constructor(container: HTMLElement, viewName: string) {
     this.container = container;
     this.viewName = viewName;
+    this.baseContainerClasses = Array.from(container.classList).filter(
+      (c) => c !== 'ui-container' && !c.startsWith('theme-')
+    );
     this.setupHistoryListener();
     this.setupLogListener();
     this.setupStorageListener();
@@ -613,6 +617,7 @@ export class UIRenderer {
       });
     }
 
+    this.container.className = [...this.baseContainerClasses, 'ui-container', 'theme-default'].join(' ');
     this.container.appendChild(this.createLiveConsoleDrawer());
   }
 
@@ -621,15 +626,25 @@ export class UIRenderer {
    */
   render(spec: UISchema): void {
     this.container.innerHTML = '';
-    this.container.removeAttribute('style');
+    const themeProps = [
+      '--ui-accent',
+      '--ui-bg-gradient',
+      '--ui-card-opacity',
+      '--ui-blur',
+      '--ui-radius',
+      '--ui-text',
+    ];
+    for (const prop of themeProps) {
+      this.container.style.removeProperty(prop);
+    }
     this.formValues = {};
     this.boundStorageMap.clear();
 
     const rawTheme = spec.theme || 'default';
     const normalized = normalizeThemeName(rawTheme);
 
-    // Apply normalized theme class and legacy alias class
-    const themeClasses = [`ui-container`, `theme-${normalized}`];
+    // Apply normalized theme class and legacy alias class while preserving base host classes
+    const themeClasses = [...this.baseContainerClasses, `ui-container`, `theme-${normalized}`];
     if (rawTheme !== normalized) {
       themeClasses.push(`theme-${rawTheme}`);
     }

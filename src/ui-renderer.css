@@ -2217,7 +2217,7 @@
 
 /* ─── 4. Compact (High-Density Operator) ─────────────────────────── */
 .ui-container.theme-compact {
-  padding: 10px;
+  padding: 12px 14px;
   gap: 6px;
   border-radius: var(--ui-radius, 6px);
   background: var(--ui-bg-gradient, var(--color-bg-base));
