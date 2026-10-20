@@ -472,7 +472,8 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
 async function saveProject(): Promise<void> {
   currentProject.name = $input('extNameInput').value.trim() || 'Untitled Extension';
   currentProject.slug = $input('extSlugInput').value.trim() || 'untitled-extension';
-  currentProject.alarmMinutes = parseInt($input('extAlarmInput').value, 10) || 30;
+  const parsedAlarm = parseInt($input('extAlarmInput').value, 10);
+  currentProject.alarmMinutes = Number.isNaN(parsedAlarm) ? 30 : Math.max(0, parsedAlarm);
   currentProject.description = $textarea('extDescInput').value.trim();
   currentProject.includeStudio = $input('checkIncludeStudio').checked;
   currentProject.lockProvider = $input('checkLockProvider').checked;
@@ -548,6 +549,7 @@ async function toggleLiveOverride(): Promise<void> {
   if (activeStudioOverride) {
     // Disable
     await chrome.storage.local.remove('studioLiveOverride');
+    await chrome.runtime.sendMessage({ type: 'reschedule-alarm' }).catch(() => {});
     activeStudioOverride = false;
     showToast('Live extension override deactivated (using bundled prompt.md)', 'ok');
   } else {
@@ -579,7 +581,11 @@ async function applyLiveOverride(enabled: boolean): Promise<void> {
     },
     updatedAt: Date.now(),
   };
-  await chrome.storage.local.set({ studioLiveOverride: overrideData });
+  await chrome.storage.local.set({
+    studioLiveOverride: overrideData,
+    alarmMinutes: currentProject.alarmMinutes,
+  });
+  await chrome.runtime.sendMessage({ type: 'reschedule-alarm' }).catch(() => {});
 }
 
 function updateActiveOverrideButton(): void {

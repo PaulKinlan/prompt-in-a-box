@@ -2,7 +2,7 @@
  * Popup: quick glance + run trigger + recent artifacts + undo toast banner + agent settings.
  */
 
-import { getConfig, activeKey, PROVIDER_LABELS, getStaticConfig } from './config';
+import { getConfig, setConfig, activeKey, PROVIDER_LABELS, getStaticConfig } from './config';
 import type { AuditEntry } from './audit';
 import type { ArtifactIndexEntry, ArtifactKind } from './artifacts';
 import { UIRenderer, loadPromptUIBlock, type UISchema } from './ui-renderer';
@@ -47,8 +47,26 @@ async function loadSummary(): Promise<void> {
   if ($('version')) $('version').textContent = 'v' + manifest.version;
   if ($('summaryProvider')) $('summaryProvider').textContent = PROVIDER_LABELS[cfg.provider] || cfg.provider;
   if ($('summaryModel')) $('summaryModel').textContent = cfg.model;
-  if ($('summarySchedule')) {
-    $('summarySchedule').textContent = cfg.alarmMinutes <= 0 ? 'Schedule: Never' : `Every ${cfg.alarmMinutes}m`;
+  const scheduleEl = document.getElementById('summarySchedule') as HTMLSelectElement | null;
+  if (scheduleEl) {
+    const mins = cfg.alarmMinutes <= 0 ? 0 : cfg.alarmMinutes;
+    const hasOption = Array.from(scheduleEl.options).some((o) => Number(o.value) === mins);
+    if (!hasOption && mins > 0) {
+      const opt = document.createElement('option');
+      opt.value = String(mins);
+      opt.textContent = `Every ${mins}m`;
+      scheduleEl.appendChild(opt);
+    }
+    scheduleEl.value = String(mins);
+    scheduleEl.disabled = Boolean(staticCfg.schedule?.lockSchedule);
+    if (!scheduleEl.dataset.wired) {
+      scheduleEl.dataset.wired = 'true';
+      scheduleEl.addEventListener('change', async () => {
+        const nextMins = Math.max(0, parseInt(scheduleEl.value, 10) || 0);
+        await setConfig({ alarmMinutes: nextMins });
+        await chrome.runtime.sendMessage({ type: 'reschedule-alarm' }).catch(() => {});
+      });
+    }
   }
 
   const hasKey = Boolean(activeKey(cfg));

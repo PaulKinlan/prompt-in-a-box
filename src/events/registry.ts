@@ -428,7 +428,7 @@ export const QUEUED_SOURCES: EventSource[] = [
   source(
     'idle.onStateChanged',
     'idle',
-    true,
+    false,
     () => (chrome as unknown as { idle?: typeof chrome.idle }).idle?.onStateChanged,
     (emit) => {
       const api = (chrome as unknown as { idle?: typeof chrome.idle }).idle;
@@ -439,7 +439,9 @@ export const QUEUED_SOURCES: EventSource[] = [
         // ignore
       }
       const h = (state: `${chrome.idle.IdleState}`) => {
-        emit({ state, isIdleWake: state === 'idle' });
+        if (state === 'idle') {
+          emit({ state, isIdleWake: true });
+        }
       };
       api.onStateChanged.addListener(h);
       return () => {

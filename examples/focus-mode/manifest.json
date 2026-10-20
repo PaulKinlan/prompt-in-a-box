@@ -3,12 +3,6 @@
   "name": "Focus Mode",
   "version": "0.7.0",
   "description": "Standalone Focus Mode Chrome Extension built with prompt-in-a-box.",
-  "prompt_in_a_box": {
-    "prompt": "prompt.md",
-    "alarm_minutes": 30,
-    "default_provider": "google",
-    "default_model": "gemini-3.8-flash"
-  },
   "background": {
     "service_worker": "dist/background.js",
     "type": "module"
@@ -36,30 +30,57 @@
     "alarms",
     "notifications",
     "tabs",
-    "offscreen"
-  ],
-  "optional_permissions": [
-    "bookmarks",
-    "history",
-    "downloads",
-    "clipboardWrite",
+    "tabGroups",
     "scripting",
-    "contextMenus",
+    "activeTab",
     "idle",
+    "offscreen",
+    "sidePanel"
+  ],
+  "side_panel": {
+    "default_path": "dist/sidepanel.html"
+  },
+  "optional_permissions": [
+    "fontSettings",
+    "proxy",
+    "tts",
+    "declarativeNetRequest",
+    "bookmarks",
+    "contextMenus",
+    "downloads",
+    "history",
+    "sessions",
+    "webNavigation",
+    "cookies",
+    "browsingData",
+    "contentSettings",
+    "system.cpu",
+    "system.memory",
+    "system.storage",
+    "system.display",
+    "topSites",
     "readingList",
-    "webNavigation"
+    "pageCapture",
+    "management",
+    "privacy",
+    "power",
+    "search",
+    "webRequest",
+    "userScripts",
+    "clipboardWrite",
+    "nativeMessaging"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://api.anthropic.com/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*"
   ],
-  "optional_host_permissions": [
-    "<all_urls>"
-  ],
+  "optional_host_permissions": [],
   "web_accessible_resources": [
     {
       "resources": [
+        "config.json",
         "prompt.md",
         "icon.png",
         "icon-16.png",
@@ -78,6 +99,7 @@
     ]
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com;"
+    "extension_pages": "script-src 'self'; object-src 'none'; frame-src 'self' about: blob: data:; connect-src https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com;",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; child-src 'self'; connect-src 'none'; img-src data: blob:;"
   }
 }

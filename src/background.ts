@@ -90,18 +90,28 @@ import {
 } from './code-mode';
 
 const ALARM_NAME = 'prompt-in-a-box-tick';
+const LAST_SCHEDULED_RUN_KEY = '__pib_last_scheduled_run_at';
 
-async function ensureScheduled(alarmMinutes?: number): Promise<void> {
+let activeRunPromise: Promise<AuditEntry> | null = null;
+
+async function ensureScheduled(alarmMinutes?: number, forceReset = false): Promise<void> {
   const cfg = await getConfig();
   const minutes = alarmMinutes !== undefined ? alarmMinutes : cfg.alarmMinutes;
   if (!chrome.alarms) return;
   if (minutes <= 0) {
-    await chrome.alarms.clear(ALARM_NAME);
+    await chrome.alarms.clearAll();
     log('alarm disabled (never)');
     return;
   }
+
+  const existing = await chrome.alarms.get(ALARM_NAME);
+  if (!forceReset && existing && existing.periodInMinutes === minutes) {
+    log('alarm already active every', minutes, 'min');
+    return;
+  }
+
   await chrome.alarms.create(ALARM_NAME, {
-    delayInMinutes: 1,
+    delayInMinutes: minutes,
     periodInMinutes: minutes,
   });
   log('alarm scheduled every', minutes, 'min');
@@ -111,7 +121,7 @@ async function ensureScheduled(alarmMinutes?: number): Promise<void> {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   const cfg = await getConfig();
-  await ensureScheduled(cfg.alarmMinutes);
+  await ensureScheduled(cfg.alarmMinutes, true);
 
   if (details.reason === 'install' || !cfg.onboarded) {
     chrome.runtime.openOptionsPage();
@@ -130,10 +140,28 @@ chrome.runtime.onStartup.addListener(async () => {
   await ensureScheduled(cfg.alarmMinutes);
   // Startup run so the prompt can check state, drain any events that
   // queued between sessions, and re-assert context menus / commands.
-  await run('startup').catch((err) => console.warn('[prompt-in-a-box] startup run failed:', err));
+  if (cfg.alarmMinutes > 0) {
+    await run('startup').catch((err) => console.warn('[prompt-in-a-box] startup run failed:', err));
+  }
 });
 
 chrome.alarms?.onAlarm?.addListener(async (alarm) => {
+  const cfg = await getConfig();
+  if (cfg.alarmMinutes <= 0) {
+    await chrome.alarms.clearAll();
+    return;
+  }
+
+  // Guard against premature or duplicate alarm triggers (e.g. browser wake catchup or rogue alarms)
+  const stored = await chrome.storage.local.get(LAST_SCHEDULED_RUN_KEY);
+  const lastRun = typeof stored[LAST_SCHEDULED_RUN_KEY] === 'number' ? stored[LAST_SCHEDULED_RUN_KEY] : 0;
+  const minElapsedMs = cfg.alarmMinutes * 60_000 * 0.85; // 85% interval buffer for timer jitter
+  if (lastRun > 0 && Date.now() - lastRun < minElapsedMs) {
+    const elapsedSec = Math.round((Date.now() - lastRun) / 1000);
+    log(`Skipping premature alarm '${alarm.name}' (${elapsedSec}s since last run, configured interval: ${cfg.alarmMinutes}m)`);
+    return;
+  }
+
   if (alarm.name === ALARM_NAME) {
     await run('alarm');
   } else {
@@ -143,6 +171,18 @@ chrome.alarms?.onAlarm?.addListener(async (alarm) => {
     );
   }
 });
+
+// React immediately to schedule changes in local storage
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName === 'local') {
+    if (changes.alarmMinutes || changes.studioLiveOverride) {
+      void ensureScheduled(undefined, true);
+    }
+  }
+});
+
+// Initial schedule check on service worker start
+void ensureScheduled();
 
 chrome.notifications?.onClicked?.addListener((notificationId) => {
   console.log('[prompt-in-a-box] Notification clicked:', notificationId);
@@ -201,7 +241,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await run('manual', userMsg));
       } else if (msg?.type === 'reschedule-alarm') {
         const cfg = await getConfig();
-        await ensureScheduled(cfg.alarmMinutes);
+        await ensureScheduled(cfg.alarmMinutes, true);
         // Permissions may have changed since last boot; re-scan.
         startEvents(triggerRun).catch(() => {});
         sendResponse({ ok: true });
@@ -252,11 +292,28 @@ async function run(
   trigger: AuditEntry['trigger'],
   customUserMessage?: string,
 ): Promise<AuditEntry> {
-  const runId = newRunId();
-  setCurrentRunId(runId);
-  const startedAt = Date.now();
-  const cfg = await getConfig();
-  const apiKey = activeKey(cfg);
+  if (activeRunPromise) {
+    if (trigger !== 'manual' && trigger !== 'onboarding-test') {
+      log(`Skipping automatic trigger '${trigger}' because another run is already in progress.`);
+      return await activeRunPromise;
+    }
+    try {
+      await activeRunPromise;
+    } catch {
+      // ignore
+    }
+  }
+
+  const exec = (async (): Promise<AuditEntry> => {
+    const runId = newRunId();
+    setCurrentRunId(runId);
+    const startedAt = Date.now();
+    const cfg = await getConfig();
+    const apiKey = activeKey(cfg);
+
+    if (trigger !== 'onboarding-test') {
+      void chrome.storage.local.set({ [LAST_SCHEDULED_RUN_KEY]: startedAt }).catch(() => {});
+    }
 
   if (!apiKey) {
     const entry: AuditEntry = {
@@ -496,6 +553,14 @@ async function run(
     return entry;
   } finally {
     clearActiveRunToolContext();
+  }
+  })();
+
+  activeRunPromise = exec;
+  try {
+    return await exec;
+  } finally {
+    activeRunPromise = null;
   }
 }
 

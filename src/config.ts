@@ -564,10 +564,15 @@ export async function getConfig(): Promise<Config> {
   }
 
   const rawAlarm = stored.alarmMinutes;
+  const parsedAlarm = typeof rawAlarm === 'number'
+    ? rawAlarm
+    : typeof rawAlarm === 'string' && rawAlarm.trim() !== ''
+      ? Number(rawAlarm)
+      : NaN;
   const alarmMinutes = staticCfg.schedule?.lockSchedule
     ? (staticCfg.schedule.defaultAlarmMinutes ?? 30)
-    : (typeof rawAlarm === 'number' && rawAlarm >= 0
-        ? rawAlarm
+    : (!Number.isNaN(parsedAlarm) && parsedAlarm >= 0
+        ? parsedAlarm
         : ((staticCfg.schedule?.defaultAlarmMinutes ?? m.alarm_minutes ?? FALLBACKS.alarmMinutes) as number));
 
   const disabledProviderTools = staticCfg.providerTools?.lockProviderTools

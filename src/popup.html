@@ -170,8 +170,19 @@
         font-size: 12px;
       }
       .schedule-chip {
-        color: var(--color-text-muted);
+        color: var(--color-text-secondary);
+        background: var(--color-bg-base);
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        padding: 2px 6px;
         font-size: 11px;
+        font-family: var(--pib-font-sans);
+        cursor: pointer;
+        outline: none;
+      }
+      .schedule-chip:hover {
+        border-color: var(--color-accent);
+        color: var(--color-text-primary);
       }
 
       /* Primary Action */
@@ -401,7 +412,14 @@
         </div>
         <div class="model-row">
           <span id="summaryModel" class="model-name">—</span>
-          <span id="summarySchedule" class="schedule-chip">Every 30m</span>
+          <select id="summarySchedule" class="schedule-chip" title="Background run schedule">
+            <option value="0">Schedule: Never</option>
+            <option value="5">Every 5m</option>
+            <option value="15">Every 15m</option>
+            <option value="30">Every 30m</option>
+            <option value="60">Every 1h</option>
+            <option value="240">Every 4h</option>
+          </select>
         </div>
       </div>
 

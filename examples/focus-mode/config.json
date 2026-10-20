@@ -1,0 +1,126 @@
+{
+  "version": "0.7.0",
+  "providers": {
+    "allowed": [
+      "anthropic",
+      "google",
+      "openai"
+    ],
+    "default": "google",
+    "lockProvider": false
+  },
+  "models": {
+    "default": "gemini-3.8-flash",
+    "lockModel": false,
+    "allowCustomModelInput": true,
+    "allowed": {
+      "anthropic": [
+        "claude-sonnet-5-5",
+        "claude-opus-5-5",
+        "claude-fable-5-1",
+        "claude-haiku-5-5",
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5"
+      ],
+      "google": [
+        "gemini-3.8-flash",
+        "gemini-4-argon",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite"
+      ],
+      "openai": [
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.6",
+        "gpt-5.5",
+        "gpt-5.5-pro",
+        "gpt-5.4",
+        "gpt-5.4-pro",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5.3-codex",
+        "o3",
+        "o4-mini"
+      ]
+    }
+  },
+  "schedule": {
+    "defaultAlarmMinutes": 30,
+    "lockSchedule": false
+  },
+  "providerTools": {
+    "disabledByDefault": [],
+    "lockProviderTools": false
+  },
+  "ui": {
+    "showCosts": true,
+    "showTokenUsage": true,
+    "showToolCallDetails": true,
+    "showHistory": true,
+    "showVersionBadge": true,
+    "showPolicyBadge": true,
+    "showStudio": false,
+    "showPopupHeader": true,
+    "showViewSwitcher": true,
+    "showStatusCard": true,
+    "showKeyStatusBadge": true,
+    "showScheduleSummary": true,
+    "showRecentArtifacts": true,
+    "showPopupFooter": true,
+    "allowSettingsAccess": true,
+    "allowSidePanel": true,
+    "showSidePanelHeader": true,
+    "showSidePanelStatusBar": true,
+    "showActivityDrawer": true,
+    "showRecentRuns": true,
+    "showOnboardingBanner": true,
+    "showProviderSelector": true,
+    "showApiKeyInput": true,
+    "showModelSelector": true,
+    "showProviderTools": true,
+    "showPermissionsManager": true,
+    "showSchedule": true,
+    "allowTestConnection": true,
+    "allowManualRun": true,
+    "showAuditLog": true,
+    "showAuditStats": true,
+    "showAuditFilters": true,
+    "allowExportAudit": true,
+    "allowClearAudit": true,
+    "allowArtifacts": true,
+    "showArtifactStats": true,
+    "showArtifactFilters": true,
+    "allowCopyArtifact": true,
+    "allowDownloadArtifact": true,
+    "allowDeleteArtifacts": true
+  },
+  "features": {
+    "showProviderSelector": true,
+    "showModelSelector": true,
+    "showProviderTools": true,
+    "showPermissionsManager": true,
+    "showSchedule": true,
+    "showAuditLog": true,
+    "allowExportAudit": true,
+    "allowClearAudit": true,
+    "allowSidePanel": true,
+    "allowArtifacts": true,
+    "allowManualRun": true
+  },
+  "pack_hash": "7490511634a5052ca7be9a4f22582fd5d27c08e049a39d83e3d32534176f8196",
+  "prompt": "prompt.md"
+}

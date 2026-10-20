@@ -405,7 +405,7 @@ function renderActiveProvider(): void {
 }
 
 function renderSchedule(): void {
-  const alarmInput = $('alarmMinutes') as HTMLInputElement;
+  const alarmInput = $('alarmMinutes') as HTMLInputElement | null;
   if (alarmInput) {
     alarmInput.value = String(currentConfig.alarmMinutes);
     if (staticCfg.schedule?.lockSchedule) {
@@ -424,12 +424,6 @@ function renderSchedule(): void {
 
     if (staticCfg.schedule?.lockSchedule) {
       (btn as HTMLButtonElement).disabled = true;
-    } else {
-      btn.addEventListener('click', () => {
-        if (alarmInput) alarmInput.value = String(mins);
-        presets.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
     }
   });
 }
@@ -462,6 +456,42 @@ function wireEventHandlers(): void {
   }
 
   // Save Settings
+  const alarmInput = $('alarmMinutes') as HTMLInputElement | null;
+  const presets = document.querySelectorAll('.preset-chip');
+
+  const updateAndSaveSchedule = async (minutes: number) => {
+    const safeMinutes = Number.isNaN(minutes) ? 30 : Math.max(0, minutes);
+    currentConfig.alarmMinutes = safeMinutes;
+    if (alarmInput) alarmInput.value = String(safeMinutes);
+    presets.forEach((b) => {
+      const m = Number((b as HTMLElement).dataset.min);
+      b.classList.toggle('active', m === safeMinutes);
+    });
+    try {
+      await setConfig({ alarmMinutes: safeMinutes });
+      await chrome.runtime.sendMessage({ type: 'reschedule-alarm' }).catch(() => {});
+      toast(safeMinutes > 0 ? `Schedule updated: Every ${safeMinutes} min` : 'Schedule disabled (Never)');
+    } catch (err) {
+      toast(`Failed to update schedule: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  };
+
+  if (alarmInput && !staticCfg.schedule?.lockSchedule) {
+    alarmInput.addEventListener('change', () => {
+      const val = parseInt(alarmInput.value, 10);
+      void updateAndSaveSchedule(val);
+    });
+  }
+
+  presets.forEach((btn) => {
+    if (!staticCfg.schedule?.lockSchedule) {
+      btn.addEventListener('click', () => {
+        const mins = Number((btn as HTMLElement).dataset.min);
+        void updateAndSaveSchedule(mins);
+      });
+    }
+  });
+
   const saveBtn = $('save') as HTMLButtonElement | null;
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
