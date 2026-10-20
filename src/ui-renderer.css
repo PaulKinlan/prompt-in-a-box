@@ -706,18 +706,22 @@
 
 .ui-console-count-badge {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--color-border);
   color: var(--color-text-muted);
   font-family: var(--pib-font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.3;
 }
 
 .ui-console-header-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  flex-shrink: 0;
 }
 
 .ui-console-btn {
@@ -736,6 +740,36 @@
   background: var(--color-bg-base);
   color: var(--color-text-primary);
   border-color: var(--color-border-hover);
+}
+
+.ui-console-icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.ui-console-icon-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-card-base);
+}
+
+.ui-console-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-text-muted);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.ui-live-console-drawer.expanded .ui-console-chevron {
+  transform: rotate(180deg);
 }
 
 .ui-console-body {

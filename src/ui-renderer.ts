@@ -2388,20 +2388,80 @@ export class UIRenderer {
     this.consoleStatusTextEl = statusText;
     left.appendChild(statusText);
 
-    const countBadge = document.createElement('span');
-    countBadge.className = 'ui-console-count-badge';
-    countBadge.textContent = `${this.logs.length} logs`;
-    this.consoleCountBadgeEl = countBadge;
-    left.appendChild(countBadge);
-
     header.appendChild(left);
 
     const right = document.createElement('div');
     right.className = 'ui-console-header-actions';
 
+    const countBadge = document.createElement('span');
+    countBadge.className = 'ui-console-count-badge';
+    countBadge.textContent = String(this.logs.length);
+    countBadge.title = `${this.logs.length} log entries`;
+    this.consoleCountBadgeEl = countBadge;
+    right.appendChild(countBadge);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'ui-console-btn ui-console-icon-btn';
+    copyBtn.title = 'Copy logs to clipboard';
+    copyBtn.setAttribute('aria-label', 'Copy logs');
+    copyBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+      </svg>
+    `;
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await this.copyLogsToClipboard();
+      const prevHtml = copyBtn.innerHTML;
+      copyBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      `;
+      setTimeout(() => {
+        copyBtn.innerHTML = prevHtml;
+      }, 1500);
+    });
+    right.appendChild(copyBtn);
+
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'ui-console-btn ui-console-icon-btn';
+    exportBtn.title = 'Export logs as JSON file';
+    exportBtn.setAttribute('aria-label', 'Export logs');
+    exportBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" x2="12" y1="15" y2="3"/>
+      </svg>
+    `;
+    exportBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await this.exportLogsToFile();
+      const prevHtml = exportBtn.innerHTML;
+      exportBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      `;
+      setTimeout(() => {
+        exportBtn.innerHTML = prevHtml;
+      }, 1500);
+    });
+    right.appendChild(exportBtn);
+
     const clearBtn = document.createElement('button');
-    clearBtn.className = 'ui-console-btn';
-    clearBtn.textContent = 'Clear';
+    clearBtn.className = 'ui-console-btn ui-console-icon-btn';
+    clearBtn.title = 'Clear console logs';
+    clearBtn.setAttribute('aria-label', 'Clear logs');
+    clearBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18"/>
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+      </svg>
+    `;
     clearBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       await clearLiveLogs();
@@ -2411,44 +2471,22 @@ export class UIRenderer {
         this.consoleStreamingBoxEl.textContent = '';
         this.consoleStreamingBoxEl.classList.remove('visible');
       }
-      if (this.consoleCountBadgeEl) this.consoleCountBadgeEl.textContent = '0 logs';
+      if (this.consoleCountBadgeEl) {
+        this.consoleCountBadgeEl.textContent = '0';
+        this.consoleCountBadgeEl.title = '0 log entries';
+      }
     });
     right.appendChild(clearBtn);
 
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'ui-console-btn';
-    copyBtn.textContent = 'Copy';
-    copyBtn.title = 'Copy formatted logs to clipboard';
-    copyBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await this.copyLogsToClipboard();
-      const orig = copyBtn.textContent;
-      copyBtn.textContent = '✓ Copied';
-      setTimeout(() => {
-        copyBtn.textContent = orig;
-      }, 1500);
-    });
-    right.appendChild(copyBtn);
-
-    const exportBtn = document.createElement('button');
-    exportBtn.className = 'ui-console-btn';
-    exportBtn.textContent = 'Export';
-    exportBtn.title = 'Export all logs as JSON';
-    exportBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await this.exportLogsToFile();
-      const orig = exportBtn.textContent;
-      exportBtn.textContent = '✓ Exported';
-      setTimeout(() => {
-        exportBtn.textContent = orig;
-      }, 1500);
-    });
-    right.appendChild(exportBtn);
-
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'ui-console-btn';
-    toggleBtn.textContent = 'Logs ▾';
-    right.appendChild(toggleBtn);
+    const chevron = document.createElement('span');
+    chevron.className = 'ui-console-chevron';
+    chevron.title = 'Toggle console drawer';
+    chevron.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    `;
+    right.appendChild(chevron);
 
     header.appendChild(right);
 
@@ -2482,7 +2520,8 @@ export class UIRenderer {
     this.logs.push(ev);
     if (this.logs.length > 100) this.logs.shift();
     if (this.consoleCountBadgeEl) {
-      this.consoleCountBadgeEl.textContent = `${this.logs.length} log${this.logs.length === 1 ? '' : 's'}`;
+      this.consoleCountBadgeEl.textContent = String(this.logs.length);
+      this.consoleCountBadgeEl.title = `${this.logs.length} log entries`;
     }
 
     if (!this.consoleLogListEl) return;
@@ -2507,7 +2546,8 @@ export class UIRenderer {
     }
     this.consoleLogListEl.scrollTop = this.consoleLogListEl.scrollHeight;
     if (this.consoleCountBadgeEl) {
-      this.consoleCountBadgeEl.textContent = `${this.logs.length} log${this.logs.length === 1 ? '' : 's'}`;
+      this.consoleCountBadgeEl.textContent = String(this.logs.length);
+      this.consoleCountBadgeEl.title = `${this.logs.length} log entries`;
     }
   }
 
@@ -2532,7 +2572,7 @@ export class UIRenderer {
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'ui-console-log-time';
-    timeSpan.textContent = new Date(ev.timestamp).toLocaleTimeString();
+    timeSpan.textContent = new Date(ev.timestamp).toLocaleTimeString([], { hour12: false });
     meta.appendChild(timeSpan);
 
     if (ev.durationMs !== undefined) {
