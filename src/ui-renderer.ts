@@ -180,11 +180,21 @@ export interface UIThemeConfig {
 
 export interface UISchema {
   title?: string;
-  theme?: 'default' | 'glassmorphic' | 'compact' | 'neon-dark' | 'warm-editorial' | string;
+  theme?: 'default' | 'compact' | 'warm-paper' | 'dark' | 'glassmorphic' | 'neon-dark' | 'warm-editorial' | string;
   themeConfig?: UIThemeConfig;
   layoutMode?: 'stack' | 'bento-grid' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed';
   layout: UIComponent[];
   components?: UIComponent[];
+}
+
+export function normalizeThemeName(raw?: string): 'compact' | 'warm-paper' | 'dark' | 'default' {
+  if (!raw) return 'default';
+  const t = raw.toLowerCase().trim();
+  if (t === 'compact') return 'compact';
+  if (t === 'warm-paper' || t === 'warm-editorial') return 'warm-paper';
+  if (t === 'dark' || t === 'glassmorphic' || t === 'neon-dark') return 'dark';
+  if (t === 'default' || t === 'light') return 'default';
+  return 'default';
 }
 
 const DYNAMIC_UI_KEY = '__pib_dynamic_ui';
@@ -455,7 +465,7 @@ export class UIRenderer {
         } else if (msg?.type === 'agent-stream-delta') {
           if (this.consoleStreamingBoxEl) {
             this.consoleStreamingBoxEl.classList.add('visible');
-            const prefix = msg.kind === 'reasoning' ? '🧠 Thinking: ' : '✍️ Output: ';
+            const prefix = msg.kind === 'reasoning' ? 'Thinking: ' : 'Output: ';
             this.consoleStreamingBoxEl.textContent = prefix + msg.fullText;
             this.consoleStreamingBoxEl.scrollTop = this.consoleStreamingBoxEl.scrollHeight;
           }
@@ -597,13 +607,18 @@ export class UIRenderer {
     this.formValues = {};
     this.boundStorageMap.clear();
 
-    const theme = spec.theme || 'default';
+    const rawTheme = spec.theme || 'default';
+    const normalized = normalizeThemeName(rawTheme);
 
-    // Apply overall theme classes to container
-    this.container.className = `ui-container theme-${theme}`;
+    // Apply normalized theme class and legacy alias class
+    const themeClasses = [`ui-container`, `theme-${normalized}`];
+    if (rawTheme !== normalized) {
+      themeClasses.push(`theme-${rawTheme}`);
+    }
+    this.container.className = themeClasses.join(' ');
 
     // Set data-ui-theme attribute on parent container if available
-    this.container.parentElement?.setAttribute('data-ui-theme', theme);
+    this.container.parentElement?.setAttribute('data-ui-theme', normalized);
 
     // If themeConfig provided, apply CSS variables and customCss
     if (spec.themeConfig) {

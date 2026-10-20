@@ -71,14 +71,16 @@
         gap: 8px;
       }
       .project-select {
-        min-width: 170px;
-        padding: 6px 10px;
-        font-size: 12.5px;
+        min-width: 210px;
+        max-width: 320px;
+        padding: 5px 10px;
+        font-size: 12px;
         font-weight: 600;
         border-radius: 6px;
         border: 1px solid var(--color-border-strong);
         background: var(--color-bg-base);
         color: var(--color-text-primary);
+        cursor: pointer;
       }
       .header-actions {
         display: flex;
@@ -426,11 +428,35 @@
         cursor: pointer;
         color: var(--color-text-muted);
         transition: all 0.15s ease;
+        white-space: nowrap;
       }
       .subview-tab.active {
         background: var(--color-card-base);
         color: var(--color-text-primary);
         box-shadow: var(--pib-shadow-sm);
+      }
+      .ui-drawer {
+        background: var(--color-bg-base);
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .ui-drawer-summary {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+        padding: 5px 8px;
+        cursor: pointer;
+        user-select: none;
+        background: var(--color-card-muted);
+      }
+      .ui-drawer-summary:hover {
+        color: var(--color-text-primary);
+      }
+      .ui-drawer-content {
+        padding: 8px;
+        border-top: 1px solid var(--color-border);
+        background: var(--color-card-base);
       }
       .preview-body {
         flex: 1;
@@ -732,7 +758,7 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
-          <span id="activateLiveText">Activate in Extension</span>
+          <span id="activateLiveText">Activate</span>
         </button>
 
         <!-- Direct Unpacked Export to Disk -->
@@ -740,7 +766,7 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
-          Export Unpacked Folder
+          Export Folder
         </button>
 
         <!-- Compile and Download Standalone ZIP -->
@@ -750,7 +776,7 @@
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          Compile &amp; Download ZIP
+          Download ZIP
         </button>
 
         <!-- Open chrome://extensions in new tab -->
@@ -778,7 +804,7 @@
       <!-- ─── Left Column: AI Architect & Extension Blueprint ────────── -->
       <aside class="studio-pane">
         <div class="pane-header">
-          <span>Blueprint &amp; AI Architect</span>
+          <span>Blueprint</span>
           <span id="projectSavedIndicator" style="font-size: 10px; color: var(--color-success); display: none;">Saved</span>
         </div>
 
@@ -786,7 +812,7 @@
           <!-- Metadata & Identity Card (Top of Left Pane) -->
           <div class="card">
             <div class="card-title">
-              <span>Extension Metadata</span>
+              <span>Metadata</span>
               <span id="versionIndicator" class="badge-tag">v1.0.0</span>
             </div>
 
@@ -817,8 +843,9 @@
             <div class="card-title">
               <span style="color: var(--color-accent); display: flex; align-items: center; gap: 5px;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"></path></svg>
-                AI Extension Architect
+                Generator
               </span>
+              <span class="badge-tag">Gemini 3.8 / 4.0</span>
             </div>
 
             <textarea id="aiPromptInput" placeholder="Describe the extension you want to build (e.g. 'A smart bookmark hygiene assistant that detects duplicates and archives stale links')..."></textarea>
@@ -827,7 +854,7 @@
             <div id="dropzone" class="dropzone">
               <input type="file" id="fileInput" multiple accept="image/*,.svg,.pdf,.md,.txt,.json" style="display: none;" />
               <div class="dropzone-label">
-                <span>📎 Drop inspiration images, mockups, or .md specs here</span>
+                <span>Drop images, mockups, or specs</span>
               </div>
             </div>
             <div id="attachmentChips" class="attachment-chips"></div>
@@ -844,17 +871,17 @@
               </div>
               <div style="display: flex; align-items: flex-end; gap: 6px;">
                 <button id="btnAiGenerate" class="btn btn-primary" style="flex: 1; padding: 7px 8px; justify-content: center;">
-                  ✨ Generate
+                  Generate
                 </button>
-                <button id="btnAiRefine" class="btn" style="padding: 7px 8px;" title="Refine current prompt with AI instructions">
-                  🪄 Refine
+                <button id="btnAiRefine" class="btn" style="padding: 7px 8px;" title="Refine current prompt with instructions">
+                  Refine
                 </button>
               </div>
             </div>
 
             <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; margin-top: 4px;">
               <input type="checkbox" id="iconAutoGenOnBlueprint" checked />
-              <span>Auto-generate AI icon with blueprint (Gemini)</span>
+              <span>Generate icon with blueprint</span>
             </label>
 
             <div id="aiProgressText" style="display: none; font-size: 11px; color: var(--color-accent); font-family: var(--pib-font-mono);"></div>
@@ -863,7 +890,7 @@
           <!-- Icon Designer Card (LLM-Powered + Configurable) -->
           <div class="card">
             <div class="card-title">
-              <span>Icon Design</span>
+              <span>Icon</span>
               <span id="iconModeBadge" class="badge-tag" style="font-size: 10px;">Vector Glyph</span>
             </div>
 
@@ -887,7 +914,7 @@
             </div>
 
             <div>
-              <label for="iconModelSelect">Image LLM Model</label>
+              <label for="iconModelSelect">Image Model</label>
               <select id="iconModelSelect">
                 <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1 (Default)</option>
                 <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image</option>
@@ -936,14 +963,14 @@
             <div>
               <label for="iconSymbolSelect">Symbol Glyph / Subject Metaphor</label>
               <select id="iconSymbolSelect">
-                <option value="spark">✨ Spark / Magic</option>
-                <option value="tabs">📑 Tabs / Grid</option>
-                <option value="shield">🛡️ Shield / Security</option>
-                <option value="folder">📁 Folder / Organize</option>
-                <option value="search">🔍 Search / Lens</option>
-                <option value="bookmark">🔖 Bookmark</option>
-                <option value="wand">🪄 Wand</option>
-                <option value="terminal">💻 Terminal / Code</option>
+                <option value="spark">Spark / Magic</option>
+                <option value="tabs">Tabs / Grid</option>
+                <option value="shield">Shield / Security</option>
+                <option value="folder">Folder / Organize</option>
+                <option value="search">Search / Lens</option>
+                <option value="bookmark">Bookmark</option>
+                <option value="wand">Wand</option>
+                <option value="terminal">Terminal / Code</option>
                 <option value="none">None (Pure Prompt Driven)</option>
               </select>
             </div>
@@ -957,14 +984,14 @@
 
             <div style="display: flex; align-items: center; gap: 6px;">
               <button id="btnGenerateAiIcon" class="btn btn-primary" style="flex: 1; padding: 7px 10px; justify-content: center;">
-                ✨ Generate AI Icon
+                Generate Icon
               </button>
               <button id="btnUploadIcon" class="btn" style="padding: 7px 10px;" title="Upload custom icon image file">
-                📤 Upload
+                Upload
               </button>
               <input type="file" id="iconUploadInput" accept="image/*" style="display: none;" />
               <button id="btnResetVectorIcon" class="btn" style="padding: 7px 8px; display: none;" title="Reset to procedural vector icon">
-                ↺ Vector
+                Reset
               </button>
             </div>
 
@@ -974,7 +1001,7 @@
           <!-- Chrome Permissions Card -->
           <div class="card">
             <div class="card-title">
-              <span>Permissions &amp; Capabilities</span>
+              <span>Permissions</span>
             </div>
             <div class="hint" style="font-size: 11px; margin: 0 0 6px;">Select browser capabilities granted to this extension:</div>
             <div id="permissionsCheckboxList" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;"></div>
@@ -983,7 +1010,7 @@
           <!-- Website & URL Access (host_permissions) Card -->
           <div class="card">
             <div class="card-title">
-              <span>Website &amp; URL Access</span>
+              <span>URL Access</span>
               <span class="badge-tag" style="font-size: 10px;">host_permissions</span>
             </div>
             <div class="hint" style="font-size: 11px; margin: 0 0 6px;">
@@ -1010,7 +1037,7 @@
           <!-- Extension Shell UI Card -->
           <div class="card">
             <div class="card-title">
-              <span>Extension Shell UI</span>
+              <span>Shell UI</span>
             </div>
             <div class="hint" style="font-size: 11px; margin: 0 0 6px;">Configure built-in surfaces and telemetry visible to users:</div>
             <div id="shellUiOptionsList" style="display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 11.5px;">
@@ -1052,7 +1079,7 @@
           <!-- Export Policy Card -->
           <div class="card">
             <div class="card-title">
-              <span>Packaging Policy</span>
+              <span>Packaging</span>
             </div>
             <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
               <input type="checkbox" id="checkIncludeStudio" />
@@ -1072,23 +1099,22 @@
           <div id="tabPrompt" class="editor-tab active" data-tab="prompt">prompt.md</div>
           <div id="tabManifest" class="editor-tab" data-tab="manifest">manifest.json</div>
           <div id="tabConfig" class="editor-tab" data-tab="config">config.json</div>
-          <div id="tabTools" class="editor-tab" data-tab="tools">Tools &amp; Events</div>
+          <div id="tabTools" class="editor-tab" data-tab="tools">Tools</div>
         </div>
 
         <!-- Snippet Bar (shown for prompt.md) -->
         <div id="snippetBar" class="snippet-bar">
           <div style="display: flex; align-items: center; gap: 4px; margin-right: 6px;">
-            <button id="btnEditorUndo" class="chip-btn" title="Undo (Cmd+Z / Ctrl+Z)" disabled>↶ Undo</button>
-            <button id="btnEditorRedo" class="chip-btn" title="Redo (Cmd+Shift+Z / Ctrl+Y)" disabled>↷ Redo</button>
+            <button id="btnEditorUndo" class="chip-btn" title="Undo (Cmd+Z / Ctrl+Z)" disabled>Undo</button>
+            <button id="btnEditorRedo" class="chip-btn" title="Redo (Cmd+Shift+Z / Ctrl+Y)" disabled>Redo</button>
           </div>
-          <span style="font-size: 11px; font-weight: 700; color: var(--color-text-muted);">Snippets:</span>
           <button class="chip-btn" data-snippet="ui-block">+ UI Block</button>
-          <button class="chip-btn" data-snippet="code-mode">+ code_mode Batch</button>
-          <button class="chip-btn" data-snippet="undo-toast">+ Undo Toast</button>
-          <button class="chip-btn" data-snippet="action-history">+ Action History</button>
-          <button class="chip-btn" data-snippet="multi-window">+ Multi-Window Rule</button>
-          <button class="chip-btn" data-snippet="lifecycle">+ Lifecycle State</button>
-          <button class="chip-btn" data-snippet="format-ui" style="margin-left: auto;">🎨 Format UI Block</button>
+          <button class="chip-btn" data-snippet="code-mode">+ code_mode</button>
+          <button class="chip-btn" data-snippet="undo-toast">+ Toast</button>
+          <button class="chip-btn" data-snippet="action-history">+ History</button>
+          <button class="chip-btn" data-snippet="multi-window">+ Multi-Window</button>
+          <button class="chip-btn" data-snippet="lifecycle">+ Lifecycle</button>
+          <button class="chip-btn" data-snippet="format-ui" style="margin-left: auto;">Format JSON</button>
         </div>
 
         <div class="editor-container">
@@ -1112,119 +1138,89 @@
       <!-- ─── Right Column: Interactive UI Preview & Test Console ───── -->
       <aside class="studio-pane">
         <div class="right-view-switcher">
-          <div id="tabPreview" class="subview-tab active">Interactive UI Preview</div>
-          <div id="tabRunner" class="subview-tab">Live Agent Test Runner</div>
-          <div id="tabChat" class="subview-tab">💬 AI Refine Chat</div>
+          <div id="tabPreview" class="subview-tab active">Preview</div>
+          <div id="tabRunner" class="subview-tab">Test Runner</div>
+          <div id="tabChat" class="subview-tab">Chat</div>
         </div>
 
         <!-- Subview A: Live Interactive UI Preview -->
         <div id="previewContainer" class="preview-body">
-          <!-- Visual Dashboard UI Configurator -->
-          <div id="uiConfigToolbar" class="card" style="margin-bottom: 12px; padding: 10px 12px; gap: 10px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border); padding-bottom: 6px;">
-              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.04em;">
-                Dashboard UI Configurator
-              </span>
-              <div style="display: flex; gap: 4px;">
-                <button id="btnSuggestUiLayout" class="chip-btn" style="color: var(--color-accent); font-weight: 700; border-color: var(--color-accent);" title="Automatically suggest layout and components based on extension prompt">
-                  ✨ Suggest Layout &amp; UI
-                </button>
-                <button id="btnAiStyleUi" class="chip-btn" title="Use AI to generate custom theme styles and accent colors">
-                  ✨ Style UI with AI
-                </button>
-              </div>
+          <!-- Compact Dashboard UI Configurator -->
+          <div id="uiConfigToolbar" class="card" style="margin-bottom: 12px; padding: 8px 10px; gap: 8px;">
+            <!-- Top Controls Row -->
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;">
+              <select id="uiThemeSelect" style="flex: 1.2; padding: 4px 6px; font-size: 11px;">
+                <option value="compact">Compact</option>
+                <option value="warm-paper">Warm Paper</option>
+                <option value="dark">Dark</option>
+                <option value="default">Light</option>
+              </select>
+              <select id="uiLayoutModeSelect" style="flex: 1.2; padding: 4px 6px; font-size: 11px;">
+                <option value="bento-grid">Bento Grid</option>
+                <option value="stack">Stack</option>
+                <option value="two-column">Two Column</option>
+                <option value="tabbed">Tabbed</option>
+                <option value="chat-first">Chat First</option>
+                <option value="compact-feed">Compact Feed</option>
+              </select>
+              <input type="color" id="uiAccentColorInput" value="#2563eb" title="Accent Color" style="width: 28px; height: 26px; padding: 1px 2px; border-radius: 4px; cursor: pointer; border: 1px solid var(--color-border-strong);" />
+              <button id="btnSuggestUiLayout" class="btn" style="padding: 4px 8px; font-size: 11px; white-space: nowrap;" title="Auto-suggest layout and components">
+                Auto-Layout
+              </button>
             </div>
 
-            <!-- Theme Preset & Layout Mode -->
-            <div class="field-row">
-              <div>
-                <label for="uiThemeSelect" style="margin: 0 0 3px; font-size: 10.5px;">Theme Preset</label>
-                <select id="uiThemeSelect" style="padding: 4px 8px; font-size: 11.5px;">
-                  <option value="default">Default Clean</option>
-                  <option value="glassmorphic">iOS / visionOS Glassmorphic</option>
-                  <option value="neon-dark">Cyber Neon Dark</option>
-                  <option value="warm-editorial">Warm Editorial Paper</option>
-                  <option value="compact">Compact Utilitarian</option>
-                </select>
-              </div>
-              <div>
-                <label for="uiLayoutModeSelect" style="margin: 0 0 3px; font-size: 10.5px;">Layout Mode</label>
-                <select id="uiLayoutModeSelect" style="padding: 4px 8px; font-size: 11.5px;">
-                  <option value="stack">Stack (Vertical Flow)</option>
-                  <option value="bento-grid">Bento Grid (2-Column Dashboard)</option>
-                  <option value="two-column">Split Two-Column</option>
-                  <option value="tabbed">Tabbed Sections</option>
-                  <option value="chat-first">Chat-First Agent View</option>
-                  <option value="compact-feed">Compact Utility Feed</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Title & Accent Color -->
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="flex: 1;">
-                <label for="uiTitleInput" style="margin: 0 0 3px; font-size: 10.5px;">Dashboard Title</label>
-                <input type="text" id="uiTitleInput" placeholder="Dashboard Title..." style="padding: 4px 8px; font-size: 11.5px;" />
-              </div>
-              <div style="width: 75px;">
-                <label for="uiAccentColorInput" style="margin: 0 0 3px; font-size: 10.5px;">Accent</label>
-                <input type="color" id="uiAccentColorInput" value="#2563eb" style="height: 28px; padding: 1px 3px; width: 100%; cursor: pointer;" />
-              </div>
-            </div>
-
-            <div>
-              <label for="uiThemeInspirationInput" style="margin: 0 0 3px; font-size: 10.5px;">Theme Inspiration / Aesthetic Notes</label>
-              <input type="text" id="uiThemeInspirationInput" placeholder="e.g. 'Apple glassmorphism, soft cyan glow, dark violet card backgrounds'..." style="padding: 4px 8px; font-size: 11px;" />
-            </div>
-
-            <!-- Scannable Dynamic UI Component Palette -->
-            <div style="border-top: 1px solid var(--color-border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px;">
-              <div style="font-size: 10.5px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.03em;">
-                Add Dynamic UI Components
-              </div>
-
-              <!-- Inputs Group -->
-              <div>
-                <div style="font-size: 10px; color: var(--color-text-secondary); margin-bottom: 3px; font-weight: 600;">Inputs &amp; Controls:</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                  <button class="chip-btn" data-add-ui-comp="select">+ Select</button>
-                  <button class="chip-btn" data-add-ui-comp="switch">+ Switch</button>
-                  <button class="chip-btn" data-add-ui-comp="radio">+ Radio</button>
-                  <button class="chip-btn" data-add-ui-comp="checkbox">+ Checkbox</button>
-                  <button class="chip-btn" data-add-ui-comp="textarea">+ Textarea</button>
-                  <button class="chip-btn" data-add-ui-comp="password">+ Password</button>
-                  <button class="chip-btn" data-add-ui-comp="date-time">+ Date/Time</button>
-                  <button class="chip-btn" data-add-ui-comp="file">+ File</button>
-                  <button class="chip-btn" data-add-ui-comp="slider">+ Slider</button>
+            <!-- Collapsible Drawers Row -->
+            <div style="display: flex; gap: 6px;">
+              <details class="ui-drawer" style="flex: 1;">
+                <summary class="ui-drawer-summary">+ Add Component</summary>
+                <div class="ui-drawer-content">
+                  <div style="font-size: 10px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Controls &amp; Inputs</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px;">
+                    <button class="chip-btn" data-add-ui-comp="select">+ Select</button>
+                    <button class="chip-btn" data-add-ui-comp="switch">+ Switch</button>
+                    <button class="chip-btn" data-add-ui-comp="radio">+ Radio</button>
+                    <button class="chip-btn" data-add-ui-comp="checkbox">+ Checkbox</button>
+                    <button class="chip-btn" data-add-ui-comp="textarea">+ Textarea</button>
+                    <button class="chip-btn" data-add-ui-comp="password">+ Password</button>
+                    <button class="chip-btn" data-add-ui-comp="date-time">+ Date/Time</button>
+                    <button class="chip-btn" data-add-ui-comp="file">+ File</button>
+                    <button class="chip-btn" data-add-ui-comp="slider">+ Slider</button>
+                  </div>
+                  <div style="font-size: 10px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: 4px;">Agent &amp; Display</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 3px;">
+                    <button class="chip-btn" data-add-ui-comp="chat">+ Chat</button>
+                    <button class="chip-btn" data-add-ui-comp="task-list">+ Tasks</button>
+                    <button class="chip-btn" data-add-ui-comp="summary">+ Summary</button>
+                    <button class="chip-btn" data-add-ui-comp="button">+ Button</button>
+                    <button class="chip-btn" data-add-ui-comp="action-history">+ History</button>
+                    <button class="chip-btn" data-add-ui-comp="card">+ Card</button>
+                    <button class="chip-btn" data-add-ui-comp="carousel">+ Carousel</button>
+                    <button class="chip-btn" data-add-ui-comp="metrics">+ Metrics</button>
+                    <button class="chip-btn" data-add-ui-comp="table">+ Table</button>
+                    <button class="chip-btn" data-add-ui-comp="dialog">+ Dialog</button>
+                    <button class="chip-btn" data-add-ui-comp="menu">+ Menu</button>
+                    <button class="chip-btn" data-add-ui-comp="alert">+ Alert</button>
+                    <button class="chip-btn" data-add-ui-comp="icon">+ Icon</button>
+                  </div>
                 </div>
-              </div>
+              </details>
 
-              <!-- Agent / Tasks Group -->
-              <div>
-                <div style="font-size: 10px; color: var(--color-text-secondary); margin-bottom: 3px; font-weight: 600;">Agent &amp; Tasks:</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                  <button class="chip-btn" data-add-ui-comp="chat">+ Agent Chat</button>
-                  <button class="chip-btn" data-add-ui-comp="task-list">+ Task List</button>
-                  <button class="chip-btn" data-add-ui-comp="summary">+ Summary</button>
-                  <button class="chip-btn" data-add-ui-comp="button">+ Action Button</button>
-                  <button class="chip-btn" data-add-ui-comp="action-history">+ Undo Log</button>
+              <details class="ui-drawer" style="flex: 1;">
+                <summary class="ui-drawer-summary">Title &amp; Style</summary>
+                <div class="ui-drawer-content" style="display: flex; flex-direction: column; gap: 6px;">
+                  <div>
+                    <label for="uiTitleInput" style="font-size: 10px; margin-bottom: 2px;">Title</label>
+                    <input type="text" id="uiTitleInput" placeholder="Dashboard Title..." style="padding: 4px 6px; font-size: 11px;" />
+                  </div>
+                  <div>
+                    <label for="uiThemeInspirationInput" style="font-size: 10px; margin-bottom: 2px;">Style Prompt</label>
+                    <input type="text" id="uiThemeInspirationInput" placeholder="e.g. minimalist slate, terracotta accents..." style="padding: 4px 6px; font-size: 11px;" />
+                  </div>
+                  <button id="btnAiStyleUi" class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; justify-content: center;">
+                    Apply Style
+                  </button>
                 </div>
-              </div>
-
-              <!-- Containers & Display Group -->
-              <div>
-                <div style="font-size: 10px; color: var(--color-text-secondary); margin-bottom: 3px; font-weight: 600;">Containers &amp; Display:</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                  <button class="chip-btn" data-add-ui-comp="card">+ Card</button>
-                  <button class="chip-btn" data-add-ui-comp="carousel">+ Carousel</button>
-                  <button class="chip-btn" data-add-ui-comp="metrics">+ Metrics</button>
-                  <button class="chip-btn" data-add-ui-comp="table">+ Table</button>
-                  <button class="chip-btn" data-add-ui-comp="dialog">+ Dialog</button>
-                  <button class="chip-btn" data-add-ui-comp="menu">+ Menu</button>
-                  <button class="chip-btn" data-add-ui-comp="alert">+ Alert</button>
-                  <button class="chip-btn" data-add-ui-comp="icon">+ Icon/Image</button>
-                </div>
-              </div>
+              </details>
             </div>
           </div>
 
@@ -1250,7 +1246,7 @@
               </div>
               <div style="display: flex; align-items: flex-end;">
                 <button id="btnRunLiveTest" class="btn btn-primary" style="width: 100%; justify-content: center;">
-                  ▶ Run Live Test
+                  Run Live Test
                 </button>
               </div>
             </div>
@@ -1274,7 +1270,7 @@
             <div style="display: flex; align-items: center; gap: 4px;">
               <button id="btnExpandAllLogs" class="chip-btn" title="Expand all JSON trees">Expand</button>
               <button id="btnCollapseAllLogs" class="chip-btn" title="Collapse all JSON trees">Collapse</button>
-              <button id="btnCopyAllLogs" class="chip-btn" title="Copy all logs formatted">📋 Copy</button>
+              <button id="btnCopyAllLogs" class="chip-btn" title="Copy all logs formatted">Copy</button>
               <button id="btnClearLogs" class="chip-btn" title="Clear console">Clear</button>
             </div>
           </div>
@@ -1288,7 +1284,7 @@
         <div id="chatContainer" class="chat-container" style="display: none;">
           <div class="chat-header-bar">
             <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-weight: 700; color: var(--color-accent);">AI Extension Architect</span>
+              <span style="font-weight: 700; color: var(--color-accent);">Prompt Assistant</span>
               <span id="chatActiveProjectName" class="badge-tag">Current Project</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -1302,7 +1298,7 @@
 
           <div id="chatMessagesList" class="chat-messages">
             <div class="chat-bubble assistant">
-              <div><strong>Welcome to AI Refine Chat!</strong></div>
+              <div><strong>Welcome to Prompt Assistant!</strong></div>
               <div>I can help you debug errors, optimize prompts for high-speed <code>code_mode</code> batching, add UI components, or configure host permissions.</div>
               <div style="font-size: 11px; color: var(--color-text-muted);">Try asking: <em>"I get a timeout error on tabs, please optimize with code_mode"</em> or <em>"Grant access to all URLs and add an undo toast"</em>.</div>
             </div>
@@ -1310,13 +1306,13 @@
 
           <div class="chat-input-bar">
             <div class="chat-quick-chips">
-              <button class="chip-btn" data-chat-suggest="Fix latest error from Test Runner">🔧 Fix Test Error</button>
-              <button class="chip-btn" data-chat-suggest="Speed up execution with code_mode parallel batching">⚡ Speed up with code_mode</button>
-              <button class="chip-btn" data-chat-suggest="Add tab.canScript check to avoid restricted pages">🛡️ Add canScript guard</button>
-              <button class="chip-btn" data-chat-suggest="Grant <all_urls> and add undo button">🌐 Grant all_urls &amp; Undo</button>
+              <button class="chip-btn" data-chat-suggest="Fix latest error from Test Runner">Fix Test Error</button>
+              <button class="chip-btn" data-chat-suggest="Speed up execution with code_mode parallel batching">Speed up with code_mode</button>
+              <button class="chip-btn" data-chat-suggest="Add tab.canScript check to avoid restricted pages">Add canScript guard</button>
+              <button class="chip-btn" data-chat-suggest="Grant <all_urls> and add undo button">Grant all_urls &amp; Undo</button>
             </div>
             <div style="display: flex; gap: 6px; align-items: flex-end;">
-              <textarea id="chatInput" placeholder="Ask AI to refine, fix an error, or improve this extension..." style="min-height: 48px; max-height: 120px; font-size: 12px; padding: 6px 10px;"></textarea>
+              <textarea id="chatInput" placeholder="Ask to refine, fix an error, or improve this extension..." style="min-height: 48px; max-height: 120px; font-size: 12px; padding: 6px 10px;"></textarea>
               <button id="btnChatSend" class="btn btn-primary" style="padding: 8px 14px; height: 48px;">
                 Send
               </button>

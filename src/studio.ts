@@ -7,7 +7,7 @@
 
 import { getConfig, type Config } from './config';
 import { CAPABILITIES } from './capabilities';
-import { UIRenderer, extractUIBlockFromPrompt, sanitizeJsonStringLiterals } from './ui-renderer';
+import { UIRenderer, extractUIBlockFromPrompt, sanitizeJsonStringLiterals, normalizeThemeName } from './ui-renderer';
 import generatedExamples from './generated-examples.json';
 import {
   compileExtensionProject,
@@ -39,7 +39,7 @@ Welcome to Sorting Hat! Keep your open tabs tidy, declutter windows, and group r
 \`\`\`ui
 {
   "title": "Sorting Hat Dashboard",
-  "theme": "glassmorphic",
+  "theme": "compact",
   "components": [
     { "type": "header", "text": "Tab Organizer" },
     { "type": "text", "text": "Automatically cluster related tabs into colored groups per window." },
@@ -54,7 +54,7 @@ Welcome to Sorting Hat! Keep your open tabs tidy, declutter windows, and group r
     {
       "type": "button",
       "id": "btn_sort_tabs",
-      "text": "🪄 Sort & Group Tabs Now",
+      "text": "Sort & Group Tabs Now",
       "intent": "info",
       "action": "trigger-run",
       "payload": { "command": "sort_tabs" }
@@ -90,7 +90,7 @@ Declutter your bookmarks, detect duplicate URLs, and archive dead links safely.
 \`\`\`ui
 {
   "title": "Bookmark Gardener",
-  "theme": "default",
+  "theme": "warm-paper",
   "components": [
     { "type": "header", "text": "Bookmark Hygiene" },
     { "type": "text", "text": "Inspect your bookmarks library to eliminate duplicates and organize folders." },
@@ -105,7 +105,7 @@ Declutter your bookmarks, detect duplicate URLs, and archive dead links safely.
     {
       "type": "button",
       "id": "btn_scan_bookmarks",
-      "text": "🌿 Scan & Tidy Bookmarks",
+      "text": "Scan & Tidy Bookmarks",
       "intent": "success",
       "action": "trigger-run",
       "payload": { "command": "scan_bookmarks" }
@@ -445,7 +445,7 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
   const schema = extractUIBlockFromPrompt(p.prompt || '');
   if (schema) {
     if ($select('uiThemeSelect')) {
-      $select('uiThemeSelect').value = schema.theme || 'glassmorphic';
+      $select('uiThemeSelect').value = normalizeThemeName(schema.theme || 'compact');
     }
     if ($select('uiLayoutModeSelect')) {
       $select('uiLayoutModeSelect').value = (schema as any).layoutMode || 'bento-grid';
@@ -587,11 +587,11 @@ function updateActiveOverrideButton(): void {
   const text = $('activateLiveText');
   if (activeStudioOverride) {
     btn.classList.add('active');
-    text.textContent = 'Active in Extension (Live)';
+    text.textContent = 'Active (Live)';
     btn.title = 'Click to deactivate live override and restore bundled prompt.md';
   } else {
     btn.classList.remove('active');
-    text.textContent = 'Activate in Extension';
+    text.textContent = 'Activate';
     btn.title = 'Click to run this project as the active prompt in the extension popup & background loop';
   }
 }
@@ -747,12 +747,6 @@ function renderCodeEditor(): void {
       permissions: currentProject.permissions,
       optional_permissions: currentProject.optional_permissions,
       host_permissions: currentProject.host_permissions || ['<all_urls>'],
-      prompt_in_a_box: {
-        prompt: 'prompt.md',
-        alarm_minutes: currentProject.alarmMinutes,
-        default_provider: currentProject.defaultProvider || 'google',
-        default_model: currentProject.defaultModel || 'gemini-3.8-flash',
-      },
     };
     editor.value = JSON.stringify(manifestDraft, null, 2);
   } else if (activeEditorTab === 'config') {
@@ -804,8 +798,7 @@ function updateLiveUiPreview(): void {
   if (!schema) {
     container.innerHTML = `
       <div style="padding: 24px 16px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">
-        <div style="font-size: 24px; margin-bottom: 8px;">🎨</div>
-        <strong>No Declarative UI Block Found</strong>
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;">No UI Block Found</div>
         <p style="margin: 6px 0 12px; font-size: 11.5px;">Include a fenced <code>\`\`\`ui ... \`\`\`</code> JSON block in prompt.md to render an interactive dashboard.</p>
         <button id="btnInsertDefaultUi" class="btn btn-primary" style="font-size: 11.5px; padding: 5px 10px;">Insert Sample UI Block</button>
       </div>
@@ -993,7 +986,7 @@ function insertSnippet(type: string): void {
 
   switch (type) {
     case 'ui-block':
-      snippet = `\`\`\`ui\n{\n  "title": "${currentProject.name} Dashboard",\n  "theme": "glassmorphic",\n  "components": [\n    { "type": "header", "text": "Quick Actions" },\n    { "type": "text", "text": "Execute operations with instant undo." },\n    { "type": "metrics", "metrics": [{ "label": "Active Items", "value": "12" }] },\n    { "type": "button", "id": "btn_run", "text": "⚡ Run Task Now", "intent": "info", "action": "trigger-run" },\n    { "type": "action-history", "id": "recent_actions", "limit": 10, "showUndoAll": true }\n  ]\n}\n\`\`\`\n\n`;
+      snippet = `\`\`\`ui\n{\n  "title": "${currentProject.name} Dashboard",\n  "theme": "compact",\n  "components": [\n    { "type": "header", "text": "Quick Actions" },\n    { "type": "text", "text": "Execute operations with instant undo." },\n    { "type": "metrics", "metrics": [{ "label": "Active Items", "value": "12" }] },\n    { "type": "button", "id": "btn_run", "text": "Run Task Now", "intent": "info", "action": "trigger-run" },\n    { "type": "action-history", "id": "recent_actions", "limit": 10, "showUndoAll": true }\n  ]\n}\n\`\`\`\n\n`;
       break;
     case 'code-mode':
       snippet = `\n### Parallel Batching via \`code_mode\`\nWhen performing multi-item operations (e.g. checking 20 tabs), call \`code_mode\` with an async script using \`Promise.all\`. Check \`tab.canScript\` before calling \`tab_read\`, and catch errors per tab.\n`;
@@ -1841,12 +1834,12 @@ function suggestUiLayoutAndComponents(): void {
   const fullText = `${currentProject.name} ${descText} ${promptText}`.toLowerCase();
 
   let recommendedLayout: 'stack' | 'bento-grid' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed' = 'bento-grid';
-  let recommendedTheme: 'default' | 'glassmorphic' | 'neon-dark' | 'warm-editorial' | 'compact' = 'glassmorphic';
+  let recommendedTheme: 'compact' | 'warm-paper' | 'dark' | 'default' = 'compact';
   let accentColor = '#3b82f6';
 
   if (fullText.includes('chat') || fullText.includes('talk') || fullText.includes('assistant') || fullText.includes('conversation')) {
     recommendedLayout = 'chat-first';
-    recommendedTheme = 'glassmorphic';
+    recommendedTheme = 'dark';
     accentColor = '#8b5cf6';
   } else if (fullText.includes('clean') || fullText.includes('dead') || fullText.includes('stale') || fullText.includes('tidy')) {
     recommendedLayout = 'stack';
@@ -1854,11 +1847,11 @@ function suggestUiLayoutAndComponents(): void {
     accentColor = '#10b981';
   } else if (fullText.includes('dark') || fullText.includes('cyber') || fullText.includes('hack') || fullText.includes('dev')) {
     recommendedLayout = 'bento-grid';
-    recommendedTheme = 'neon-dark';
+    recommendedTheme = 'dark';
     accentColor = '#06b6d4';
   } else if (fullText.includes('read') || fullText.includes('article') || fullText.includes('digest') || fullText.includes('summary')) {
     recommendedLayout = 'two-column';
-    recommendedTheme = 'warm-editorial';
+    recommendedTheme = 'warm-paper';
     accentColor = '#d97706';
   } else if (fullText.includes('metric') || fullText.includes('quick') || fullText.includes('hygiene') || fullText.includes('feed')) {
     recommendedLayout = 'compact-feed';
@@ -1903,7 +1896,7 @@ function suggestUiLayoutAndComponents(): void {
     comps.push({
       type: 'button',
       id: `btn_sort_tabs_${Date.now().toString(36)}`,
-      text: '🪄 Sort & Group Tabs Now',
+      text: 'Sort & Group Tabs',
       intent: 'info',
       action: 'trigger-run',
     });
@@ -1932,7 +1925,7 @@ function suggestUiLayoutAndComponents(): void {
     comps.push({
       type: 'button',
       id: `btn_scan_bookmarks_${Date.now().toString(36)}`,
-      text: '🌿 Scan & Clean Bookmarks',
+      text: 'Scan & Clean Bookmarks',
       intent: 'success',
       action: 'trigger-run',
     });
@@ -1954,7 +1947,7 @@ function suggestUiLayoutAndComponents(): void {
     comps.push({
       type: 'button',
       id: `btn_run_now_${Date.now().toString(36)}`,
-      text: '⚡ Run Operation',
+      text: 'Run Operation',
       intent: 'info',
       action: 'trigger-run',
     });
@@ -2041,7 +2034,7 @@ function setupEventListeners(): void {
       slug: 'new-custom-agent',
       version: '1.0.0',
       description: 'An autonomous Chrome extension designed with Prompt in a Box.',
-      prompt: `# New Custom Agent\n\n\`\`\`ui\n{\n  "title": "Agent Dashboard",\n  "theme": "glassmorphic",\n  "components": [\n    { "type": "header", "text": "Dashboard" },\n    { "type": "button", "id": "btn_go", "text": "⚡ Run", "intent": "info", "action": "trigger-run" }\n  ]\n}\n\`\`\`\n\nPerform actions through granted tools.\n`,
+      prompt: `# New Custom Agent\n\n\`\`\`ui\n{\n  "title": "Agent Dashboard",\n  "theme": "compact",\n  "components": [\n    { "type": "header", "text": "Dashboard" },\n    { "type": "button", "id": "btn_go", "text": "Run", "intent": "info", "action": "trigger-run" }\n  ]\n}\n\`\`\`\n\nPerform actions through granted tools.\n`,
       alarmMinutes: 30,
       permissions: ['storage', 'alarms'],
       optional_permissions: ['tabs'],
@@ -2476,7 +2469,7 @@ function setupEventListeners(): void {
             ui.components.push({
               type: 'button',
               id: `btn_action_${Date.now().toString(36)}`,
-              text: '⚡ Run Operation',
+              text: 'Run Operation',
               intent: 'info',
               action: 'trigger-run',
             });

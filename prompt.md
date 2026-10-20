@@ -5,7 +5,7 @@ Welcome to **Prompt in a Box**! This root extension is the Master Playground and
 ```ui
 {
   "title": "Prompt in a Box Studio",
-  "theme": "glassmorphic",
+  "theme": "compact",
   "components": [
     { "type": "text", "text": "Design, test, and package standalone prompt-driven Chrome extensions directly in the browser." },
     {
@@ -19,14 +19,14 @@ Welcome to **Prompt in a Box**! This root extension is the Master Playground and
     {
       "type": "button",
       "id": "btn_open_studio",
-      "text": "✨ Open Extension Studio",
+      "text": "Open Extension Studio",
       "intent": "info",
       "action": "open-studio"
     },
     {
       "type": "button",
       "id": "btn_inspect_workspace",
-      "text": "🔍 Run Workspace Diagnostic",
+      "text": "Run Workspace Diagnostic",
       "intent": "secondary",
       "action": "trigger-run",
       "payload": { "command": "workspace_diagnostic" }

@@ -117,7 +117,7 @@ Design a complete, production-grade Chrome Extension based on the inspiration an
 ### Platform Architecture & Non-Negotiable Rules:
 1. **Declarative UI (fenced \`\`\`ui block in prompt.md)**:
    - Provide a visually stunning popup/sidepanel UI with:
-     - \`theme\`: "glassmorphic" (iOS/visionOS frosted blur), "neon-dark" (cyber neon), "warm-editorial" (warm editorial paper), "compact" (dense utilitarian), or "default" (clean SaaS).
+     - \`theme\`: "compact" (dense utilitarian, high readability), "warm-paper" (warm alabaster & espresso ink), "dark" (high-contrast dark studio), or "default" (clean daylight slate).
      - \`themeConfig\`: optional \`{ accentColor: "#...", backgroundGradient: "...", blurPx: 16 }\`.
      - \`layoutMode\`: "stack", "bento-grid" (2-column cards), "two-column", "tabbed", "chat-first", or "compact-feed".
      - Rich dynamic components:
@@ -327,7 +327,7 @@ You have full authority to update prompt.md (including declarative \`\`\`ui bloc
    - For batching, use async scripts in \`code_mode\` with \`Promise.all\` and per-tab \`try/catch\`.
    - Ensure \`<all_urls>\` is in \`host_permissions\` if arbitrary web pages need to be inspected.
 2. When updating prompt.md:
-   - Always preserve or improve the \`\`\`ui ... \`\`\` block. You can specify theme ("glassmorphic", "neon-dark", "warm-editorial", "compact", "default"), themeConfig ({ accentColor, backgroundGradient, blurPx, cardOpacity, borderRadiusPx }), layoutMode ("stack", "bento-grid", "two-column", "tabbed", "chat-first", "compact-feed"), and rich components: select, switch, radio, checkbox, textarea, password, date-time, file, slider, chat, task-list, summary, card, carousel, metrics, table, dialog, menu, alert, icon, button, action-history (using storageKey for dynamic chrome.storage data persistence).
+   - Always preserve or improve the \`\`\`ui ... \`\`\` block. You can specify theme ("compact", "warm-paper", "dark", "default"), themeConfig ({ accentColor, backgroundGradient, blurPx, cardOpacity, borderRadiusPx }), layoutMode ("stack", "bento-grid", "two-column", "tabbed", "chat-first", "compact-feed"), and rich components: select, switch, radio, checkbox, textarea, password, date-time, file, slider, chat, task-list, summary, card, carousel, metrics, table, dialog, menu, alert, icon, button, action-history (using storageKey for dynamic chrome.storage data persistence).
    - Preserve multi-window isolation (\`windowId\` scoping) and undo toasts.
 3. Tool Fidelity: Only reference real tools from the Capability Reference.
 
@@ -379,7 +379,7 @@ ${project.prompt}
 // ─── AI Theme & Visual Styling ─────────────────────────────────────────
 
 export const styleUiSchema = z.object({
-  theme: z.enum(['default', 'glassmorphic', 'neon-dark', 'warm-editorial', 'compact']).default('glassmorphic'),
+  theme: z.enum(['compact', 'warm-paper', 'dark', 'default']).default('compact'),
   accentColor: z.string().describe('Primary hex accent color, e.g. #3b82f6'),
   backgroundGradient: z.string().optional().describe('CSS background gradient string or color, e.g. linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'),
   blurPx: z.number().optional().describe('Backdrop blur in pixels (8 to 24), e.g. 16'),
@@ -417,11 +417,10 @@ Extension description: "${projectDescription || '(No description)'}"
 User aesthetic notes / theme inspiration: "${inspirationNotes || 'Modern sleek aesthetic'}"
 
 Choose the best matching theme preset:
-- 'glassmorphic': Frosted translucency, Apple visionOS / iOS blur, sleek glowing edges
-- 'neon-dark': Deep cyber dark, high-contrast neon accents, glowing borders
-- 'warm-editorial': Serif/paper warmth, refined cream/charcoal palette, literary craft
-- 'compact': Dense utilitarian data layout, low padding, crisp borders
-- 'default': Clean modern SaaS / Material You interface
+- 'compact': Dense utilitarian data layout, low padding, crisp borders, high readability
+- 'warm-paper': Warm alabaster paper, rich espresso ink, terracotta accent, refined editorial
+- 'dark': Deep studio dark, crisp high-contrast cards, sharp borders, zero eye strain
+- 'default': Clean daylight slate, crisp cards, modern SaaS feel
 
 Provide:
 1. theme: One of the presets above.
