@@ -4,10 +4,9 @@ Welcome to **Prompt in a Box**! This root extension is the Master Playground and
 
 ```ui
 {
-  "title": "Prompt in a Box Studio Hub",
+  "title": "Prompt in a Box Studio",
   "theme": "glassmorphic",
   "components": [
-    { "type": "header", "text": "Extension Studio & Playground" },
     { "type": "text", "text": "Design, test, and package standalone prompt-driven Chrome extensions directly in the browser." },
     {
       "type": "metrics",
@@ -16,7 +15,7 @@ Welcome to **Prompt in a Box**! This root extension is the Master Playground and
         { "label": "Live Override", "value": "Ready", "subvalue": "Use Studio to activate" }
       ]
     },
-    { "type": "alert", "intent": "info", "text": "Open Extension Studio to design a project or click 'Activate in Extension' to hot-swap the active prompt in real time." },
+    { "type": "alert", "intent": "info", "text": "Open Extension Studio to design a project or hot-swap the active prompt in real time." },
     {
       "type": "button",
       "id": "btn_open_studio",
@@ -28,7 +27,7 @@ Welcome to **Prompt in a Box**! This root extension is the Master Playground and
       "type": "button",
       "id": "btn_inspect_workspace",
       "text": "🔍 Run Workspace Diagnostic",
-      "intent": "success",
+      "intent": "secondary",
       "action": "trigger-run",
       "payload": { "command": "workspace_diagnostic" }
     },
