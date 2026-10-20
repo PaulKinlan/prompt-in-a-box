@@ -86,6 +86,9 @@ async function loadSummary(): Promise<void> {
   if (cfg.ui?.showScheduleSummary === false && $('summarySchedule')) {
     $('summarySchedule').style.display = 'none';
   }
+  if (cfg.ui?.showStudio === false && $('openStudio')) {
+    $('openStudio').style.display = 'none';
+  }
 
   // Load Undo Toast Banner
   await checkUndoToast();
@@ -348,6 +351,12 @@ const openArtifactsBrowser = () => {
 
 if ($('openArtifacts')) $('openArtifacts').addEventListener('click', openArtifactsBrowser);
 if ($('openArtifactsTop')) $('openArtifactsTop').addEventListener('click', openArtifactsBrowser);
+
+if ($('openStudio')) {
+  $('openStudio').addEventListener('click', () => {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('dist/studio.html') });
+  });
+}
 
 // ─── Dynamic View Toggle Controller ─────────────────────────────────
 const dynamicContainer = $('dynamicPopup');

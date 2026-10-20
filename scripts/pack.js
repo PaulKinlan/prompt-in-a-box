@@ -169,6 +169,8 @@ if (exampleName) {
     'dist/artifacts-browser.js',
     'dist/sandbox.html',
     'dist/sandbox.js',
+    'dist/studio.html',
+    'dist/studio.js',
   ];
 
   const ICON_FILES = ['icon.png', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png'];

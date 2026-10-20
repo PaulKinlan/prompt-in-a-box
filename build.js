@@ -210,6 +210,7 @@ const entries = [
   { in: 'src/offscreen.ts', out: join(outDir, 'offscreen.js') },
   { in: 'src/artifacts-browser.ts', out: join(outDir, 'artifacts-browser.js') },
   { in: 'src/sandbox.ts', out: join(outDir, 'sandbox.js') },
+  { in: 'src/studio.ts', out: join(outDir, 'studio.js') },
 ];
 
 async function run() {
@@ -222,6 +223,7 @@ async function run() {
   cpSync('src/offscreen.html', join(outDir, 'offscreen.html'));
   cpSync('src/artifacts.html', join(outDir, 'artifacts.html'));
   cpSync('src/sandbox.html', join(outDir, 'sandbox.html'));
+  cpSync('src/studio.html', join(outDir, 'studio.html'));
 
   if (watch) {
     for (const e of entries) {

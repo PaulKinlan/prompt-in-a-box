@@ -95,6 +95,7 @@ function applyFeatureGating(): void {
   // Granular UI config flags
   const ui = currentConfig.ui;
   if (ui) {
+    if (ui.showStudio === false) setDisplay('navStudio', 'none');
     if (ui.showProviderSelector === false) setDisplay('providerFieldset', 'none');
     if (ui.showApiKeyInput === false) setDisplay('apiKeyFieldGroup', 'none');
     if (ui.showModelSelector === false) setDisplay('modelFieldGroup', 'none');

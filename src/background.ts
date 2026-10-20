@@ -29,6 +29,11 @@ const RUNTIME_PRICING: Record<string, { input: number; output: number }> = {
   'gemini-4-argon': { input: 2.0, output: 10.0 },
   'gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'gemini-3.7-flash': { input: 0.75, output: 3.75 },
+  'gemini-3.6-flash': { input: 0.75, output: 3.75 },
+  'gemini-3.5-flash': { input: 0.5, output: 2.5 },
+  'gemini-3.5-flash-lite': { input: 0.1, output: 0.5 },
+  'gemini-3.1-pro-preview': { input: 2.0, output: 10.0 },
+  'gemini-3.1-flash-lite': { input: 0.25, output: 1.5 },
   'gpt-6-astra': { input: 10.0, output: 50.0 },
   'gpt-6.1-sol': { input: 2.0, output: 10.0 },
   'gpt-6-sol': { input: 2.0, output: 10.0 },
@@ -227,6 +232,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await handleCodeModeToolCall(msg));
       } else if (msg?.type === 'code-mode-log') {
         sendResponse(await handleCodeModeLog(msg));
+      } else if (msg?.type === 'studio-test-run') {
+        const trigger = (msg.trigger as AuditEntry['trigger']) || 'manual';
+        const userMsg = msg.customUserMessage as string | undefined;
+        sendResponse(await run(trigger, userMsg));
       } else {
         sendResponse({ error: `unknown message type: ${msg?.type}` });
       }
@@ -725,6 +734,15 @@ function pickModel(provider: Provider, modelId: string, apiKey: string) {
 }
 
 async function loadPrompt(): Promise<string> {
+  try {
+    const stored = await chrome.storage.local.get('studioLiveOverride');
+    const override = stored.studioLiveOverride as { enabled?: boolean; prompt?: string } | undefined;
+    if (override?.enabled && typeof override.prompt === 'string' && override.prompt.trim().length > 0) {
+      return override.prompt;
+    }
+  } catch {
+    // fallback to bundled prompt.md
+  }
   const url = chrome.runtime.getURL('prompt.md');
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load prompt.md: ${res.status}`);

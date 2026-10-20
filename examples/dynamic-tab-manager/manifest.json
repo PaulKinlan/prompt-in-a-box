@@ -6,8 +6,8 @@
   "prompt_in_a_box": {
     "prompt": "prompt.md",
     "alarm_minutes": 30,
-    "default_provider": "anthropic",
-    "default_model": "claude-sonnet-5-5"
+    "default_provider": "google",
+    "default_model": "gemini-3.8-flash"
   },
   "background": {
     "service_worker": "dist/background.js",

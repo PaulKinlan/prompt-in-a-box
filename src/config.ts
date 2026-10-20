@@ -43,6 +43,7 @@ export interface UIConfig {
   showHistory: boolean;
   showVersionBadge: boolean;
   showPolicyBadge: boolean;
+  showStudio: boolean;
 
   // Popup
   showPopupHeader: boolean;
@@ -96,6 +97,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   showHistory: true,
   showVersionBadge: true,
   showPolicyBadge: true,
+  showStudio: true,
 
   // Popup
   showPopupHeader: true,
@@ -232,15 +234,12 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<StaticConfig, 'agentSettings'>
       google: [
         'gemini-3.8-flash',
         'gemini-4-argon',
-        'gemini-3.5-flash-lite',
+        'gemini-3.7-flash',
         'gemini-3.6-flash',
         'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
         'gemini-3.1-pro-preview',
         'gemini-3.1-flash-lite',
-        'gemini-3-flash-preview',
-        'gemini-2.5-pro',
-        'gemini-2.5-flash',
-        'gemini-2.5-flash-lite',
       ],
       openai: [
         'gpt-6.1-sol',
@@ -379,15 +378,12 @@ export const PROVIDER_MODELS: Record<Provider, string[]> = {
   google: [
     'gemini-3.8-flash',
     'gemini-4-argon',
-    'gemini-3.5-flash-lite',
+    'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
     'gemini-3.1-pro-preview',
     'gemini-3.1-flash-lite',
-    'gemini-3-flash-preview',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
   ],
   openai: [
     'gpt-6.1-sol',
@@ -444,12 +440,29 @@ const FALLBACKS: Omit<Config, 'keys' | 'ui' | 'agentSettings'> = {
   disabledProviderTools: [],
 };
 
+export interface StudioLiveOverride {
+  enabled: boolean;
+  projectId: string;
+  name: string;
+  version: string;
+  prompt: string;
+  config?: Partial<StaticConfig>;
+  manifest?: Record<string, unknown>;
+  updatedAt: number;
+}
+
 export async function getConfig(): Promise<Config> {
   const manifest = chrome.runtime.getManifest() as chrome.runtime.Manifest & {
     prompt_in_a_box?: ManifestExtras;
   };
   const m = manifest.prompt_in_a_box ?? {};
-  const staticCfg = await getStaticConfig();
+  const baseStaticCfg = await getStaticConfig();
+
+  const overrideRes = await chrome.storage.local.get('studioLiveOverride');
+  const liveOverride = overrideRes.studioLiveOverride as StudioLiveOverride | undefined;
+  const staticCfg: StaticConfig = (liveOverride?.enabled && liveOverride.config)
+    ? { ...baseStaticCfg, ...liveOverride.config }
+    : baseStaticCfg;
 
   const stored = await chrome.storage.local.get([
     'provider',

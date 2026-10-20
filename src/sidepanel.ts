@@ -38,6 +38,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const artBtn = $('openArtifactsBtn');
     if (artBtn) artBtn.style.display = 'none';
   }
+  if (cfg.ui?.showStudio === false) {
+    const studioBtn = $('openStudioBtn');
+    if (studioBtn) studioBtn.style.display = 'none';
+  }
   if (cfg.ui?.showSidePanelStatusBar === false) {
     const sb = document.querySelector('.sp-status-bar') as HTMLElement | null;
     if (sb) sb.style.display = 'none';
@@ -132,6 +136,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       } finally {
         runBtn.disabled = false;
       }
+    });
+  }
+
+  const studioBtn = $('openStudioBtn');
+  if (studioBtn) {
+    studioBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('dist/studio.html') });
     });
   }
 

@@ -85,6 +85,17 @@ export function extractUIBlockFromPrompt(markdown: string): UISchema | null {
  */
 export async function loadPromptUIBlock(): Promise<UISchema | null> {
   try {
+    const stored = await chrome.storage.local.get('studioLiveOverride');
+    const override = stored.studioLiveOverride as { enabled?: boolean; prompt?: string } | undefined;
+    if (override?.enabled && typeof override.prompt === 'string' && override.prompt.trim().length > 0) {
+      const liveSchema = extractUIBlockFromPrompt(override.prompt);
+      if (liveSchema) return liveSchema;
+    }
+  } catch {
+    // fallback to prompt.md
+  }
+
+  try {
     const url = chrome.runtime.getURL('prompt.md');
     const res = await fetch(url);
     if (!res.ok) return null;

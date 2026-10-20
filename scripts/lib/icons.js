@@ -56,44 +56,66 @@ export function detectImageProvider(env = process.env) {
 // ─── AI generation ──────────────────────────────────────────────────
 
 /** Build the text prompt handed to the image model. */
-export function buildImagePrompt({ name, description }) {
+export function buildImagePrompt({ name, description, iconBrief }) {
   const subject = [name, description].filter(Boolean).join(' — ');
+  const briefHints = [];
+  if (iconBrief) {
+    if (iconBrief.symbol) briefHints.push(`Central symbol: ${iconBrief.symbol}.`);
+    if (iconBrief.colors && iconBrief.colors.length > 0) {
+      briefHints.push(`Color palette: ${iconBrief.colors.join(', ')}.`);
+    }
+    if (iconBrief.styleDescription) {
+      briefHints.push(`Style cues: ${iconBrief.styleDescription}.`);
+    }
+  }
+
   return [
     `App icon for a Chrome browser extension: ${subject}.`,
+    briefHints.join(' '),
     'Design a single bold, simple symbol that clearly represents what the extension does.',
     'Modern flat vector style, smooth diagonal gradient background, generous padding,',
     'rounded-square shape, centered composition, high contrast, crisp edges.',
     'No text, no words, no letters, no numbers, no photographic detail.',
     'Clean, friendly, professional — App Store / Material You quality.',
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /**
  * Generate a square icon image via an AI provider.
  * Returns a PNG-able image Buffer (whatever the model produced) or throws.
  */
-export async function generateAiImageBuffer({ name, description, provider }) {
+export async function generateAiImageBuffer({ name, description, provider, iconBrief }) {
   const { generateImage } = await import('ai');
-  const prompt = buildImagePrompt({ name, description });
+  const prompt = buildImagePrompt({ name, description, iconBrief });
 
-  let model;
-  let extra = {};
   if (provider.kind === 'google') {
     const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
     const google = createGoogleGenerativeAI({ apiKey: provider.apiKey });
-    model = google.image(provider.model);
-    extra = { aspectRatio: '1:1' };
+    const modelsToTry = [provider.model, 'gemini-3.1-flash-image-preview', 'gemini-nano-banana-2.1'];
+    const uniqueModels = [...new Set(modelsToTry.filter(Boolean))];
+
+    let lastError = null;
+    for (const mId of uniqueModels) {
+      try {
+        const model = google.image(mId);
+        const { image } = await generateImage({ model, prompt, n: 1, aspectRatio: '1:1' });
+        return Buffer.from(image.uint8Array);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('Google image generation failed');
   } else if (provider.kind === 'openai') {
     const { createOpenAI } = await import('@ai-sdk/openai');
     const openai = createOpenAI({ apiKey: provider.apiKey });
-    model = openai.imageModel(provider.model);
-    extra = { size: '1024x1024' };
+    const model = openai.imageModel(provider.model);
+    const { image } = await generateImage({ model, prompt, n: 1, size: '1024x1024' });
+    return Buffer.from(image.uint8Array);
   } else {
     throw new Error(`Unknown image provider: ${provider.kind}`);
   }
-
-  const { image } = await generateImage({ model, prompt, n: 1, ...extra });
-  return Buffer.from(image.uint8Array);
 }
 
 // ─── Procedural fallback ────────────────────────────────────────────
@@ -231,13 +253,17 @@ function matchGlyph(text) {
  * avoids generic boilerplate in descriptions (e.g. "Event-driven.",
  * "Schedule-driven.") hijacking the match.
  */
-export function pickGlyph(name = '', description = '') {
+export function pickGlyph(name = '', description = '', iconBrief = null) {
+  if (iconBrief?.symbol) {
+    const symbolMatch = matchGlyph(iconBrief.symbol);
+    if (symbolMatch) return symbolMatch;
+  }
   return matchGlyph(name) || matchGlyph(description) || 'spark';
 }
 
 /** Build the full procedural SVG for an extension icon. */
-export function buildProceduralSvg({ name, description }) {
-  const glyphKey = pickGlyph(name, description);
+export function buildProceduralSvg({ name, description, iconBrief }) {
+  const glyphKey = pickGlyph(name, description, iconBrief);
   const glyph = GLYPHS[glyphKey];
   const { c1, c2 } = gradientFor(name || description || 'prompt-in-a-box');
 
@@ -255,8 +281,8 @@ export function buildProceduralSvg({ name, description }) {
 </svg>`;
 }
 
-async function proceduralMasterBuffer({ name, description }) {
-  const svg = buildProceduralSvg({ name, description });
+async function proceduralMasterBuffer({ name, description, iconBrief }) {
+  const svg = buildProceduralSvg({ name, description, iconBrief });
   return sharp(Buffer.from(svg))
     .resize(MASTER_SIZE, MASTER_SIZE, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
@@ -291,13 +317,13 @@ export async function writeIconSet(masterBuffer, destDir) {
  *
  * @returns {Promise<{ source: 'ai'|'procedural', glyph?: string, files: string[] }>}
  */
-export async function generateIcons({ name, description, destDir, provider, allowAi = true, log = () => {} }) {
+export async function generateIcons({ name, description, destDir, provider, iconBrief = null, allowAi = true, log = () => {} }) {
   const chosen = provider ?? (allowAi ? detectImageProvider() : null);
 
   if (chosen) {
     try {
       log(`  ↳ generating AI icon via ${chosen.kind} (${chosen.model})…`);
-      const master = await generateAiImageBuffer({ name, description, provider: chosen });
+      const master = await generateAiImageBuffer({ name, description, provider: chosen, iconBrief });
       const files = await writeIconSet(master, destDir);
       return { source: 'ai', files };
     } catch (err) {
@@ -305,9 +331,9 @@ export async function generateIcons({ name, description, destDir, provider, allo
     }
   }
 
-  const glyph = pickGlyph(name, description);
+  const glyph = pickGlyph(name, description, iconBrief);
   log(`  ↳ generating procedural icon (glyph: ${glyph})…`);
-  const master = await proceduralMasterBuffer({ name, description });
+  const master = await proceduralMasterBuffer({ name, description, iconBrief });
   const files = await writeIconSet(master, destDir);
   return { source: 'procedural', glyph, files };
 }
