@@ -19,6 +19,9 @@ import {
 import {
   generateExtensionFromInspiration,
   refinePromptWithAI,
+  generateIconWithAI,
+  resolveImageModelId,
+  DEFAULT_ICON_MODEL,
   type InspirationAttachment,
 } from './studio-ai';
 
@@ -294,6 +297,53 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
     if (p.iconBrief.colors?.[0]) $input('iconColor1').value = p.iconBrief.colors[0];
     if (p.iconBrief.colors?.[1]) $input('iconColor2').value = p.iconBrief.colors[1];
     if (p.iconBrief.symbol) $select('iconSymbolSelect').value = p.iconBrief.symbol;
+    if (p.iconBrief.artStyle) $select('iconArtStyleSelect').value = p.iconBrief.artStyle;
+    if (p.iconBrief.styleDescription) $textarea('iconStyleInput').value = p.iconBrief.styleDescription;
+    if (p.iconBrief.clipSquircle !== undefined) $input('iconClipSquircle').checked = p.iconBrief.clipSquircle;
+
+    const modelVal = p.iconBrief.model || DEFAULT_ICON_MODEL;
+    const modelOpts = Array.from($select('iconModelSelect').options).map((o) => o.value);
+    if (modelOpts.includes(modelVal)) {
+      $select('iconModelSelect').value = modelVal;
+      $('iconCustomModelRow').style.display = 'none';
+    } else {
+      $select('iconModelSelect').value = 'custom';
+      $input('iconCustomModelInput').value = modelVal;
+      $('iconCustomModelRow').style.display = 'block';
+    }
+
+    const hasCustomImage = Boolean(p.iconBrief.customImageDataUrl && p.iconBrief.mode !== 'vector');
+    $('iconModeBadge').textContent = hasCustomImage
+      ? p.iconBrief.mode === 'upload'
+        ? 'Uploaded Image'
+        : `AI (${p.iconBrief.model || DEFAULT_ICON_MODEL})`
+      : 'Vector Glyph';
+    $('btnResetVectorIcon').style.display = hasCustomImage ? 'inline-flex' : 'none';
+  } else {
+    $select('iconModelSelect').value = DEFAULT_ICON_MODEL;
+    $select('iconArtStyleSelect').value = 'flat-vector';
+    $textarea('iconStyleInput').value = '';
+    $('iconModeBadge').textContent = 'Vector Glyph';
+    $('btnResetVectorIcon').style.display = 'none';
+    $('iconCustomModelRow').style.display = 'none';
+  }
+
+  // Shell UI options
+  const ui = p.uiConfig || {};
+  $input('uiShowPopupHeader').checked = ui.showPopupHeader !== false;
+  $input('uiShowStatusCard').checked = ui.showStatusCard !== false;
+  $input('uiShowViewSwitcher').checked = ui.showViewSwitcher !== false;
+  $input('uiShowCosts').checked = ui.showCosts !== false;
+  $input('uiShowHistory').checked = ui.showHistory !== false;
+  $input('uiAllowSidePanel').checked = ui.allowSidePanel !== false;
+  $input('uiAllowArtifacts').checked = ui.allowArtifacts !== false;
+  $input('uiShowScheduleSummary').checked = ui.showScheduleSummary !== false;
+
+  // Visual Dashboard UI Toolbar
+  const schema = extractUIBlockFromPrompt(p.prompt || '');
+  if (schema) {
+    $select('uiThemeSelect').value = schema.theme || 'glassmorphic';
+    $input('uiTitleInput').value = schema.title || `${p.name} Dashboard`;
   }
 
   updatePermissionsCheckboxes();
@@ -311,10 +361,30 @@ async function saveProject(): Promise<void> {
   currentProject.includeStudio = $input('checkIncludeStudio').checked;
   currentProject.lockProvider = $input('checkLockProvider').checked;
 
+  const chosenModel =
+    $select('iconModelSelect').value === 'custom'
+      ? $input('iconCustomModelInput').value.trim() || DEFAULT_ICON_MODEL
+      : $select('iconModelSelect').value;
+
   currentProject.iconBrief = {
+    ...currentProject.iconBrief,
+    model: chosenModel,
+    artStyle: $select('iconArtStyleSelect').value as any,
+    styleDescription: $textarea('iconStyleInput').value.trim(),
     symbol: $select('iconSymbolSelect').value,
     colors: [$input('iconColor1').value, $input('iconColor2').value],
-    styleDescription: `${$select('iconSymbolSelect').value} with gradient`,
+    clipSquircle: $input('iconClipSquircle').checked,
+  };
+
+  currentProject.uiConfig = {
+    showPopupHeader: $input('uiShowPopupHeader').checked,
+    showStatusCard: $input('uiShowStatusCard').checked,
+    showViewSwitcher: $input('uiShowViewSwitcher').checked,
+    showCosts: $input('uiShowCosts').checked,
+    showHistory: $input('uiShowHistory').checked,
+    allowSidePanel: $input('uiAllowSidePanel').checked,
+    allowArtifacts: $input('uiAllowArtifacts').checked,
+    showScheduleSummary: $input('uiShowScheduleSummary').checked,
   };
 
   if (activeEditorTab === 'prompt') {
@@ -382,6 +452,7 @@ async function applyLiveOverride(enabled: boolean): Promise<void> {
     prompt: currentProject.prompt,
     config: {
       schedule: { defaultAlarmMinutes: currentProject.alarmMinutes },
+      ui: { ...(currentProject.uiConfig || {}), showStudio: true },
       agentSettings: currentProject.agentSettings?.length
         ? {
             storageKey: `${currentProject.slug.replace(/-/g, '_')}_settings`,
@@ -456,7 +527,7 @@ function renderCodeEditor(): void {
       providers: { allowed: ['google', 'anthropic', 'openai'], default: 'google', lockProvider: currentProject.lockProvider },
       models: { default: currentProject.defaultModel || 'gemini-3.8-flash', lockModel: currentProject.lockModel },
       schedule: { defaultAlarmMinutes: currentProject.alarmMinutes, lockSchedule: false },
-      ui: { showStudio: currentProject.includeStudio },
+      ui: { ...(currentProject.uiConfig || {}), showStudio: currentProject.includeStudio },
       agentSettings: currentProject.agentSettings || [],
     };
     editor.value = JSON.stringify(configDraft, null, 2);
@@ -518,9 +589,10 @@ function updateLiveUiPreview(): void {
 // ─── Icon Generation & Canvas Preview ──────────────────────────────────
 
 function renderIcons(): void {
-  const brief: IconBrief = {
+  const brief: IconBrief = currentProject.iconBrief || {
     symbol: $select('iconSymbolSelect').value,
     colors: [$input('iconColor1').value, $input('iconColor2').value],
+    clipSquircle: $input('iconClipSquircle').checked,
   };
 
   const canvasSizes = [
@@ -548,6 +620,95 @@ function renderIcons(): void {
       img.src = url;
     });
   }
+}
+
+// ─── AI Icon Generation ────────────────────────────────────────────────
+
+async function handleGenerateAiIcon(): Promise<void> {
+  const cfg = await getConfig();
+  const progressEl = $('iconAiProgressText');
+  progressEl.style.display = 'block';
+  $btn('btnGenerateAiIcon').disabled = true;
+
+  try {
+    await saveProject();
+    const res = await generateIconWithAI({
+      name: currentProject.name,
+      description: currentProject.description,
+      iconBrief: currentProject.iconBrief,
+      keys: cfg.keys,
+      onProgress: (status) => {
+        progressEl.textContent = status;
+      },
+    });
+
+    currentProject.iconBrief = {
+      ...currentProject.iconBrief,
+      customImageDataUrl: res.dataUrl,
+      mode: 'ai',
+      model: res.modelUsed,
+    };
+
+    $('iconModeBadge').textContent = `AI (${res.modelUsed})`;
+    $('btnResetVectorIcon').style.display = 'inline-flex';
+    renderIcons();
+    await saveProject();
+    showToast(`Generated AI icon with ${res.modelUsed}!`, 'ok');
+  } catch (err) {
+    showToast(`Icon generation failed: ${(err as Error).message}`, 'error');
+    console.error(err);
+  } finally {
+    progressEl.style.display = 'none';
+    $btn('btnGenerateAiIcon').disabled = false;
+  }
+}
+
+// ─── Visual UI Mutator ─────────────────────────────────────────────────
+
+function mutatePromptUiBlock(mutator: (uiObj: Record<string, any>) => void): void {
+  const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
+  const match = currentPrompt.match(/```(?:ui|json\s+ui|json:ui)\s*\n([\s\S]*?)\n```/i);
+
+  let uiObj: Record<string, any>;
+  if (match) {
+    try {
+      uiObj = JSON.parse(match[1]);
+    } catch {
+      uiObj = {
+        title: `${currentProject.name} Dashboard`,
+        theme: 'glassmorphic',
+        components: [],
+      };
+    }
+  } else {
+    uiObj = {
+      title: `${currentProject.name} Dashboard`,
+      theme: 'glassmorphic',
+      components: [],
+    };
+  }
+
+  if (!Array.isArray(uiObj.components)) {
+    uiObj.components = [];
+  }
+
+  mutator(uiObj);
+
+  const formattedBlock = '```ui\n' + JSON.stringify(uiObj, null, 2) + '\n```';
+  let updatedPrompt: string;
+  if (match) {
+    updatedPrompt = currentPrompt.replace(match[0], formattedBlock);
+  } else {
+    updatedPrompt = `${formattedBlock}\n\n${currentPrompt}`;
+  }
+
+  currentProject.prompt = updatedPrompt;
+  if (activeEditorTab === 'prompt') {
+    $textarea('codeEditor').value = updatedPrompt;
+  }
+  updateLiveUiPreview();
+  updateEditorStatus();
+  saveProject();
 }
 
 // ─── Tools & Events Reference Tab ──────────────────────────────────────
@@ -782,11 +943,28 @@ async function handleAiGenerate(): Promise<void> {
     if (blueprint.permissions) currentProject.permissions = blueprint.permissions;
     if (blueprint.optional_permissions) currentProject.optional_permissions = blueprint.optional_permissions;
     if (blueprint.agentSettings) currentProject.agentSettings = blueprint.agentSettings;
-    if (blueprint.iconBrief) currentProject.iconBrief = blueprint.iconBrief;
+    if (blueprint.iconBrief) {
+      currentProject.iconBrief = {
+        ...currentProject.iconBrief,
+        ...blueprint.iconBrief,
+        model: currentProject.iconBrief?.model || DEFAULT_ICON_MODEL,
+        artStyle: currentProject.iconBrief?.artStyle || 'flat-vector',
+        clipSquircle: currentProject.iconBrief?.clipSquircle !== false,
+      };
+    }
     if (blueprint.prompt) currentProject.prompt = blueprint.prompt;
 
     loadProjectIntoUI(currentProject);
     await saveProject();
+
+    if ($input('iconAutoGenOnBlueprint').checked) {
+      progressEl.textContent = 'Auto-generating AI icon with gemini-nano-banana-2.1...';
+      try {
+        await handleGenerateAiIcon();
+      } catch (iconErr) {
+        console.warn('Auto AI icon generation notice:', iconErr);
+      }
+    }
 
     showToast(`Generated "${currentProject.name}" extension!`, 'ok');
   } catch (err) {
@@ -981,14 +1159,187 @@ function setupEventListeners(): void {
     chrome.tabs.create({ url: 'chrome://extensions' });
   });
 
-  // Metadata inputs change listeners
-  const metaInputs = ['extNameInput', 'extSlugInput', 'extAlarmInput', 'extDescInput', 'iconColor1', 'iconColor2', 'iconSymbolSelect', 'checkIncludeStudio', 'checkLockProvider'];
+  // Metadata & Icon & UI inputs change listeners
+  const metaInputs = [
+    'extNameInput',
+    'extSlugInput',
+    'extAlarmInput',
+    'extDescInput',
+    'iconColor1',
+    'iconColor2',
+    'iconSymbolSelect',
+    'iconArtStyleSelect',
+    'iconStyleInput',
+    'iconClipSquircle',
+    'iconCustomModelInput',
+    'checkIncludeStudio',
+    'checkLockProvider',
+    'uiShowPopupHeader',
+    'uiShowStatusCard',
+    'uiShowViewSwitcher',
+    'uiShowCosts',
+    'uiShowHistory',
+    'uiAllowSidePanel',
+    'uiAllowArtifacts',
+    'uiShowScheduleSummary',
+  ];
   for (const id of metaInputs) {
-    $(id).addEventListener('input', () => {
+    const el = $(id);
+    if (!el) continue;
+    const eventName = el.tagName === 'SELECT' || (el as HTMLInputElement).type === 'checkbox' || (el as HTMLInputElement).type === 'color' ? 'change' : 'input';
+    el.addEventListener(eventName, () => {
       saveProject();
       renderIcons();
+      if (activeEditorTab === 'config') renderCodeEditor();
     });
   }
+
+  // Icon LLM model selector
+  $('iconModelSelect').addEventListener('change', () => {
+    const isCustom = $select('iconModelSelect').value === 'custom';
+    $('iconCustomModelRow').style.display = isCustom ? 'block' : 'none';
+    saveProject();
+  });
+
+  // AI Icon Generation button
+  $('btnGenerateAiIcon').addEventListener('click', handleGenerateAiIcon);
+
+  // Upload Custom Icon Image
+  $('btnUploadIcon').addEventListener('click', () => {
+    $('iconUploadInput').click();
+  });
+
+  $('iconUploadInput').addEventListener('change', (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      currentProject.iconBrief = {
+        ...currentProject.iconBrief,
+        customImageDataUrl: dataUrl,
+        mode: 'upload',
+      };
+      $('iconModeBadge').textContent = 'Uploaded Image';
+      $('btnResetVectorIcon').style.display = 'inline-flex';
+      renderIcons();
+      await saveProject();
+      showToast('Custom icon image uploaded!', 'ok');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Reset Icon to Procedural Vector
+  $('btnResetVectorIcon').addEventListener('click', async () => {
+    if (currentProject.iconBrief) {
+      currentProject.iconBrief.mode = 'vector';
+      delete currentProject.iconBrief.customImageDataUrl;
+    }
+    $('iconModeBadge').textContent = 'Vector Glyph';
+    $('btnResetVectorIcon').style.display = 'none';
+    renderIcons();
+    await saveProject();
+    showToast('Reset icon to procedural vector glyph', 'ok');
+  });
+
+  // Visual Dashboard UI Configurator toolbar
+  $('uiThemeSelect').addEventListener('change', () => {
+    const theme = $select('uiThemeSelect').value;
+    mutatePromptUiBlock((ui) => {
+      ui.theme = theme;
+    });
+  });
+
+  $('uiTitleInput').addEventListener('input', () => {
+    const title = $input('uiTitleInput').value.trim();
+    mutatePromptUiBlock((ui) => {
+      ui.title = title;
+    });
+  });
+
+  const addCompButtons = document.querySelectorAll('[data-add-ui-comp]');
+  addCompButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const compType = btn.getAttribute('data-add-ui-comp');
+      if (!compType) return;
+      mutatePromptUiBlock((ui) => {
+        switch (compType) {
+          case 'metrics':
+            ui.components.push({
+              type: 'metrics',
+              metrics: [{ label: 'Active Items', value: '12', subvalue: 'healthy' }],
+            });
+            break;
+          case 'button':
+            ui.components.push({
+              type: 'button',
+              id: `btn_action_${Date.now().toString(36)}`,
+              text: '⚡ Run Operation',
+              intent: 'info',
+              action: 'trigger-run',
+            });
+            break;
+          case 'alert':
+            ui.components.push({
+              type: 'alert',
+              intent: 'info',
+              text: 'System is ready and operational.',
+            });
+            break;
+          case 'table':
+            ui.components.push({
+              type: 'table',
+              columns: [
+                { key: 'name', label: 'Item Name' },
+                { key: 'status', label: 'Status' },
+              ],
+              rows: [
+                { name: 'Alpha Task', status: 'Running' },
+                { name: 'Beta Task', status: 'Idle' },
+              ],
+            });
+            break;
+          case 'list':
+            ui.components.push({
+              type: 'list',
+              items: [
+                { title: 'First Task', subtitle: 'Completed 2m ago' },
+                { title: 'Second Task', subtitle: 'Pending approval' },
+              ],
+            });
+            break;
+          case 'key-value':
+            ui.components.push({
+              type: 'key-value',
+              items: [
+                { key: 'Environment', value: 'Chrome MV3' },
+                { key: 'Auto-Run', value: 'Enabled' },
+              ],
+            });
+            break;
+          case 'progress':
+            ui.components.push({
+              type: 'progress',
+              label: 'Overall Progress',
+              current: 65,
+              max: 100,
+            });
+            break;
+          case 'action-history':
+            ui.components.push({
+              type: 'action-history',
+              id: 'recent_actions',
+              text: 'Action History & Undo',
+              limit: 15,
+              showUndoAll: true,
+              undoAllLabel: 'Undo Last Action',
+            });
+            break;
+        }
+      });
+      showToast(`Added ${compType} component to UI block`, 'ok');
+    });
+  });
 
   // Code editor tabs
   const tabs = document.querySelectorAll('.editor-tab');

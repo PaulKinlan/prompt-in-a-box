@@ -10,10 +10,23 @@
  * - Directly writes unpacked extension folders to disk via showDirectoryPicker()
  */
 
+export type IconArtStyle =
+  | 'flat-vector'
+  | '3d-clay'
+  | 'glassmorphic'
+  | 'isometric'
+  | 'minimal-line'
+  | 'pixel-art'
+  | 'metallic';
+
 export interface IconBrief {
+  mode?: 'ai' | 'vector' | 'upload';
+  model?: string;
+  artStyle?: IconArtStyle;
   symbol?: string;
   colors?: string[];
   styleDescription?: string;
+  clipSquircle?: boolean;
   customImageDataUrl?: string;
 }
 
@@ -31,6 +44,7 @@ export interface ExtensionProjectData {
   optional_host_permissions?: string[];
   agentSettings?: any[];
   iconBrief?: IconBrief;
+  uiConfig?: Record<string, boolean>;
   includeStudio?: boolean;
   lockProvider?: boolean;
   lockModel?: boolean;
@@ -189,6 +203,21 @@ const GLYPH_PATHS: Record<string, string> = {
   terminal: 'M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-12-3l-1.41-1.41L9.17 11 6.59 8.41 8 7l4 4-4 4zm4 0h6v2h-6v-2z',
 };
 
+export function traceSquirclePath(ctx: CanvasRenderingContext2D, size: number): void {
+  const radius = Math.round(size * 0.22);
+  ctx.beginPath();
+  ctx.moveTo(radius, 0);
+  ctx.lineTo(size - radius, 0);
+  ctx.quadraticCurveTo(size, 0, size, radius);
+  ctx.lineTo(size, size - radius);
+  ctx.quadraticCurveTo(size, size, size - radius, size);
+  ctx.lineTo(radius, size);
+  ctx.quadraticCurveTo(0, size, 0, size - radius);
+  ctx.lineTo(0, radius);
+  ctx.quadraticCurveTo(0, 0, radius, 0);
+  ctx.closePath();
+}
+
 export async function renderIconPngBlob(size: number, brief?: IconBrief): Promise<Uint8Array> {
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -196,32 +225,33 @@ export async function renderIconPngBlob(size: number, brief?: IconBrief): Promis
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-  if (brief?.customImageDataUrl) {
+  if (brief?.customImageDataUrl && brief.mode !== 'vector') {
     const img = new Image();
     img.src = brief.customImageDataUrl;
     await new Promise((resolve, reject) => {
       img.onload = resolve;
       img.onerror = reject;
     });
-    ctx.drawImage(img, 0, 0, size, size);
+
+    if (brief.clipSquircle !== false) {
+      ctx.save();
+      traceSquirclePath(ctx, size);
+      ctx.clip();
+      ctx.drawImage(img, 0, 0, size, size);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = Math.max(1, size * 0.02);
+      traceSquirclePath(ctx, size);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, 0, 0, size, size);
+    }
   } else {
     // Render modern gradient squircle
-    const radius = Math.round(size * 0.22);
     const colors = brief?.colors && brief.colors.length >= 2 ? brief.colors : ['#8b5cf6', '#d946ef'];
 
     ctx.save();
-    // Rounded squircle path
-    ctx.beginPath();
-    ctx.moveTo(radius, 0);
-    ctx.lineTo(size - radius, 0);
-    ctx.quadraticCurveTo(size, 0, size, radius);
-    ctx.lineTo(size, size - radius);
-    ctx.quadraticCurveTo(size, size, size - radius, size);
-    ctx.lineTo(radius, size);
-    ctx.quadraticCurveTo(0, size, 0, size - radius);
-    ctx.lineTo(0, radius);
-    ctx.quadraticCurveTo(0, 0, radius, 0);
-    ctx.closePath();
+    traceSquirclePath(ctx, size);
     ctx.clip();
 
     // Gradient background
@@ -402,6 +432,11 @@ export async function compileExtensionProject(
     },
   };
 
+  if (project.uiConfig) {
+    Object.assign(baseConfig.ui as Record<string, unknown>, project.uiConfig);
+  }
+  (baseConfig.ui as Record<string, unknown>).showStudio = Boolean(project.includeStudio);
+
   if (project.agentSettings && project.agentSettings.length > 0) {
     baseConfig.agentSettings = {
       storageKey: `${project.slug.replace(/-/g, '_')}_settings`,
@@ -418,6 +453,7 @@ export async function compileExtensionProject(
     permissions: project.permissions,
     optional_permissions: project.optional_permissions,
     alarmMinutes: project.alarmMinutes,
+    iconBrief: project.iconBrief,
   });
 
   const contentHash = await computeContentHash(rawHashPayload);

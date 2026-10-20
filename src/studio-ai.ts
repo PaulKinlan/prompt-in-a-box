@@ -5,14 +5,14 @@
  * iterative prompt refinement directly within the Chrome Extension.
  */
 
-import { generateText, Output } from 'ai';
+import { generateText, generateImage, Output } from 'ai';
 import { z } from 'zod';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { CAPABILITIES } from './capabilities';
 import type { Provider } from './config';
-import type { ExtensionProjectData } from './compiler';
+import type { ExtensionProjectData, IconBrief } from './compiler';
 
 export interface InspirationAttachment {
   name: string;
@@ -243,4 +243,205 @@ Output ONLY the updated markdown text for prompt.md. Do not wrap in outer backti
   });
 
   return result.text.trim();
+}
+
+// ─── AI Icon Generation ────────────────────────────────────────────────
+
+export const DEFAULT_ICON_MODEL = 'gemini-nano-banana-2.1';
+
+export function resolveImageModelId(raw?: string): string {
+  if (!raw || typeof raw !== 'string') return DEFAULT_ICON_MODEL;
+  const clean = raw.trim().toLowerCase();
+  if (
+    clean === 'gemini-nano-banana 2.1' ||
+    clean === 'gemini-nano-banana-2.1' ||
+    clean === 'nano-banana' ||
+    clean === 'nano-banana-2.1' ||
+    clean === 'banana'
+  ) {
+    return 'gemini-nano-banana-2.1';
+  }
+  if (clean === 'gemini-3.1-flash-image' || clean === 'gemini-3.1-flash-image-preview' || clean === '3.1-image') {
+    return 'gemini-3.1-flash-image-preview';
+  }
+  if (clean === 'gemini-3-pro-image' || clean === 'gemini-3-pro-image-preview' || clean === '3-pro-image') {
+    return 'gemini-3-pro-image-preview';
+  }
+  if (clean === 'gemini-2.5-flash-image' || clean === '2.5-image') {
+    return 'gemini-2.5-flash-image';
+  }
+  if (clean === 'gpt-image-2.5-flare' || clean === 'gpt-image-2.5' || clean === 'flare') {
+    return 'gpt-image-2.5-flare';
+  }
+  if (clean === 'gpt-image-1' || clean === 'gpt-image') {
+    return 'gpt-image-1';
+  }
+  return raw.trim();
+}
+
+export const ART_STYLE_DESCRIPTIONS: Record<string, string> = {
+  'flat-vector': 'Modern flat vector app icon, smooth diagonal gradient background, crisp geometric shapes, App Store / Material You quality',
+  '3d-clay': '3D soft tactile clay render, studio lighting, smooth matte surfaces, playful depth, macOS Big Sur icon aesthetic',
+  'glassmorphic': 'Frosted translucent glassmorphic layers, vibrant neon rim lighting, sleek dark-mode depth, modern UI icon',
+  'isometric': '3D isometric miniature icon, clean architectural precision, vibrant lighting, centered composition',
+  'minimal-line': 'Minimalist monoline geometric vector emblem, bold high-contrast strokes on a rich gradient background',
+  'pixel-art': 'Crisp high-craft 32-bit pixel art icon, vibrant retro-modern palette, clean silhouette',
+  'metallic': 'Sleek brushed dark titanium and chrome emblem, subtle specular highlights, pro developer tool aesthetic',
+};
+
+/**
+ * Constructs an art-directed prompt for the image LLM from user-configured UI options.
+ */
+export function buildStudioIconPrompt({
+  name,
+  description,
+  iconBrief,
+}: {
+  name: string;
+  description?: string;
+  iconBrief?: IconBrief;
+}): string {
+  const parts: string[] = [];
+  const subject = [name, description].filter(Boolean).join(' — ');
+  parts.push(`App icon for a Chrome browser extension: ${subject}.`);
+
+  if (iconBrief?.styleDescription && iconBrief.styleDescription.trim()) {
+    parts.push(`Visual subject & intent: ${iconBrief.styleDescription.trim()}.`);
+  }
+
+  const artStyleKey = iconBrief?.artStyle || 'flat-vector';
+  const artStylePrompt = ART_STYLE_DESCRIPTIONS[artStyleKey] || ART_STYLE_DESCRIPTIONS['flat-vector'];
+  parts.push(`Art style: ${artStylePrompt}.`);
+
+  if (iconBrief?.symbol && iconBrief.symbol !== 'none') {
+    parts.push(`Central subject / symbol motif: ${iconBrief.symbol}.`);
+  }
+
+  if (iconBrief?.colors && iconBrief.colors.length >= 2) {
+    parts.push(`Color palette: ${iconBrief.colors.join(' and ')}.`);
+  }
+
+  parts.push(
+    'Centered single bold emblem, generous padding inside frame, rounded-square icon composition, high contrast, clean edges. Absolutely NO text, NO words, NO letters, NO numbers, NO watermark.'
+  );
+
+  return parts.join(' ');
+}
+
+/**
+ * Normalizes and downscales generated image bitmaps to a clean 512x512 PNG data URL.
+ */
+export async function downscaleImageDataUrl(
+  rawBase64: string,
+  mediaType = 'image/png',
+  maxDim = 512
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.naturalWidth || img.width;
+      let height = img.naturalHeight || img.height;
+      if (width > maxDim || height > maxDim) {
+        if (width >= height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(`data:${mediaType};base64,${rawBase64}`);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/png', 0.92));
+    };
+    img.onerror = () => resolve(`data:${mediaType};base64,${rawBase64}`);
+    img.src = `data:${mediaType};base64,${rawBase64}`;
+  });
+}
+
+/**
+ * Generates an extension icon using an image LLM (gemini-nano-banana-2.1 by default).
+ */
+export async function generateIconWithAI({
+  name,
+  description,
+  iconBrief,
+  keys,
+  onProgress,
+}: {
+  name: string;
+  description?: string;
+  iconBrief?: IconBrief;
+  keys: Record<Provider, string>;
+  onProgress?: (status: string) => void;
+}): Promise<{ dataUrl: string; modelUsed: string; promptUsed: string }> {
+  const modelId = resolveImageModelId(iconBrief?.model || DEFAULT_ICON_MODEL);
+  const prompt = buildStudioIconPrompt({ name, description, iconBrief });
+
+  const isOpenAI = /^gpt-image|^dall-e|^chatgpt-image/i.test(modelId);
+
+  if (isOpenAI) {
+    const apiKey = keys.openai;
+    if (!apiKey) {
+      throw new Error(
+        'No OpenAI API key found. Please enter your OpenAI key in Settings to generate with OpenAI image models.'
+      );
+    }
+    onProgress?.(`Generating AI icon with OpenAI (${modelId})...`);
+    const openai = createOpenAI({ apiKey });
+    const model = openai.imageModel(modelId as any);
+    const { image } = await generateImage({
+      model,
+      prompt,
+      n: 1,
+      size: '1024x1024',
+    });
+    onProgress?.('Processing icon bitmap...');
+    const dataUrl = await downscaleImageDataUrl(image.base64, image.mediaType || 'image/png', 512);
+    return { dataUrl, modelUsed: modelId, promptUsed: prompt };
+  } else {
+    const apiKey = keys.google;
+    if (!apiKey) {
+      throw new Error(
+        'No Google Gemini API key found. Please enter your Gemini API key in Settings to generate AI icons.'
+      );
+    }
+    const google = createGoogleGenerativeAI({ apiKey });
+    const modelsToTry = [
+      modelId,
+      'gemini-nano-banana-2.1',
+      'gemini-3.1-flash-image-preview',
+      'gemini-2.5-flash-image',
+    ];
+    const uniqueModels = [...new Set(modelsToTry)];
+
+    let lastError: Error | null = null;
+    for (const mId of uniqueModels) {
+      try {
+        onProgress?.(`Generating AI icon with Gemini (${mId})...`);
+        const model = google.image(mId as any);
+        const { image } = await generateImage({
+          model,
+          prompt,
+          n: 1,
+          aspectRatio: '1:1',
+        });
+        onProgress?.('Processing icon bitmap...');
+        const dataUrl = await downscaleImageDataUrl(image.base64, image.mediaType || 'image/png', 512);
+        return { dataUrl, modelUsed: mId, promptUsed: prompt };
+      } catch (err) {
+        lastError = err as Error;
+        const msg = String((err as Error)?.message || err);
+        const isAvailability = /not found|404|unsupported|not supported|quota|resource exhausted/i.test(msg);
+        if (!isAvailability) {
+          throw err;
+        }
+      }
+    }
+    throw lastError || new Error(`Failed to generate icon with Gemini (${modelId})`);
+  }
 }

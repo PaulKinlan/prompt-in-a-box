@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:;"
+      content="default-src 'self'; script-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:;"
     />
     <title>Prompt in a Box — Extension Studio</title>
     <link rel="stylesheet" href="ui-renderer.css" />
@@ -611,6 +611,11 @@
               </div>
             </div>
 
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; margin-top: 4px;">
+              <input type="checkbox" id="iconAutoGenOnBlueprint" checked />
+              <span>Auto-generate AI icon with blueprint (Gemini)</span>
+            </label>
+
             <div id="aiProgressText" style="display: none; font-size: 11px; color: var(--color-accent); font-family: var(--pib-font-mono);"></div>
           </div>
 
@@ -643,10 +648,11 @@
             </div>
           </div>
 
-          <!-- Icon Designer Card -->
+          <!-- Icon Designer Card (LLM-Powered + Configurable) -->
           <div class="card">
             <div class="card-title">
               <span>Icon Design</span>
+              <span id="iconModeBadge" class="badge-tag" style="font-size: 10px;">Vector Glyph</span>
             </div>
 
             <div class="icon-preview-grid">
@@ -668,19 +674,55 @@
               </div>
             </div>
 
+            <div>
+              <label for="iconModelSelect">Image LLM Model</label>
+              <select id="iconModelSelect">
+                <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1 (Default)</option>
+                <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image</option>
+                <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image</option>
+                <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                <option value="gpt-image-2.5-flare">OpenAI GPT Image 2.5 Flare</option>
+                <option value="gpt-image-1">OpenAI GPT Image 1</option>
+                <option value="custom">Custom Image Model ID...</option>
+              </select>
+            </div>
+
+            <div id="iconCustomModelRow" style="display: none;">
+              <label for="iconCustomModelInput">Custom Image Model ID</label>
+              <input type="text" id="iconCustomModelInput" placeholder="e.g. gemini-nano-banana-2.1" />
+            </div>
+
+            <div>
+              <label for="iconArtStyleSelect">Visual Art Style</label>
+              <select id="iconArtStyleSelect">
+                <option value="flat-vector">Modern Flat Vector (App Store / Material)</option>
+                <option value="3d-clay">3D Soft Render / Tactile Clay</option>
+                <option value="glassmorphic">Frosted Glassmorphic &amp; Neon</option>
+                <option value="isometric">3D Isometric Miniature</option>
+                <option value="minimal-line">Minimalist Geometric Line Art</option>
+                <option value="pixel-art">Crisp High-Craft Pixel Art</option>
+                <option value="metallic">Sleek Dark Metallic &amp; Chrome</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="iconStyleInput">Icon Prompt / Style Description</label>
+              <textarea id="iconStyleInput" placeholder="Describe the icon subject &amp; style (e.g. 'Glowing wizard hat sorting colorful browser tabs, clean vibrant gradient')..."></textarea>
+            </div>
+
             <div class="field-row">
               <div>
-                <label for="iconColor1">Gradient Start</label>
+                <label for="iconColor1">Primary Color</label>
                 <input type="color" id="iconColor1" value="#8b5cf6" style="height: 32px; padding: 2px 4px; cursor: pointer;" />
               </div>
               <div>
-                <label for="iconColor2">Gradient End</label>
+                <label for="iconColor2">Accent Color</label>
                 <input type="color" id="iconColor2" value="#d946ef" style="height: 32px; padding: 2px 4px; cursor: pointer;" />
               </div>
             </div>
 
             <div>
-              <label for="iconSymbolSelect">Symbol Glyph</label>
+              <label for="iconSymbolSelect">Symbol Glyph / Subject Metaphor</label>
               <select id="iconSymbolSelect">
                 <option value="spark">✨ Spark / Magic</option>
                 <option value="tabs">📑 Tabs / Grid</option>
@@ -690,8 +732,31 @@
                 <option value="bookmark">🔖 Bookmark</option>
                 <option value="wand">🪄 Wand</option>
                 <option value="terminal">💻 Terminal / Code</option>
+                <option value="none">None (Pure Prompt Driven)</option>
               </select>
             </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; margin: 0;">
+                <input type="checkbox" id="iconClipSquircle" checked />
+                <span>Rounded Squircle Mask</span>
+              </label>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button id="btnGenerateAiIcon" class="btn btn-primary" style="flex: 1; padding: 7px 10px; justify-content: center;">
+                ✨ Generate AI Icon
+              </button>
+              <button id="btnUploadIcon" class="btn" style="padding: 7px 10px;" title="Upload custom icon image file">
+                📤 Upload
+              </button>
+              <input type="file" id="iconUploadInput" accept="image/*" style="display: none;" />
+              <button id="btnResetVectorIcon" class="btn" style="padding: 7px 8px; display: none;" title="Reset to procedural vector icon">
+                ↺ Vector
+              </button>
+            </div>
+
+            <div id="iconAiProgressText" style="display: none; font-size: 11px; color: var(--color-accent); font-family: var(--pib-font-mono);"></div>
           </div>
 
           <!-- Chrome Permissions Card -->
@@ -701,6 +766,48 @@
             </div>
             <div class="hint" style="font-size: 11px; margin: 0 0 6px;">Select browser capabilities granted to this extension:</div>
             <div id="permissionsCheckboxList" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;"></div>
+          </div>
+
+          <!-- Extension Shell UI Card -->
+          <div class="card">
+            <div class="card-title">
+              <span>Extension Shell UI</span>
+            </div>
+            <div class="hint" style="font-size: 11px; margin: 0 0 6px;">Configure built-in surfaces and telemetry visible to users:</div>
+            <div id="shellUiOptionsList" style="display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 11.5px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiShowPopupHeader" checked />
+                <span>Show Popup Header &amp; Brand</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiShowStatusCard" checked />
+                <span>Show Agent Status Card</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiShowViewSwitcher" checked />
+                <span>Show Dashboard / Classic View Switcher</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiShowCosts" checked />
+                <span>Show Token &amp; Cost Telemetry</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiShowHistory" checked />
+                <span>Show Run History &amp; Audit Log</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiAllowSidePanel" checked />
+                <span>Enable Side Panel Surface</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiAllowArtifacts" checked />
+                <span>Enable Artifacts Browser</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="uiShowScheduleSummary" checked />
+                <span>Show Schedule &amp; Alarms Bar</span>
+              </label>
+            </div>
           </div>
 
           <!-- Export Policy Card -->
@@ -768,6 +875,40 @@
 
         <!-- Subview A: Live Interactive UI Preview -->
         <div id="previewContainer" class="preview-body">
+          <!-- Visual Dashboard UI Configurator -->
+          <div id="uiConfigToolbar" class="card" style="margin-bottom: 12px; padding: 10px 12px; gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted);">
+                Dashboard UI Configurator
+              </span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label for="uiThemeSelect" style="margin: 0; font-size: 11px;">Theme:</label>
+                <select id="uiThemeSelect" style="width: auto; padding: 3px 8px; font-size: 11px;">
+                  <option value="glassmorphic">Glassmorphic</option>
+                  <option value="default">Default</option>
+                  <option value="compact">Compact</option>
+                </select>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="uiTitleInput" style="margin: 0; font-size: 11px; white-space: nowrap;">Title:</label>
+              <input type="text" id="uiTitleInput" placeholder="Dashboard Title..." style="padding: 4px 8px; font-size: 11.5px;" />
+            </div>
+            <div>
+              <label style="margin-bottom: 4px; font-size: 10.5px;">Add UI Component:</label>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                <button class="chip-btn" data-add-ui-comp="metrics">+ Metrics</button>
+                <button class="chip-btn" data-add-ui-comp="button">+ Button</button>
+                <button class="chip-btn" data-add-ui-comp="alert">+ Alert</button>
+                <button class="chip-btn" data-add-ui-comp="table">+ Table</button>
+                <button class="chip-btn" data-add-ui-comp="list">+ List</button>
+                <button class="chip-btn" data-add-ui-comp="key-value">+ Key-Value</button>
+                <button class="chip-btn" data-add-ui-comp="progress">+ Progress</button>
+                <button class="chip-btn" data-add-ui-comp="action-history">+ Undo Log</button>
+              </div>
+            </div>
+          </div>
+
           <div class="preview-popup-frame">
             <div id="renderedDynamicUi"></div>
           </div>
