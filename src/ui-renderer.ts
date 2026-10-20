@@ -723,17 +723,29 @@ export class UIRenderer {
     componentWrapper.className = `ui-components layout-${layoutMode}`;
 
     const components = spec.layout || spec.components || [];
-    for (const comp of components) {
+    const progressCard = this.createRunProgressCard();
+    let progressInserted = false;
+
+    components.forEach((comp, idx) => {
       const el = this.createComponent(comp);
       if (el) {
         componentWrapper.appendChild(el);
+        // Place progress card immediately below the primary trigger-run button if near top (idx <= 2)
+        if (!progressInserted && idx <= 2 && comp.type === 'button' && (comp.action === 'trigger-run' || comp.id === 'btn-run-agent')) {
+          componentWrapper.appendChild(progressCard);
+          progressInserted = true;
+        }
       }
+    });
+
+    // If not inserted after a top trigger-run button, place at top of component wrapper
+    if (!progressInserted) {
+      componentWrapper.insertBefore(progressCard, componentWrapper.firstChild);
     }
 
     this.container.appendChild(componentWrapper);
 
-    // 3. Render Live Progress Card & Live Console Drawer
-    this.container.appendChild(this.createRunProgressCard());
+    // 3. Render Live Console Drawer
     this.container.appendChild(this.createLiveConsoleDrawer());
   }
 
@@ -2598,7 +2610,7 @@ export class UIRenderer {
 
     const expText = document.createElement('div');
     expText.className = 'ui-progress-expectation';
-    expText.textContent = 'Analyzing open tabs with AI — usually takes 4–8 seconds.';
+    expText.textContent = 'Reading open tabs and preparing AI categorization...';
     this.runProgressExpectationEl = expText;
     card.appendChild(expText);
 
@@ -2650,7 +2662,7 @@ export class UIRenderer {
       this.runProgressStatusEl.textContent = initialText;
     }
     if (this.runProgressExpectationEl) {
-      this.runProgressExpectationEl.textContent = 'Analyzing open tabs with AI — usually takes 4–8 seconds.';
+      this.runProgressExpectationEl.textContent = 'Reading open tabs and preparing AI categorization...';
     }
     if (this.runProgressFillEl) {
       this.runProgressFillEl.style.width = '20%';
@@ -2685,6 +2697,9 @@ export class UIRenderer {
     if (phase === 'step-start') {
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '55%';
       if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
+      if (this.runProgressExpectationEl) {
+        this.runProgressExpectationEl.textContent = 'Categorizing open tabs into topic groups with AI...';
+      }
       if (this.runProgressStepsContainerEl) {
         const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
         const s2 = this.runProgressStepsContainerEl.querySelector('[data-step="2"]');
@@ -2695,6 +2710,9 @@ export class UIRenderer {
     } else if (phase === 'tool-call') {
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '85%';
       if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
+      if (this.runProgressExpectationEl) {
+        this.runProgressExpectationEl.textContent = 'Applying tab groups to your browser window...';
+      }
       if (this.runProgressStepsContainerEl) {
         const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
         const s2 = this.runProgressStepsContainerEl.querySelector('[data-step="2"]');
