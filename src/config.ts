@@ -97,7 +97,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   showHistory: true,
   showVersionBadge: true,
   showPolicyBadge: true,
-  showStudio: true,
+  showStudio: false,
 
   // Popup
   showPopupHeader: true,

@@ -10,7 +10,7 @@
  * Standalone example files go to examples/<example-name>/dist/.
  */
 import { build, context } from 'esbuild';
-import { cpSync, mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
 const watch = process.argv.includes('--watch');
@@ -202,6 +202,8 @@ const common = {
   },
 };
 
+const includeStudio = !exampleName || args.includes('--with-studio');
+
 const entries = [
   { in: 'src/background.ts', out: join(outDir, 'background.js') },
   { in: 'src/popup.ts', out: join(outDir, 'popup.js') },
@@ -210,8 +212,11 @@ const entries = [
   { in: 'src/offscreen.ts', out: join(outDir, 'offscreen.js') },
   { in: 'src/artifacts-browser.ts', out: join(outDir, 'artifacts-browser.js') },
   { in: 'src/sandbox.ts', out: join(outDir, 'sandbox.js') },
-  { in: 'src/studio.ts', out: join(outDir, 'studio.js') },
 ];
+
+if (includeStudio) {
+  entries.push({ in: 'src/studio.ts', out: join(outDir, 'studio.js') });
+}
 
 async function run() {
   mkdirSync(outDir, { recursive: true });
@@ -223,7 +228,15 @@ async function run() {
   cpSync('src/offscreen.html', join(outDir, 'offscreen.html'));
   cpSync('src/artifacts.html', join(outDir, 'artifacts.html'));
   cpSync('src/sandbox.html', join(outDir, 'sandbox.html'));
-  cpSync('src/studio.html', join(outDir, 'studio.html'));
+
+  if (includeStudio) {
+    cpSync('src/studio.html', join(outDir, 'studio.html'));
+  } else {
+    // Ensure no stale studio files exist in standalone example dist
+    rmSync(join(outDir, 'studio.html'), { force: true });
+    rmSync(join(outDir, 'studio.js'), { force: true });
+    rmSync(join(outDir, 'studio.js.map'), { force: true });
+  }
 
   if (watch) {
     for (const e of entries) {

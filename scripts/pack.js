@@ -116,7 +116,11 @@ if (exampleName) {
 
   try {
     // 3. Zip inside the example directory so all files are at the root level of the zip
-    execSync(`zip -r ${zipName} . -x "*.map" "*.zip"`, {
+    const excludePatterns = ['"*.map"', '"*.zip"'];
+    if (!args.includes('--with-studio')) {
+      excludePatterns.push('"*studio*"');
+    }
+    execSync(`zip -r ${zipName} . -x ${excludePatterns.join(' ')}`, {
       cwd: absoluteExampleDir,
       stdio: 'inherit',
     });

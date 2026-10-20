@@ -271,6 +271,10 @@ function createExampleConfig(analysis) {
       defaultAlarmMinutes: analysis.triggers?.alarmMinutes ?? 30,
       lockSchedule: false,
     },
+    ui: {
+      ...(baseConfig.ui || {}),
+      showStudio: false,
+    },
   };
 
   if (analysis.agentSettings && analysis.agentSettings.length > 0) {

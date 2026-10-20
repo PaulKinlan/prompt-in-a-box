@@ -73,7 +73,7 @@
     "showHistory": true,
     "showVersionBadge": true,
     "showPolicyBadge": true,
-    "showStudio": true,
+    "showStudio": false,
     "showPopupHeader": true,
     "showViewSwitcher": true,
     "showStatusCard": true,
