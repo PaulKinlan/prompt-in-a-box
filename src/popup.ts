@@ -351,6 +351,8 @@ $('runNow').addEventListener('click', async () => {
         `✓ OK · ${result.toolCalls.length} tool call(s)${costSuffix}`,
         'ok',
       );
+    } else if (result.status === 'stopped') {
+      showStatus('Run stopped by user', 'ok');
     } else {
       showStatus(result.summary || 'Run completed with error', 'error');
     }

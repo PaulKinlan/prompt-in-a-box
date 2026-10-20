@@ -36,6 +36,24 @@ export interface AgentLogEvent {
   durationMs?: number;
 }
 
+export interface RunContextSummary {
+  tabCount?: number;
+  ungroupedCount?: number;
+  groupCount?: number;
+  sampleDomains?: string[];
+  sortMode?: string;
+  usePageContent?: boolean;
+  actionLabel?: string;
+}
+
+export interface ActiveRunMeta {
+  runId: string;
+  startedAt: number;
+  trigger: string;
+  abortController: AbortController;
+  contextSummary?: RunContextSummary;
+}
+
 export interface RunLiveStatus {
   active: boolean;
   runId: string;
@@ -43,11 +61,129 @@ export interface RunLiveStatus {
   step?: number;
   statusText: string;
   updatedAt: number;
+  contextSummary?: RunContextSummary;
 }
 
 const LIVE_LOGS_KEY = '__pib_live_logs';
 const RUN_STATUS_KEY = '__pib_run_status';
 const MAX_LOGS = 120;
+
+/** Authoritative in-memory run tracking across the Service Worker lifetime */
+const activeRunWeakMap = new WeakMap<object, ActiveRunMeta>();
+let activeRunTokenRef: object | null = null;
+
+export function registerActiveRun(token: object, meta: ActiveRunMeta): void {
+  activeRunWeakMap.set(token, meta);
+  activeRunTokenRef = token;
+}
+
+export function updateActiveRunContext(token: object, contextSummary: RunContextSummary): void {
+  const existing = activeRunWeakMap.get(token);
+  if (existing) {
+    existing.contextSummary = contextSummary;
+  }
+  if (currentLiveStatus.active) {
+    currentLiveStatus.contextSummary = contextSummary;
+  }
+}
+
+export function unregisterActiveRun(token: object): void {
+  activeRunWeakMap.delete(token);
+  if (activeRunTokenRef === token) {
+    activeRunTokenRef = null;
+  }
+}
+
+export function getActiveRunMeta(): ActiveRunMeta | null {
+  if (activeRunTokenRef && activeRunWeakMap.has(activeRunTokenRef)) {
+    return activeRunWeakMap.get(activeRunTokenRef) || null;
+  }
+  return null;
+}
+
+/**
+ * Aborts any currently executing agent run immediately via its AbortController.
+ */
+export async function abortActiveRun(): Promise<boolean> {
+  const meta = getActiveRunMeta();
+  if (!meta) return false;
+
+  try {
+    meta.abortController.abort();
+  } catch (err) {
+    console.warn('[logger] Failed to abort active run controller:', err);
+  }
+
+  if (activeRunTokenRef) {
+    activeRunWeakMap.delete(activeRunTokenRef);
+    activeRunTokenRef = null;
+  }
+
+  currentLiveStatus = {
+    active: false,
+    runId: meta.runId,
+    statusText: 'Stopped by user',
+    updatedAt: Date.now(),
+  };
+
+  try {
+    await chrome.storage.local.set({ [RUN_STATUS_KEY]: currentLiveStatus });
+  } catch {
+    // Ignore
+  }
+
+  void emitAgentLog(
+    {
+      runId: meta.runId,
+      channel: 'error',
+      title: 'Run stopped by user',
+      body: 'Execution aborted via user stop request.',
+    },
+    'Stopped',
+  );
+
+  return true;
+}
+
+/**
+ * Reconciles any stale storage run status with in-memory execution reality.
+ * If the Service Worker restarted or terminated without clearing active: true,
+ * this resets it to active: false so the UI never displays an orphaned running state.
+ */
+export async function reconcileStaleRunStatus(): Promise<RunLiveStatus> {
+  const meta = getActiveRunMeta();
+  if (meta) {
+    return currentLiveStatus;
+  }
+
+  if (currentLiveStatus.active) {
+    currentLiveStatus = {
+      active: false,
+      runId: '',
+      statusText: 'Idle',
+      updatedAt: Date.now(),
+    };
+  }
+
+  try {
+    const data = await chrome.storage.local.get(RUN_STATUS_KEY);
+    const storedStatus = data[RUN_STATUS_KEY] as RunLiveStatus | undefined;
+    if (storedStatus?.active) {
+      const resetStatus: RunLiveStatus = {
+        active: false,
+        runId: '',
+        statusText: 'Idle',
+        updatedAt: Date.now(),
+      };
+      await chrome.storage.local.set({ [RUN_STATUS_KEY]: resetStatus });
+      return resetStatus;
+    }
+  } catch {
+    // Ignore
+  }
+
+  return currentLiveStatus;
+}
 
 const inMemoryLogs: AgentLogEvent[] = [];
 let currentLiveStatus: RunLiveStatus = {
@@ -194,12 +330,22 @@ export async function emitAgentLog(
 
 /**
  * Retrieve recent live logs and current run status.
+ * Reconciles status with in-memory execution state so orphaned 'active: true' states
+ * caused by extension restarts or killed service workers are cleanly reset.
  */
 export async function getLiveLogs(): Promise<{ logs: AgentLogEvent[]; status: RunLiveStatus }> {
   try {
     const data = await chrome.storage.local.get([LIVE_LOGS_KEY, RUN_STATUS_KEY]);
     const logs = (data[LIVE_LOGS_KEY] || inMemoryLogs) as AgentLogEvent[];
-    const status = (data[RUN_STATUS_KEY] || currentLiveStatus) as RunLiveStatus;
+    let status = (data[RUN_STATUS_KEY] || currentLiveStatus) as RunLiveStatus;
+
+    const meta = getActiveRunMeta();
+    if (!meta && status?.active) {
+      status = await reconcileStaleRunStatus();
+    } else if (meta && !status?.active) {
+      status = currentLiveStatus;
+    }
+
     return { logs, status };
   } catch {
     return { logs: inMemoryLogs, status: currentLiveStatus };
@@ -235,9 +381,10 @@ export function createRunStreamLogger(runId: string) {
   let currentStep = 0;
   let reasoningBuffer = '';
   let textBuffer = '';
+  let toolArgsBuffer = '';
   let lastStreamBroadcast = 0;
 
-  function broadcastStreamDelta(kind: 'reasoning' | 'text', delta: string, fullText: string) {
+  function broadcastStreamDelta(kind: 'reasoning' | 'text' | 'plan', delta: string, fullText: string) {
     try {
       chrome.runtime
         .sendMessage({
@@ -372,12 +519,33 @@ export function createRunStreamLogger(runId: string) {
                 broadcastStreamDelta('text', delta, textBuffer);
               }
             }
+          } else if (partType === 'tool-call-delta' || partType === 'tool-input-delta') {
+            const delta = part.argsTextDelta || part.inputTextDelta || part.delta || '';
+            if (delta) {
+              toolArgsBuffer += delta;
+              // Extract planned tab group titles as they stream
+              const titleMatches = Array.from(toolArgsBuffer.matchAll(/"title"\s*:\s*"([^"]+)"/g)).map((m) => m[1]);
+              if (titleMatches.length > 0) {
+                const uniqueTitles = Array.from(new Set(titleMatches));
+                const now = Date.now();
+                if (now - lastStreamBroadcast > 300) {
+                  lastStreamBroadcast = now;
+                  broadcastStreamDelta(
+                    'plan',
+                    delta,
+                    `Planning groups: ${uniqueTitles.map((t) => `"${t}"`).join(', ')}`,
+                  );
+                }
+              }
+            }
           } else if (partType === 'tool-call') {
             flushReasoning();
             flushText();
+            toolArgsBuffer = '';
           } else if (partType === 'finish' || partType === 'step-finish') {
             flushReasoning();
             flushText();
+            toolArgsBuffer = '';
           }
           break;
         }
@@ -386,11 +554,13 @@ export function createRunStreamLogger(runId: string) {
     flush: () => {
       flushReasoning();
       flushText();
+      toolArgsBuffer = '';
     },
     setStep: (step: number) => {
       if (step !== currentStep) {
         flushReasoning();
         flushText();
+        toolArgsBuffer = '';
         currentStep = step;
       }
     },

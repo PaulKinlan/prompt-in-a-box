@@ -48,7 +48,7 @@ export interface AuditEntry {
     | 'install'
     | 'update'
     | 'startup';
-  status: 'ok' | 'error' | 'skipped';
+  status: 'ok' | 'error' | 'skipped' | 'stopped';
   provider: string;
   model: string;
   /** One-line summary for the list view. */

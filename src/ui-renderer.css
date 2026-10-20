@@ -2323,6 +2323,43 @@
   gap: 8px;
 }
 
+.ui-progress-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-progress-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ui-progress-stop-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+.ui-progress-stop-btn:active {
+  transform: scale(0.97);
+}
+
+.status-complete .ui-progress-stop-btn,
+.status-error .ui-progress-stop-btn {
+  display: none;
+}
+
 .ui-progress-spinner {
   display: inline-flex;
   align-items: center;

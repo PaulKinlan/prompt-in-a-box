@@ -80,6 +80,13 @@ import {
   createRunStreamLogger,
   getLiveLogs,
   clearLiveLogs,
+  registerActiveRun,
+  unregisterActiveRun,
+  updateActiveRunContext,
+  getActiveRunMeta,
+  abortActiveRun,
+  reconcileStaleRunStatus,
+  type RunContextSummary,
 } from './logger';
 import {
   setActiveRunToolContext,
@@ -208,8 +215,9 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
   }
 });
 
-// Initial schedule check on service worker start
+// Initial schedule check and stale run reconciliation on service worker start
 void ensureScheduled();
+void reconcileStaleRunStatus();
 
 chrome.notifications?.onClicked?.addListener((notificationId) => {
   console.log('[prompt-in-a-box] Notification clicked:', notificationId);
@@ -292,6 +300,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true });
       } else if (msg?.type === 'get-live-logs') {
         sendResponse(await getLiveLogs());
+      } else if (msg?.type === 'get-run-status') {
+        const meta = getActiveRunMeta();
+        const { status } = await getLiveLogs();
+        sendResponse({
+          active: Boolean(meta),
+          runId: meta?.runId || '',
+          startedAt: meta?.startedAt || 0,
+          contextSummary: meta?.contextSummary || status?.contextSummary,
+          status,
+        });
+      } else if (msg?.type === 'stop-run') {
+        const stopped = await abortActiveRun();
+        sendResponse({ ok: true, stopped });
       } else if (msg?.type === 'clear-live-logs') {
         await clearLiveLogs();
         sendResponse({ ok: true });
@@ -337,6 +358,10 @@ async function run(
     const startedAt = Date.now();
     const cfg = await getConfig();
     const apiKey = activeKey(cfg);
+
+    const runToken = {};
+    const abortController = new AbortController();
+    registerActiveRun(runToken, { runId, startedAt, trigger, abortController });
 
     if (trigger !== 'onboarding-test') {
       void chrome.storage.local.set({ [LAST_SCHEDULED_RUN_KEY]: startedAt }).catch(() => {});
@@ -391,22 +416,41 @@ async function run(
   });
 
   const streamLogger = createRunStreamLogger(runId);
+  const { userMessage, contextSummary } = await composeUserMessage(trigger, customUserMessage);
+  updateActiveRunContext(runToken, contextSummary);
 
   const hooks: AgentHooks = {
     onStepStart: async (event) => {
+      if (abortController.signal.aborted) {
+        throw new Error('Run stopped by user');
+      }
       streamLogger.setStep(event.step);
+      const isTabExt = contextSummary.tabCount !== undefined;
+      const stepTitle = isTabExt
+        ? (event.step === 0
+            ? `Sorting ${contextSummary.tabCount} open tabs (${contextSummary.ungroupedCount ?? 0} ungrouped)`
+            : `Refining tab groups (step ${event.step + 1})`)
+        : `Starting step ${event.step + 1} (tokens: ${event.tokensSoFar})`;
+      const stepBody = isTabExt && contextSummary.sampleDomains && contextSummary.sampleDomains.length > 0
+        ? `Domains: ${contextSummary.sampleDomains.join(', ')}${contextSummary.groupCount ? ` · ${contextSummary.groupCount} existing groups` : ''}`
+        : undefined;
+
       void emitAgentLog(
         {
           runId,
           channel: 'step-start',
           step: event.step,
-          title: `Starting step ${event.step + 1} (tokens: ${event.tokensSoFar})`,
-          data: event,
+          title: stepTitle,
+          body: stepBody,
+          data: { ...event, contextSummary },
         },
-        `Step ${event.step + 1} running...`,
+        stepTitle,
       );
     },
     onPreToolUse: async (event) => {
+      if (abortController.signal.aborted) {
+        throw new Error('Run stopped by user');
+      }
       streamLogger.flush();
       pendingByName.set(`${event.step}:${event.toolName}`, {
         at: Date.now(),
@@ -476,19 +520,26 @@ async function run(
   };
 
   try {
+    const isTabExt = contextSummary.tabCount !== undefined;
+    const startTitle = isTabExt
+      ? `Scanning ${contextSummary.tabCount} open tabs...`
+      : `Agent run started (${trigger})`;
+    const startBody = isTabExt && contextSummary.sampleDomains && contextSummary.sampleDomains.length > 0
+      ? `Found ${contextSummary.ungroupedCount ?? 0} ungrouped tabs across ${contextSummary.sampleDomains.join(', ')}${contextSummary.groupCount ? ` (${contextSummary.groupCount} existing groups)` : ''}. Model: ${cfg.model}`
+      : `Model: ${cfg.model} (${cfg.provider})`;
+
     void emitAgentLog(
       {
         runId,
         channel: 'run-start',
-        title: `Agent run started (${trigger})`,
-        body: `Model: ${cfg.model} (${cfg.provider})`,
-        data: { trigger, provider: cfg.provider, model: cfg.model },
+        title: startTitle,
+        body: startBody,
+        data: { trigger, provider: cfg.provider, model: cfg.model, contextSummary },
       },
-      'Starting agent run...',
+      startTitle,
     );
 
-    const model = pickModel(cfg.provider, cfg.model, apiKey);
-    const userMessage = await composeUserMessage(trigger, customUserMessage);
+    const model = pickModel(cfg.provider, cfg.model, apiKey, abortController.signal);
     void emitAgentLog({
       runId,
       channel: 'user-prompt',
@@ -552,22 +603,23 @@ async function run(
     return entry;
   } catch (err) {
     streamLogger.flush();
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const isAborted = abortController.signal.aborted || (err instanceof Error && (err.name === 'AbortError' || err.message.includes('stopped by user')));
+    const errorMsg = isAborted ? 'Run stopped by user' : (err instanceof Error ? err.message : String(err));
     void emitAgentLog(
       {
         runId,
         channel: 'error',
-        title: `Run error: ${errorMsg}`,
+        title: isAborted ? 'Run stopped by user' : `Run error: ${errorMsg}`,
         body: err instanceof Error ? err.stack : undefined,
       },
-      'Failed',
+      isAborted ? 'Stopped' : 'Failed',
     );
     const entry: AuditEntry = {
       runId,
       startedAt,
       finishedAt: Date.now(),
       trigger,
-      status: 'error',
+      status: isAborted ? 'stopped' : 'error',
       provider: cfg.provider,
       model: cfg.model,
       summary: errorMsg,
@@ -579,6 +631,8 @@ async function run(
     log('run failed:', err);
     return entry;
   } finally {
+    unregisterActiveRun(runToken);
+    void reconcileStaleRunStatus();
     clearActiveRunToolContext();
   }
   })();
@@ -703,7 +757,7 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
 async function composeUserMessage(
   trigger: AuditEntry['trigger'],
   customUserMessage?: string,
-): Promise<string> {
+): Promise<{ userMessage: string; contextSummary: RunContextSummary }> {
   const cfg = await getConfig();
 
   const bootstrapHint =
@@ -724,6 +778,10 @@ async function composeUserMessage(
     parts.push(bootstrapHint);
   }
 
+  const contextSummary: RunContextSummary = {
+    actionLabel: customUserMessage,
+  };
+
   // Inject user-configured agent settings if declared
   if (cfg.agentSettings?.fields && cfg.agentSettings.fields.length > 0) {
     const stored = await chrome.storage.local.get('agentSettingsValues');
@@ -732,6 +790,8 @@ async function composeUserMessage(
     for (const field of cfg.agentSettings.fields) {
       effective[field.id] = userValues[field.id] !== undefined ? userValues[field.id] : field.default;
     }
+    contextSummary.sortMode = typeof effective.sortMode === 'string' ? effective.sortMode : undefined;
+    contextSummary.usePageContent = Boolean(effective.usePageContent);
     parts.push(`Current user-configured agent settings:\n\`\`\`json\n${JSON.stringify(effective, null, 2)}\n\`\`\``);
   }
 
@@ -763,6 +823,10 @@ async function composeUserMessage(
       });
       parts.push(`Current open browser tabs (${compactTabs.length}):\n\`\`\`json\n${JSON.stringify(compactTabs)}\n\`\`\``);
 
+      contextSummary.tabCount = compactTabs.length;
+      contextSummary.ungroupedCount = compactTabs.filter((t) => !t.pinned && (t.groupId === -1 || t.groupId === undefined)).length;
+      contextSummary.sampleDomains = Array.from(new Set(compactTabs.map((t) => t.domain).filter(Boolean))).slice(0, 4);
+
       if (manifestPerms.includes('tabGroups') && chrome.tabGroups?.query) {
         const allGroups = await chrome.tabGroups.query({});
         const compactGroups = allGroups.map((g) => ({
@@ -773,6 +837,7 @@ async function composeUserMessage(
           collapsed: g.collapsed,
         }));
         parts.push(`Current tab groups (${compactGroups.length}):\n\`\`\`json\n${JSON.stringify(compactGroups)}\n\`\`\``);
+        contextSummary.groupCount = compactGroups.length;
       }
     } catch {
       // ignore
@@ -798,11 +863,8 @@ async function composeUserMessage(
     parts.push('No queued events.');
   }
 
-  if (parts.length === 0) {
-    return 'Begin your scheduled run now.';
-  }
-
-  return parts.join('\n\n');
+  const userMessage = parts.length === 0 ? 'Begin your scheduled run now.' : parts.join('\n\n');
+  return { userMessage, contextSummary };
 }
 
 async function testProvider(patch: Partial<Config>): Promise<AuditEntry> {
@@ -849,21 +911,34 @@ async function testProvider(patch: Partial<Config>): Promise<AuditEntry> {
 
 // ─── Provider wiring ───────────────────────────────────────────────
 
-function pickModel(provider: Provider, modelId: string, apiKey: string) {
+function pickModel(provider: Provider, modelId: string, apiKey: string, abortSignal?: AbortSignal) {
+  const customFetch = abortSignal
+    ? (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.signal) {
+          const combined = (AbortSignal as any).any
+            ? (AbortSignal as any).any([init.signal, abortSignal])
+            : init.signal;
+          return fetch(input, { ...init, signal: combined });
+        }
+        return fetch(input, { ...init, signal: abortSignal });
+      }
+    : undefined;
+
   switch (provider) {
     case 'anthropic': {
       const p = createAnthropic({
         apiKey,
         headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
+        fetch: customFetch,
       });
       return p(modelId) as unknown as Parameters<typeof runAgentLoop>[0]['model'];
     }
     case 'google': {
-      const p = createGoogleGenerativeAI({ apiKey });
+      const p = createGoogleGenerativeAI({ apiKey, fetch: customFetch });
       return p(modelId) as unknown as Parameters<typeof runAgentLoop>[0]['model'];
     }
     case 'openai': {
-      const p = createOpenAI({ apiKey });
+      const p = createOpenAI({ apiKey, fetch: customFetch });
       return p(modelId) as unknown as Parameters<typeof runAgentLoop>[0]['model'];
     }
   }

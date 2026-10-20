@@ -202,38 +202,82 @@ export function normalizeThemeName(raw?: string): 'compact' | 'warm-paper' | 'da
 }
 
 /**
- * Maps raw tool invocation titles into human-friendly status headlines and descriptions
+ * Maps raw tool invocation titles and payloads into human-friendly status headlines and descriptions
  * for real-time progress indicators across any extension.
  */
-export function formatToolCallLabel(rawTitle: string): { headline: string; subtext: string } {
+export function formatToolCallLabel(rawTitle: string, args?: any): { headline: string; subtext: string } {
   const lower = String(rawTitle || '').toLowerCase();
   if (lower.includes('tab_group') || lower.includes('tabgroup')) {
+    if (args && typeof args === 'object') {
+      if (Array.isArray(args.groups) && args.groups.length > 0) {
+        const totalTabs = args.groups.reduce((acc: number, g: any) => acc + (Array.isArray(g.tabIds) ? g.tabIds.length : 0), 0);
+        const groupSummaries = args.groups
+          .map((g: any) => `${g.title || 'Group'}${Array.isArray(g.tabIds) && g.tabIds.length > 0 ? ` (${g.tabIds.length})` : ''}`)
+          .filter(Boolean);
+        const tabCountStr = totalTabs > 0 ? ` (${totalTabs} tabs)` : '';
+        return {
+          headline: `Grouping into ${args.groups.length} tab group${args.groups.length === 1 ? '' : 's'}${tabCountStr}...`,
+          subtext: `Applying groups: ${groupSummaries.slice(0, 4).join(', ')}${groupSummaries.length > 4 ? '…' : ''}`,
+        };
+      }
+      if (args.title) {
+        const tabCountStr = Array.isArray(args.tabIds) && args.tabIds.length > 0 ? ` (${args.tabIds.length} tabs)` : '';
+        return {
+          headline: `Grouping into "${args.title}"${tabCountStr}...`,
+          subtext: `Applying "${args.title}" tab group to your browser window...`,
+        };
+      }
+    }
     return {
       headline: 'Grouping browser tabs...',
       subtext: 'Organizing tabs into color-coded browser tab groups...',
     };
   }
-  if (lower.includes('tab_read') || lower.includes('tabs_query') || lower.includes('tabs_get') || lower.includes('tab_query')) {
+  if (lower.includes('tab_read') || lower.includes('read_page') || lower.includes('readpage')) {
+    const tabNum = args && typeof args === 'object' && args.tabId ? ` (Tab #${args.tabId})` : '';
     return {
-      headline: 'Reading open tabs...',
+      headline: `Reading tab content${tabNum}...`,
+      subtext: 'Inspecting page content to classify ambiguous tab...',
+    };
+  }
+  if (lower.includes('tabs_query') || lower.includes('tabs_get') || lower.includes('tab_query') || lower.includes('tab_list')) {
+    return {
+      headline: 'Scanning open tabs...',
       subtext: 'Inspecting open browser tabs and URLs...',
     };
   }
   if (lower.includes('code_mode')) {
+    if (args && typeof args === 'object' && typeof args.code === 'string') {
+      const code = args.code;
+      if (code.includes('tab_group') || code.includes('tabGroup')) {
+        return {
+          headline: 'Executing batch tab grouping...',
+          subtext: 'Applying tab group changes in batch via sandboxed script...',
+        };
+      }
+      if (code.includes('tab_read') || code.includes('readPage')) {
+        return {
+          headline: 'Reading multiple tabs in batch...',
+          subtext: 'Analyzing multiple open tabs in parallel...',
+        };
+      }
+    }
     return {
       headline: 'Running batch operations...',
       subtext: 'Executing batched browser API actions in parallel...',
     };
   }
   if (lower.includes('notification')) {
+    const title = args && typeof args === 'object' && args.title ? ` "${args.title}"` : '';
     return {
-      headline: 'Sending notification...',
+      headline: `Sending notification${title}...`,
       subtext: 'Dispatching browser alert notification...',
     };
   }
   if (lower.includes('artifact')) {
+    const title = args && typeof args === 'object' && args.title ? ` "${args.title}"` : '';
     return {
-      headline: 'Saving artifact...',
+      headline: `Saving artifact${title}...`,
       subtext: 'Persisting generated data artifact to storage...',
     };
   }
@@ -270,6 +314,24 @@ export function formatToolCallLabel(rawTitle: string): { headline: string; subte
     headline: `Running ${cleanName}...`,
     subtext: `Executing ${cleanName} browser action...`,
   };
+}
+
+/**
+ * Queries the background Service Worker for verified active run state and logs.
+ * Falls back to local storage if message communication is unavailable.
+ */
+export async function fetchVerifiedLiveLogs(): Promise<{ logs: AgentLogEvent[]; status: RunLiveStatus }> {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      const res = await chrome.runtime.sendMessage({ type: 'get-live-logs' });
+      if (res && Array.isArray(res.logs) && res.status) {
+        return res;
+      }
+    }
+  } catch {
+    // Service worker not ready or background sleeping
+  }
+  return await getLiveLogs();
 }
 
 const DYNAMIC_UI_KEY = '__pib_dynamic_ui';
@@ -548,36 +610,42 @@ export class UIRenderer {
           }
 
           if (msg.event.channel === 'run-start') {
-            this.startRunProgress(msg.event.title || 'Starting agent task...');
+            this.startRunProgress(msg.event.title || 'Starting agent task...', undefined, msg.event.body);
             if (this.consoleDrawerEl) {
               this.consoleDrawerEl.classList.add('expanded');
             }
           } else if (msg.event.channel === 'step-start') {
-            const stepNum = msg.event.step !== undefined ? msg.event.step + 1 : 1;
-            this.advanceRunProgress('step-start', `AI Reasoning (step ${stepNum})...`);
+            this.advanceRunProgress('step-start', msg.event.title, msg.event.data, msg.event.body);
           } else if (msg.event.channel === 'tool-call') {
-            this.advanceRunProgress('tool-call', msg.event.title || 'tool action');
+            this.advanceRunProgress('tool-call', msg.event.title || 'tool action', msg.event.data);
           } else if (msg.event.channel === 'run-complete') {
             this.finishRunProgress(true, msg.event.title || 'Task completed successfully');
           } else if (msg.event.channel === 'error') {
-            this.finishRunProgress(false, msg.event.title || 'Task error');
+            const isStopped =
+              (msg.event.title && msg.event.title.toLowerCase().includes('stopped')) ||
+              (msg.status?.statusText && msg.status.statusText.toLowerCase().includes('stopped'));
+            this.finishRunProgress(false, isStopped ? 'Run stopped by user.' : (msg.event.title || 'Task error'));
           }
 
           if (this.activeActionButton) {
             if (msg.event.channel === 'tool-call') {
-              const formatted = formatToolCallLabel(msg.event.title || '');
+              const formatted = formatToolCallLabel(msg.event.title || '', msg.event.data);
               this.activeActionButton.el.textContent = formatted.headline;
             } else if (msg.event.channel === 'step-start') {
               this.activeActionButton.el.textContent = 'Thinking...';
             }
           }
         } else if (msg?.type === 'agent-stream-delta') {
-          if (msg.kind === 'reasoning' && msg.fullText) {
+          if (msg.kind === 'plan' && msg.fullText) {
+            this.advanceRunProgress('stream', msg.fullText);
+          } else if (msg.kind === 'reasoning' && msg.fullText) {
             this.advanceRunProgress('stream', `Thinking: ${msg.fullText}`);
+          } else if (msg.kind === 'text' && msg.fullText) {
+            this.advanceRunProgress('stream', msg.fullText);
           }
           if (this.consoleStreamingBoxEl) {
             this.consoleStreamingBoxEl.classList.add('visible');
-            const prefix = msg.kind === 'reasoning' ? 'Thinking: ' : 'Output: ';
+            const prefix = msg.kind === 'reasoning' ? 'Thinking: ' : (msg.kind === 'plan' ? 'Plan: ' : 'Output: ');
             this.consoleStreamingBoxEl.textContent = prefix + msg.fullText;
             this.consoleStreamingBoxEl.scrollTop = this.consoleStreamingBoxEl.scrollHeight;
           }
@@ -658,7 +726,7 @@ export class UIRenderer {
     this.render(spec);
 
     try {
-      const { logs, status } = await getLiveLogs();
+      const { logs, status } = await fetchVerifiedLiveLogs();
       this.logs = logs || [];
       if (status) this.liveStatus = status;
       this.populateLiveLogs();
@@ -667,15 +735,14 @@ export class UIRenderer {
         if (this.liveStatus.active) {
           const runStartEvent = this.logs.slice().reverse().find((l) => l.channel === 'run-start');
           const startTime = runStartEvent ? runStartEvent.timestamp : this.liveStatus.updatedAt;
-          this.startRunProgress(this.liveStatus.statusText || 'Agent run in progress...', startTime);
+          this.startRunProgress(this.liveStatus.statusText || 'Agent run in progress...', startTime, runStartEvent?.body);
 
           const lastTool = this.logs.slice().reverse().find((l) => l.channel === 'tool-call');
           const lastStep = this.logs.slice().reverse().find((l) => l.channel === 'step-start');
           if (lastTool) {
-            this.advanceRunProgress('tool-call', lastTool.title);
+            this.advanceRunProgress('tool-call', lastTool.title, lastTool.data);
           } else if (lastStep) {
-            const stepNum = lastStep.step !== undefined ? lastStep.step + 1 : 1;
-            this.advanceRunProgress('step-start', `AI Reasoning (step ${stepNum})...`);
+            this.advanceRunProgress('step-start', lastStep.title, lastStep.data, lastStep.body);
           }
         }
       }
@@ -2731,11 +2798,46 @@ export class UIRenderer {
 
     headerRow.appendChild(left);
 
+    const right = document.createElement('div');
+    right.className = 'ui-progress-header-right';
+
     const timeBadge = document.createElement('span');
     timeBadge.className = 'ui-progress-timer';
     timeBadge.textContent = '0.0s';
     this.runProgressTimeEl = timeBadge;
-    headerRow.appendChild(timeBadge);
+    right.appendChild(timeBadge);
+
+    const stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'ui-progress-stop-btn';
+    stopBtn.title = 'Stop agent run';
+    stopBtn.setAttribute('aria-label', 'Stop agent run');
+    stopBtn.innerHTML = `
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+      </svg>
+      <span>Stop</span>
+    `;
+    stopBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      stopBtn.disabled = true;
+      stopBtn.textContent = 'Stopping…';
+      try {
+        await chrome.runtime.sendMessage({ type: 'stop-run' });
+      } catch (err) {
+        console.warn('Failed to send stop-run:', err);
+      }
+      this.finishRunProgress(false, 'Run stopped by user.');
+      if (this.activeActionButton) {
+        this.activeActionButton.el.textContent = this.activeActionButton.originalText;
+        this.activeActionButton.el.disabled = false;
+        this.activeActionButton.el.classList.remove('btn-loading');
+        this.activeActionButton = null;
+      }
+    });
+    right.appendChild(stopBtn);
+
+    headerRow.appendChild(right);
 
     card.appendChild(headerRow);
 
@@ -2760,9 +2862,21 @@ export class UIRenderer {
     stepsRow.className = 'ui-progress-steps';
     this.runProgressStepsContainerEl = stepsRow;
 
-    const stepLabels = (comp?.steps && comp.steps.length === 3)
-      ? comp.steps
-      : ['1. Context', '2. AI Thinking', '3. Action'];
+    let stepLabels = ['1. Context', '2. AI Thinking', '3. Action'];
+    if (comp?.steps && comp.steps.length === 3) {
+      stepLabels = comp.steps;
+    } else {
+      const manifestPerms = typeof chrome !== 'undefined' && chrome.runtime?.getManifest
+        ? chrome.runtime.getManifest()?.permissions ?? []
+        : [];
+      if (manifestPerms.includes('tabGroups') || manifestPerms.includes('tabs')) {
+        stepLabels = ['1. Read Tabs', '2. AI Sort', '3. Group Tabs'];
+      } else if (manifestPerms.includes('bookmarks')) {
+        stepLabels = ['1. Read Bookmarks', '2. AI Plan', '3. Organize'];
+      } else if (manifestPerms.includes('history')) {
+        stepLabels = ['1. Scan History', '2. AI Analyze', '3. Summarize'];
+      }
+    }
 
     stepLabels.forEach((label, idx) => {
       const stepEl = document.createElement('div');
@@ -2777,7 +2891,26 @@ export class UIRenderer {
     return card;
   }
 
-  public startRunProgress(initialText = 'Executing agent task...', startTime?: number): void {
+  public resetRunProgress(): void {
+    if (this.runProgressTimer) {
+      clearInterval(this.runProgressTimer);
+      this.runProgressTimer = null;
+    }
+    this.runProgressStartTime = 0;
+    this.liveStatus.active = false;
+    if (this.runProgressEl) {
+      this.runProgressEl.style.display = 'none';
+      this.runProgressEl.classList.remove('status-running', 'status-complete', 'status-error');
+    }
+    if (this.activeActionButton) {
+      this.activeActionButton.el.textContent = this.activeActionButton.originalText;
+      this.activeActionButton.el.disabled = false;
+      this.activeActionButton.el.classList.remove('btn-loading');
+      this.activeActionButton = null;
+    }
+  }
+
+  public startRunProgress(initialText = 'Executing agent task...', startTime?: number, initialSubtext?: string): void {
     if (!this.runProgressEl) return;
     this.runProgressEl.style.display = 'flex';
     this.runProgressEl.classList.remove('status-complete', 'status-error');
@@ -2787,7 +2920,7 @@ export class UIRenderer {
       this.runProgressStatusEl.textContent = initialText;
     }
     if (this.runProgressExpectationEl) {
-      this.runProgressExpectationEl.textContent = 'Gathering context and preparing AI instructions...';
+      this.runProgressExpectationEl.textContent = initialSubtext || 'Gathering context and preparing AI instructions...';
     }
     if (this.runProgressFillEl) {
       this.runProgressFillEl.style.width = '20%';
@@ -2808,23 +2941,49 @@ export class UIRenderer {
     const initialElapsed = Math.max(0, ((Date.now() - this.runProgressStartTime) / 1000)).toFixed(1);
     if (this.runProgressTimeEl) this.runProgressTimeEl.textContent = `${initialElapsed}s`;
 
+    let tickCount = 0;
     this.runProgressTimer = setInterval(() => {
       if (!this.runProgressStartTime) return;
       const elapsedSec = ((Date.now() - this.runProgressStartTime) / 1000).toFixed(1);
       if (this.runProgressTimeEl) {
         this.runProgressTimeEl.textContent = `${elapsedSec}s`;
       }
+      tickCount++;
+      if (tickCount > 15 && tickCount % 15 === 0) {
+        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({ type: 'get-run-status' }).then((res) => {
+            if (res && res.active === false && this.runProgressEl?.classList.contains('status-running')) {
+              this.resetRunProgress();
+            }
+          }).catch(() => {
+            this.resetRunProgress();
+          });
+        }
+      }
     }, 100);
   }
 
-  public advanceRunProgress(phase: 'step-start' | 'tool-call' | 'stream', detailText?: string): void {
+  public advanceRunProgress(
+    phase: 'step-start' | 'tool-call' | 'stream',
+    detailText?: string,
+    eventData?: any,
+    detailSubtext?: string,
+  ): void {
     if (!this.runProgressEl || this.runProgressEl.style.display === 'none') return;
 
     if (phase === 'step-start') {
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '55%';
       if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
       if (this.runProgressExpectationEl) {
-        this.runProgressExpectationEl.textContent = 'AI is evaluating context and planning next steps...';
+        if (detailSubtext) {
+          this.runProgressExpectationEl.textContent = detailSubtext;
+        } else if (eventData?.contextSummary?.tabCount !== undefined) {
+          const cs = eventData.contextSummary;
+          const domainsStr = cs.sampleDomains && cs.sampleDomains.length > 0 ? `across ${cs.sampleDomains.join(', ')}` : 'by topic';
+          this.runProgressExpectationEl.textContent = `Categorizing ${cs.tabCount} open tabs into topic groups ${domainsStr}...`;
+        } else {
+          this.runProgressExpectationEl.textContent = 'AI is evaluating context and planning next steps...';
+        }
       }
       if (this.runProgressStepsContainerEl) {
         const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
@@ -2835,7 +2994,7 @@ export class UIRenderer {
       }
     } else if (phase === 'tool-call') {
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '85%';
-      const formatted = formatToolCallLabel(detailText || '');
+      const formatted = formatToolCallLabel(detailText || '', eventData);
       if (this.runProgressStatusEl) this.runProgressStatusEl.textContent = formatted.headline;
       if (this.runProgressExpectationEl) this.runProgressExpectationEl.textContent = formatted.subtext;
       if (this.runProgressStepsContainerEl) {
@@ -2848,7 +3007,7 @@ export class UIRenderer {
         s3?.classList.add('step-active');
       }
     } else if (phase === 'stream' && detailText && this.runProgressExpectationEl) {
-      this.runProgressExpectationEl.textContent = detailText.slice(0, 95) + '...';
+      this.runProgressExpectationEl.textContent = detailText.length > 110 ? detailText.slice(0, 110) + '...' : detailText;
     }
   }
 
@@ -2864,6 +3023,8 @@ export class UIRenderer {
       : '0.0';
 
     this.runProgressEl.classList.remove('status-running');
+    const isStopped = summaryText && summaryText.toLowerCase().includes('stopped');
+
     if (success) {
       this.runProgressEl.classList.add('status-complete');
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '100%';
@@ -2883,18 +3044,19 @@ export class UIRenderer {
     } else {
       this.runProgressEl.classList.add('status-error');
       if (this.runProgressStatusEl) {
-        this.runProgressStatusEl.textContent = 'Run error';
+        this.runProgressStatusEl.textContent = isStopped ? 'Stopped' : 'Run error';
       }
       if (this.runProgressExpectationEl) {
         this.runProgressExpectationEl.textContent = summaryText || 'Failed to complete run.';
       }
     }
 
+    const hideDelay = isStopped ? 1500 : 5000;
     setTimeout(() => {
       if (this.runProgressEl && !this.liveStatus.active) {
         this.runProgressEl.style.display = 'none';
       }
-    }, 5000);
+    }, hideDelay);
   }
 
   // ─── Export and Copy Logs Utilities ─────────────────────────────────
@@ -2990,7 +3152,7 @@ export function mountDashboardTelemetry(
 
   void (async () => {
     try {
-      const { logs, status } = await getLiveLogs();
+      const { logs, status } = await fetchVerifiedLiveLogs();
       renderer.logs = logs || [];
       if (status) renderer.liveStatus = status;
       renderer.populateLiveLogs();
@@ -2999,15 +3161,14 @@ export function mountDashboardTelemetry(
         if (renderer.liveStatus.active) {
           const runStartEvent = renderer.logs.slice().reverse().find((l) => l.channel === 'run-start');
           const startTime = runStartEvent ? runStartEvent.timestamp : renderer.liveStatus.updatedAt;
-          renderer.startRunProgress(renderer.liveStatus.statusText || 'Agent run in progress...', startTime);
+          renderer.startRunProgress(renderer.liveStatus.statusText || 'Agent run in progress...', startTime, runStartEvent?.body);
 
           const lastTool = renderer.logs.slice().reverse().find((l) => l.channel === 'tool-call');
           const lastStep = renderer.logs.slice().reverse().find((l) => l.channel === 'step-start');
           if (lastTool) {
-            renderer.advanceRunProgress('tool-call', lastTool.title);
+            renderer.advanceRunProgress('tool-call', lastTool.title, lastTool.data);
           } else if (lastStep) {
-            const stepNum = lastStep.step !== undefined ? lastStep.step + 1 : 1;
-            renderer.advanceRunProgress('step-start', `AI Reasoning (step ${stepNum})...`);
+            renderer.advanceRunProgress('step-start', lastStep.title, lastStep.data, lastStep.body);
           }
         }
       }
