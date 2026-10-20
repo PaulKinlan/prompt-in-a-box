@@ -5,7 +5,7 @@
 import { getConfig, setConfig, activeKey, PROVIDER_LABELS, getStaticConfig } from './config';
 import type { AuditEntry } from './audit';
 import type { ArtifactIndexEntry, ArtifactKind } from './artifacts';
-import { UIRenderer, loadPromptUIBlock, type UISchema } from './ui-renderer';
+import { UIRenderer, loadPromptUIBlock, mountDashboardTelemetry, type UISchema } from './ui-renderer';
 import { printAgentLogToConsole } from './logger';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
@@ -324,7 +324,13 @@ async function loadArtifacts(): Promise<void> {
   });
 }
 
+// ─── Dashboard Telemetry (Live Progress Card & Live Console Drawer) ──
+const dashboardProgressMount = $('dashboardProgressMount');
+const dashboardConsoleMount = $('dashboardConsoleMount');
+const dashboardTelemetry = mountDashboardTelemetry(dashboardProgressMount, dashboardConsoleMount);
+
 $('runNow').addEventListener('click', async () => {
+  dashboardTelemetry.startProgress('Running agent task...');
   const btn = $('runNow') as HTMLButtonElement;
   btn.disabled = true;
   btn.innerHTML = `

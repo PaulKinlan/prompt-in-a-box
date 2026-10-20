@@ -2581,11 +2581,17 @@ function setupEventListeners(): void {
             });
             break;
           case 'progress':
+          case 'run-progress':
             ui.components.push({
-              type: 'progress',
-              label: 'Overall Progress',
-              current: 65,
-              max: 100,
+              type: 'run-progress',
+              title: 'Live Agent Execution',
+              subtitle: 'Follow live progress steps in real time',
+              steps: ['1. Context', '2. AI Thinking', '3. Action'],
+            });
+            break;
+          case 'console':
+            ui.components.push({
+              type: 'console',
             });
             break;
         }

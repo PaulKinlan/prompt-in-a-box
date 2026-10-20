@@ -49,7 +49,9 @@ export type UIComponentType =
   | 'dialog'
   | 'menu'
   | 'icon'
-  | 'image';
+  | 'image'
+  | 'run-progress'
+  | 'console';
 
 export interface UISelectOption {
   label: string;
@@ -152,6 +154,7 @@ export interface UIComponent {
   unit?: string;
   accept?: string;
   tasks?: UITaskItem[];
+  steps?: string[];
   cards?: UICardItem[];
   slides?: UICarouselSlide[];
   menuItems?: UIMenuItem[];
@@ -183,6 +186,7 @@ export interface UISchema {
   theme?: 'default' | 'compact' | 'warm-paper' | 'dark' | 'glassmorphic' | 'neon-dark' | 'warm-editorial' | string;
   themeConfig?: UIThemeConfig;
   layoutMode?: 'stack' | 'bento-grid' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed';
+  showConsole?: boolean;
   layout: UIComponent[];
   components?: UIComponent[];
 }
@@ -195,6 +199,77 @@ export function normalizeThemeName(raw?: string): 'compact' | 'warm-paper' | 'da
   if (t === 'dark' || t === 'neon-dark') return 'dark';
   if (t === 'default' || t === 'light' || t === 'glassmorphic') return 'default';
   return 'default';
+}
+
+/**
+ * Maps raw tool invocation titles into human-friendly status headlines and descriptions
+ * for real-time progress indicators across any extension.
+ */
+export function formatToolCallLabel(rawTitle: string): { headline: string; subtext: string } {
+  const lower = String(rawTitle || '').toLowerCase();
+  if (lower.includes('tab_group') || lower.includes('tabgroup')) {
+    return {
+      headline: 'Grouping browser tabs...',
+      subtext: 'Organizing tabs into color-coded browser tab groups...',
+    };
+  }
+  if (lower.includes('tab_read') || lower.includes('tabs_query') || lower.includes('tabs_get') || lower.includes('tab_query')) {
+    return {
+      headline: 'Reading open tabs...',
+      subtext: 'Inspecting open browser tabs and URLs...',
+    };
+  }
+  if (lower.includes('code_mode')) {
+    return {
+      headline: 'Running batch operations...',
+      subtext: 'Executing batched browser API actions in parallel...',
+    };
+  }
+  if (lower.includes('notification')) {
+    return {
+      headline: 'Sending notification...',
+      subtext: 'Dispatching browser alert notification...',
+    };
+  }
+  if (lower.includes('artifact')) {
+    return {
+      headline: 'Saving artifact...',
+      subtext: 'Persisting generated data artifact to storage...',
+    };
+  }
+  if (lower.includes('storage')) {
+    return {
+      headline: 'Updating storage...',
+      subtext: 'Saving extension state to local storage...',
+    };
+  }
+  if (lower.includes('bookmark')) {
+    return {
+      headline: 'Updating bookmarks...',
+      subtext: 'Organizing browser bookmarks...',
+    };
+  }
+  if (lower.includes('history')) {
+    return {
+      headline: 'Checking history...',
+      subtext: 'Querying browser navigation history...',
+    };
+  }
+  if (lower.includes('alarm')) {
+    return {
+      headline: 'Configuring alarms...',
+      subtext: 'Updating scheduled execution timer...',
+    };
+  }
+
+  // Generic fallback: clean up "Tool: xyz ()" or similar
+  const toolMatch = rawTitle.match(/(?:tool:\s*|running\s+)([a-zA-Z0-9_\-]+)/i) || rawTitle.match(/^([a-zA-Z0-9_\-]+)/);
+  const toolName = toolMatch ? toolMatch[1] : 'tool';
+  const cleanName = toolName.replace(/_/g, ' ');
+  return {
+    headline: `Running ${cleanName}...`,
+    subtext: `Executing ${cleanName} browser action...`,
+  };
 }
 
 const DYNAMIC_UI_KEY = '__pib_dynamic_ui';
@@ -360,8 +435,8 @@ export class UIRenderer {
   private listeningForLogs = false;
   private listeningForStorage = false;
   private boundStorageMap = new Map<string, Array<{ comp: UIComponent; updater: (val: any) => void }>>();
-  private logs: AgentLogEvent[] = [];
-  private liveStatus: RunLiveStatus = {
+  public logs: AgentLogEvent[] = [];
+  public liveStatus: RunLiveStatus = {
     active: false,
     runId: '',
     statusText: 'Idle',
@@ -457,7 +532,7 @@ export class UIRenderer {
     }
   }
 
-  private setupLogListener(): void {
+  public setupLogListener(): void {
     if (this.listeningForLogs) return;
     this.listeningForLogs = true;
     try {
@@ -478,9 +553,10 @@ export class UIRenderer {
               this.consoleDrawerEl.classList.add('expanded');
             }
           } else if (msg.event.channel === 'step-start') {
-            this.advanceRunProgress('step-start', `Analyzing tabs (step ${msg.event.step !== undefined ? msg.event.step + 1 : 1})...`);
+            const stepNum = msg.event.step !== undefined ? msg.event.step + 1 : 1;
+            this.advanceRunProgress('step-start', `AI Reasoning (step ${stepNum})...`);
           } else if (msg.event.channel === 'tool-call') {
-            this.advanceRunProgress('tool-call', `Applying ${msg.event.title || 'tool action'}...`);
+            this.advanceRunProgress('tool-call', msg.event.title || 'tool action');
           } else if (msg.event.channel === 'run-complete') {
             this.finishRunProgress(true, msg.event.title || 'Task completed successfully');
           } else if (msg.event.channel === 'error') {
@@ -489,18 +565,10 @@ export class UIRenderer {
 
           if (this.activeActionButton) {
             if (msg.event.channel === 'tool-call') {
-              const toolTitle = String(msg.event.title || '').toLowerCase();
-              if (toolTitle.includes('tab_group')) {
-                this.activeActionButton.el.textContent = 'Grouping tabs...';
-              } else if (toolTitle.includes('tab_read')) {
-                this.activeActionButton.el.textContent = 'Reading tabs...';
-              } else if (toolTitle.includes('code_mode')) {
-                this.activeActionButton.el.textContent = 'Running batch...';
-              } else {
-                this.activeActionButton.el.textContent = 'Processing...';
-              }
+              const formatted = formatToolCallLabel(msg.event.title || '');
+              this.activeActionButton.el.textContent = formatted.headline;
             } else if (msg.event.channel === 'step-start') {
-              this.activeActionButton.el.textContent = 'Analyzing tabs...';
+              this.activeActionButton.el.textContent = 'Thinking...';
             }
           }
         } else if (msg?.type === 'agent-stream-delta') {
@@ -520,7 +588,7 @@ export class UIRenderer {
     }
   }
 
-  private updateLiveStatus(status: RunLiveStatus): void {
+  public updateLiveStatus(status: RunLiveStatus): void {
     this.liveStatus = status;
     if (this.consoleStatusTextEl) {
       this.consoleStatusTextEl.textContent = status.statusText || (status.active ? 'Running...' : 'Idle');
@@ -597,7 +665,18 @@ export class UIRenderer {
       if (this.liveStatus) {
         this.updateLiveStatus(this.liveStatus);
         if (this.liveStatus.active) {
-          this.startRunProgress(this.liveStatus.statusText || 'Agent run in progress...');
+          const runStartEvent = this.logs.slice().reverse().find((l) => l.channel === 'run-start');
+          const startTime = runStartEvent ? runStartEvent.timestamp : this.liveStatus.updatedAt;
+          this.startRunProgress(this.liveStatus.statusText || 'Agent run in progress...', startTime);
+
+          const lastTool = this.logs.slice().reverse().find((l) => l.channel === 'tool-call');
+          const lastStep = this.logs.slice().reverse().find((l) => l.channel === 'step-start');
+          if (lastTool) {
+            this.advanceRunProgress('tool-call', lastTool.title);
+          } else if (lastStep) {
+            const stepNum = lastStep.step !== undefined ? lastStep.step + 1 : 1;
+            this.advanceRunProgress('step-start', `AI Reasoning (step ${stepNum})...`);
+          }
         }
       }
     } catch {
@@ -723,30 +802,34 @@ export class UIRenderer {
     componentWrapper.className = `ui-components layout-${layoutMode}`;
 
     const components = spec.layout || spec.components || [];
-    const progressCard = this.createRunProgressCard();
+    const hasExplicitProgress = components.some((c) => c.type === 'run-progress');
+    const hasExplicitConsole = components.some((c) => c.type === 'console');
+    const progressCard = hasExplicitProgress ? null : this.createRunProgressCard();
     let progressInserted = false;
 
     components.forEach((comp, idx) => {
       const el = this.createComponent(comp);
       if (el) {
         componentWrapper.appendChild(el);
-        // Place progress card immediately below the primary trigger-run button if near top (idx <= 2)
-        if (!progressInserted && idx <= 2 && comp.type === 'button' && (comp.action === 'trigger-run' || comp.id === 'btn-run-agent')) {
+        // Place auto-progress card immediately below the primary trigger-run button if near top (idx <= 2)
+        if (progressCard && !progressInserted && idx <= 2 && comp.type === 'button' && (comp.action === 'trigger-run' || comp.id === 'btn-run-agent')) {
           componentWrapper.appendChild(progressCard);
           progressInserted = true;
         }
       }
     });
 
-    // If not inserted after a top trigger-run button, place at top of component wrapper
-    if (!progressInserted) {
+    // If auto-progress card not inserted after a top trigger-run button, place at top of component wrapper
+    if (progressCard && !progressInserted) {
       componentWrapper.insertBefore(progressCard, componentWrapper.firstChild);
     }
 
     this.container.appendChild(componentWrapper);
 
-    // 3. Render Live Console Drawer
-    this.container.appendChild(this.createLiveConsoleDrawer());
+    // 3. Render Live Console Drawer ONLY if explicitly opted in via spec.showConsole or a 'console' component
+    if (spec.showConsole || hasExplicitConsole) {
+      this.container.appendChild(this.createLiveConsoleDrawer());
+    }
   }
 
   /**
@@ -754,6 +837,14 @@ export class UIRenderer {
    */
   private createComponent(comp: UIComponent): HTMLElement | null {
     switch (comp.type) {
+      case 'run-progress': {
+        return this.createRunProgressCard(comp);
+      }
+
+      case 'console': {
+        return this.createLiveConsoleDrawer();
+      }
+
       case 'header': {
         const el = document.createElement('h2');
         el.className = 'ui-header-element';
@@ -2366,7 +2457,7 @@ export class UIRenderer {
 
   // ─── Live Console Drawer Construction ───────────────────────────────
 
-  private createLiveConsoleDrawer(): HTMLElement {
+  public createLiveConsoleDrawer(): HTMLElement {
     const drawer = document.createElement('div');
     drawer.className = 'ui-live-console-drawer';
     this.consoleDrawerEl = drawer;
@@ -2538,7 +2629,7 @@ export class UIRenderer {
     }
   }
 
-  private populateLiveLogs(): void {
+  public populateLiveLogs(): void {
     if (!this.consoleLogListEl) return;
     this.consoleLogListEl.innerHTML = '';
     for (const ev of this.logs) {
@@ -2611,7 +2702,7 @@ export class UIRenderer {
 
   // ─── Live Run Progress Card & Expectations ──────────────────────────
 
-  private createRunProgressCard(): HTMLElement {
+  public createRunProgressCard(comp?: UIComponent): HTMLElement {
     const card = document.createElement('div');
     card.className = 'ui-run-progress-card';
     card.style.display = 'none';
@@ -2634,7 +2725,7 @@ export class UIRenderer {
 
     const titleEl = document.createElement('div');
     titleEl.className = 'ui-progress-title';
-    titleEl.textContent = 'Sorting open tabs...';
+    titleEl.textContent = comp?.title || 'Running agent task...';
     this.runProgressStatusEl = titleEl;
     left.appendChild(titleEl);
 
@@ -2650,7 +2741,7 @@ export class UIRenderer {
 
     const expText = document.createElement('div');
     expText.className = 'ui-progress-expectation';
-    expText.textContent = 'Reading open tabs and preparing AI categorization...';
+    expText.textContent = comp?.subtitle || 'Initializing agent and gathering context...';
     this.runProgressExpectationEl = expText;
     card.appendChild(expText);
 
@@ -2669,30 +2760,24 @@ export class UIRenderer {
     stepsRow.className = 'ui-progress-steps';
     this.runProgressStepsContainerEl = stepsRow;
 
-    const step1 = document.createElement('div');
-    step1.className = 'ui-progress-step step-active';
-    step1.dataset.step = '1';
-    step1.textContent = '1. Read Tabs';
-    stepsRow.appendChild(step1);
+    const stepLabels = (comp?.steps && comp.steps.length === 3)
+      ? comp.steps
+      : ['1. Context', '2. AI Thinking', '3. Action'];
 
-    const step2 = document.createElement('div');
-    step2.className = 'ui-progress-step';
-    step2.dataset.step = '2';
-    step2.textContent = '2. AI Categorize';
-    stepsRow.appendChild(step2);
-
-    const step3 = document.createElement('div');
-    step3.className = 'ui-progress-step';
-    step3.dataset.step = '3';
-    step3.textContent = '3. Apply Groups';
-    stepsRow.appendChild(step3);
+    stepLabels.forEach((label, idx) => {
+      const stepEl = document.createElement('div');
+      stepEl.className = `ui-progress-step ${idx === 0 ? 'step-active' : ''}`;
+      stepEl.dataset.step = String(idx + 1);
+      stepEl.textContent = label;
+      stepsRow.appendChild(stepEl);
+    });
 
     card.appendChild(stepsRow);
 
     return card;
   }
 
-  private startRunProgress(initialText = 'Executing agent task...'): void {
+  public startRunProgress(initialText = 'Executing agent task...', startTime?: number): void {
     if (!this.runProgressEl) return;
     this.runProgressEl.style.display = 'flex';
     this.runProgressEl.classList.remove('status-complete', 'status-error');
@@ -2702,7 +2787,7 @@ export class UIRenderer {
       this.runProgressStatusEl.textContent = initialText;
     }
     if (this.runProgressExpectationEl) {
-      this.runProgressExpectationEl.textContent = 'Reading open tabs and preparing AI categorization...';
+      this.runProgressExpectationEl.textContent = 'Gathering context and preparing AI instructions...';
     }
     if (this.runProgressFillEl) {
       this.runProgressFillEl.style.width = '20%';
@@ -2719,8 +2804,9 @@ export class UIRenderer {
     if (this.runProgressTimer) {
       clearInterval(this.runProgressTimer);
     }
-    this.runProgressStartTime = Date.now();
-    if (this.runProgressTimeEl) this.runProgressTimeEl.textContent = '0.0s';
+    this.runProgressStartTime = startTime || Date.now();
+    const initialElapsed = Math.max(0, ((Date.now() - this.runProgressStartTime) / 1000)).toFixed(1);
+    if (this.runProgressTimeEl) this.runProgressTimeEl.textContent = `${initialElapsed}s`;
 
     this.runProgressTimer = setInterval(() => {
       if (!this.runProgressStartTime) return;
@@ -2731,14 +2817,14 @@ export class UIRenderer {
     }, 100);
   }
 
-  private advanceRunProgress(phase: 'step-start' | 'tool-call' | 'stream', detailText?: string): void {
+  public advanceRunProgress(phase: 'step-start' | 'tool-call' | 'stream', detailText?: string): void {
     if (!this.runProgressEl || this.runProgressEl.style.display === 'none') return;
 
     if (phase === 'step-start') {
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '55%';
       if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
       if (this.runProgressExpectationEl) {
-        this.runProgressExpectationEl.textContent = 'Categorizing open tabs into topic groups with AI...';
+        this.runProgressExpectationEl.textContent = 'AI is evaluating context and planning next steps...';
       }
       if (this.runProgressStepsContainerEl) {
         const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
@@ -2749,10 +2835,9 @@ export class UIRenderer {
       }
     } else if (phase === 'tool-call') {
       if (this.runProgressFillEl) this.runProgressFillEl.style.width = '85%';
-      if (this.runProgressStatusEl && detailText) this.runProgressStatusEl.textContent = detailText;
-      if (this.runProgressExpectationEl) {
-        this.runProgressExpectationEl.textContent = 'Applying tab groups to your browser window...';
-      }
+      const formatted = formatToolCallLabel(detailText || '');
+      if (this.runProgressStatusEl) this.runProgressStatusEl.textContent = formatted.headline;
+      if (this.runProgressExpectationEl) this.runProgressExpectationEl.textContent = formatted.subtext;
       if (this.runProgressStepsContainerEl) {
         const s1 = this.runProgressStepsContainerEl.querySelector('[data-step="1"]');
         const s2 = this.runProgressStepsContainerEl.querySelector('[data-step="2"]');
@@ -2763,11 +2848,11 @@ export class UIRenderer {
         s3?.classList.add('step-active');
       }
     } else if (phase === 'stream' && detailText && this.runProgressExpectationEl) {
-      this.runProgressExpectationEl.textContent = detailText.slice(0, 90) + '...';
+      this.runProgressExpectationEl.textContent = detailText.slice(0, 95) + '...';
     }
   }
 
-  private finishRunProgress(success: boolean, summaryText: string): void {
+  public finishRunProgress(success: boolean, summaryText: string): void {
     if (!this.runProgressEl) return;
     if (this.runProgressTimer) {
       clearInterval(this.runProgressTimer);
@@ -2786,7 +2871,7 @@ export class UIRenderer {
         this.runProgressStatusEl.textContent = `✓ Done in ${elapsed}s!`;
       }
       if (this.runProgressExpectationEl) {
-        this.runProgressExpectationEl.textContent = summaryText || 'Tabs organized successfully.';
+        this.runProgressExpectationEl.textContent = summaryText || 'Task completed successfully.';
       }
       if (this.runProgressStepsContainerEl) {
         const steps = this.runProgressStepsContainerEl.querySelectorAll('.ui-progress-step');
@@ -2873,4 +2958,66 @@ export class UIRenderer {
       console.error('Failed to export logs:', err);
     }
   }
+}
+
+/**
+ * Mounts the Live Run Progress Card and Live Console Drawer into the standard Dashboard,
+ * subscribing to background telemetry events and resuming mid-run state if already running.
+ */
+export function mountDashboardTelemetry(
+  progressMount: HTMLElement | null,
+  consoleMount: HTMLElement | null,
+): {
+  startProgress: (text?: string) => void;
+  finishProgress: (success: boolean, text?: string) => void;
+} {
+  const dummy = document.createElement('div');
+  const renderer = new UIRenderer(dummy, 'dashboard');
+
+  if (progressMount) {
+    const card = renderer.createRunProgressCard();
+    progressMount.innerHTML = '';
+    progressMount.appendChild(card);
+  }
+
+  if (consoleMount) {
+    const drawer = renderer.createLiveConsoleDrawer();
+    consoleMount.innerHTML = '';
+    consoleMount.appendChild(drawer);
+  }
+
+  renderer.setupLogListener();
+
+  void (async () => {
+    try {
+      const { logs, status } = await getLiveLogs();
+      renderer.logs = logs || [];
+      if (status) renderer.liveStatus = status;
+      renderer.populateLiveLogs();
+      if (renderer.liveStatus) {
+        renderer.updateLiveStatus(renderer.liveStatus);
+        if (renderer.liveStatus.active) {
+          const runStartEvent = renderer.logs.slice().reverse().find((l) => l.channel === 'run-start');
+          const startTime = runStartEvent ? runStartEvent.timestamp : renderer.liveStatus.updatedAt;
+          renderer.startRunProgress(renderer.liveStatus.statusText || 'Agent run in progress...', startTime);
+
+          const lastTool = renderer.logs.slice().reverse().find((l) => l.channel === 'tool-call');
+          const lastStep = renderer.logs.slice().reverse().find((l) => l.channel === 'step-start');
+          if (lastTool) {
+            renderer.advanceRunProgress('tool-call', lastTool.title);
+          } else if (lastStep) {
+            const stepNum = lastStep.step !== undefined ? lastStep.step + 1 : 1;
+            renderer.advanceRunProgress('step-start', `AI Reasoning (step ${stepNum})...`);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  })();
+
+  return {
+    startProgress: (text?: string) => renderer.startRunProgress(text || 'Starting agent run...'),
+    finishProgress: (success: boolean, text?: string) => renderer.finishRunProgress(success, text || 'Complete'),
+  };
 }
