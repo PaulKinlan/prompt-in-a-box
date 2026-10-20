@@ -59,7 +59,7 @@
     }
   },
   "schedule": {
-    "defaultAlarmMinutes": 30,
+    "defaultAlarmMinutes": 0,
     "lockSchedule": false
   },
   "providerTools": {

@@ -472,6 +472,219 @@
       .console-log.error { border-left-color: #ef4444; color: #f87171; }
       .console-log.run-complete { border-left-color: #8b5cf6; font-weight: 700; color: #c084fc; }
 
+      /* Structured Runner Logs */
+      .log-card {
+        background: #141417;
+        border: 1px solid #27272a;
+        border-radius: 6px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        transition: border-color 0.15s ease;
+      }
+      .log-card:hover {
+        border-color: #3f3f46;
+      }
+      .log-card.channel-error { border-left: 3px solid #ef4444; }
+      .log-card.channel-tool-call { border-left: 3px solid #f59e0b; }
+      .log-card.channel-tool-result { border-left: 3px solid #10b981; }
+      .log-card.channel-step-start { border-left: 3px solid #3b82f6; }
+      .log-card.channel-run-complete { border-left: 3px solid #8b5cf6; }
+      .log-card.channel-reasoning { border-left: 3px solid #a855f7; }
+
+      .log-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11px;
+      }
+      .log-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .log-badge {
+        font-size: 9.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: 1px 5px;
+        border-radius: 3px;
+        letter-spacing: 0.04em;
+        background: #27272a;
+        color: #e4e4e7;
+      }
+      .log-badge.badge-error { background: #7f1d1d; color: #fca5a5; }
+      .log-badge.badge-tool-call { background: #78350f; color: #fde68a; }
+      .log-badge.badge-tool-result { background: #064e3b; color: #6ee7b7; }
+      .log-badge.badge-step-start { background: #1e3a8a; color: #93c5fd; }
+      .log-badge.badge-run-complete { background: #4c1d95; color: #d8b4fe; }
+
+      .log-time {
+        color: #71717a;
+        font-family: var(--pib-font-mono);
+        font-size: 10px;
+      }
+      .log-title {
+        font-weight: 600;
+        color: #f4f4f5;
+        word-break: break-word;
+      }
+      .log-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+      .log-btn {
+        background: #27272a;
+        border: 1px solid #3f3f46;
+        color: #d4d4d8;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 10px;
+        font-family: inherit;
+        font-weight: 550;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .log-btn:hover {
+        background: #3f3f46;
+        color: #ffffff;
+      }
+      .log-btn.fix-chat {
+        background: #1e1b4b;
+        border-color: #4338ca;
+        color: #a5b4fc;
+      }
+      .log-btn.fix-chat:hover {
+        background: #312e81;
+        color: #ffffff;
+      }
+
+      /* Collapsible JSON Tree Viewer */
+      .json-tree {
+        font-family: var(--pib-font-mono);
+        font-size: 11px;
+        line-height: 1.45;
+        background: #0d0d10;
+        border: 1px solid #27272a;
+        border-radius: 4px;
+        padding: 6px 8px;
+        overflow-x: auto;
+      }
+      details.json-node {
+        margin-left: 12px;
+      }
+      details.json-node:first-child {
+        margin-left: 0;
+      }
+      summary.json-summary {
+        cursor: pointer;
+        outline: none;
+        user-select: none;
+        color: #94a3b8;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      summary.json-summary:hover {
+        color: #cbd5e1;
+      }
+      .json-leaf {
+        margin-left: 12px;
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+      }
+      .json-key { color: #93c5fd; font-weight: 500; }
+      .json-string { color: #86efac; word-break: break-all; }
+      .json-number { color: #fdba74; }
+      .json-boolean { color: #c084fc; font-weight: 600; }
+      .json-null { color: #71717a; font-style: italic; }
+
+      /* AI Refine Chat */
+      .chat-container {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        height: 100%;
+        overflow: hidden;
+        background: var(--color-bg-base);
+      }
+      .chat-header-bar {
+        padding: 8px 12px;
+        background: var(--color-card-muted);
+        border-bottom: 1px solid var(--color-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11.5px;
+        flex-shrink: 0;
+      }
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .chat-bubble {
+        max-width: 90%;
+        padding: 9px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .chat-bubble.user {
+        align-self: flex-end;
+        background: var(--color-accent);
+        color: #ffffff;
+        border-bottom-right-radius: 2px;
+      }
+      .chat-bubble.assistant {
+        align-self: flex-start;
+        background: var(--color-card-base);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-primary);
+        border-bottom-left-radius: 2px;
+      }
+      .chat-applied-badge {
+        font-size: 11px;
+        padding: 5px 8px;
+        background: var(--color-success-bg);
+        border: 1px solid var(--color-success-border);
+        color: var(--color-success);
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
+      .chat-input-bar {
+        padding: 10px 12px;
+        background: var(--color-card-base);
+        border-top: 1px solid var(--color-border);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .chat-quick-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
       /* Toast */
       .toast {
         position: fixed;
@@ -510,7 +723,7 @@
       <div class="project-bar">
         <select id="projectSelect" class="project-select"></select>
         <button id="btnNewProject" class="btn" title="Create New Extension Project">+ New</button>
-        <button id="btnTemplates" class="btn" title="Load Starter Template">Templates ▾</button>
+        <button id="btnDeleteProject" class="btn btn-danger" title="Delete current extension project">Delete</button>
       </div>
 
       <div class="header-actions">
@@ -768,6 +981,33 @@
             <div id="permissionsCheckboxList" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;"></div>
           </div>
 
+          <!-- Website & URL Access (host_permissions) Card -->
+          <div class="card">
+            <div class="card-title">
+              <span>Website &amp; URL Access</span>
+              <span class="badge-tag" style="font-size: 10px;">host_permissions</span>
+            </div>
+            <div class="hint" style="font-size: 11px; margin: 0 0 6px;">
+              Configure website origins this extension can inspect (<code>tab_read</code>), script, or query:
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; padding: 6px 8px; background: var(--color-card-muted); border-radius: 6px; border: 1px solid var(--color-border);">
+              <input type="checkbox" id="checkAllUrls" checked />
+              <span>Grant access to all websites (<code>&lt;all_urls&gt;</code>)</span>
+            </label>
+            <div style="display: flex; gap: 6px; margin-top: 4px;">
+              <input type="text" id="hostPatternInput" placeholder="e.g. https://*.github.com/*" style="font-family: var(--pib-font-mono); font-size: 11.5px;" />
+              <button id="btnAddHostPattern" class="btn" style="padding: 4px 10px;">+ Add</button>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;">
+              <span style="font-size: 10px; color: var(--color-text-muted); align-self: center;">Quick add:</span>
+              <button class="chip-btn" data-host-preset="https://*.github.com/*">GitHub</button>
+              <button class="chip-btn" data-host-preset="https://*.google.com/*">Google</button>
+              <button class="chip-btn" data-host-preset="https://*.youtube.com/*">YouTube</button>
+              <button class="chip-btn" data-host-preset="*://*/*">Any HTTP(S)</button>
+            </div>
+            <div id="hostPermissionsList" class="attachment-chips" style="margin-top: 4px;"></div>
+          </div>
+
           <!-- Extension Shell UI Card -->
           <div class="card">
             <div class="card-title">
@@ -838,6 +1078,10 @@
 
         <!-- Snippet Bar (shown for prompt.md) -->
         <div id="snippetBar" class="snippet-bar">
+          <div style="display: flex; align-items: center; gap: 4px; margin-right: 6px;">
+            <button id="btnEditorUndo" class="chip-btn" title="Undo (Cmd+Z / Ctrl+Z)" disabled>↶ Undo</button>
+            <button id="btnEditorRedo" class="chip-btn" title="Redo (Cmd+Shift+Z / Ctrl+Y)" disabled>↷ Redo</button>
+          </div>
           <span style="font-size: 11px; font-weight: 700; color: var(--color-text-muted);">Snippets:</span>
           <button class="chip-btn" data-snippet="ui-block">+ UI Block</button>
           <button class="chip-btn" data-snippet="code-mode">+ code_mode Batch</button>
@@ -871,6 +1115,7 @@
         <div class="right-view-switcher">
           <div id="tabPreview" class="subview-tab active">Interactive UI Preview</div>
           <div id="tabRunner" class="subview-tab">Live Agent Test Runner</div>
+          <div id="tabChat" class="subview-tab">💬 AI Refine Chat</div>
         </div>
 
         <!-- Subview A: Live Interactive UI Preview -->
@@ -941,8 +1186,68 @@
             </div>
           </div>
 
+          <!-- Structured Log Controls Toolbar -->
+          <div style="padding: 6px 12px; background: var(--color-card-muted); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
+              <select id="logFilterSelect" style="width: auto; padding: 2px 6px; font-size: 11px;">
+                <option value="all">All Logs</option>
+                <option value="error">Errors Only</option>
+                <option value="tools">Tool Calls &amp; Results</option>
+                <option value="steps">Steps &amp; Output</option>
+              </select>
+              <input type="text" id="logSearchInput" placeholder="Filter logs..." style="padding: 2px 8px; font-size: 11px; flex: 1; min-width: 80px;" />
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <button id="btnExpandAllLogs" class="chip-btn" title="Expand all JSON trees">Expand</button>
+              <button id="btnCollapseAllLogs" class="chip-btn" title="Collapse all JSON trees">Collapse</button>
+              <button id="btnCopyAllLogs" class="chip-btn" title="Copy all logs formatted">📋 Copy</button>
+              <button id="btnClearLogs" class="chip-btn" title="Clear console">Clear</button>
+            </div>
+          </div>
+
           <div id="runnerConsole" class="runner-console">
             <div style="color: #71717a; font-style: italic;">Live agent telemetry console ready. Click "Run Live Test" to simulate execution against real browser tabs &amp; tools.</div>
+          </div>
+        </div>
+
+        <!-- Subview C: Interactive AI Refinement Chat -->
+        <div id="chatContainer" class="chat-container" style="display: none;">
+          <div class="chat-header-bar">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-weight: 700; color: var(--color-accent);">AI Extension Architect</span>
+              <span id="chatActiveProjectName" class="badge-tag">Current Project</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label style="display: flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--color-text-muted); cursor: pointer; margin: 0;">
+                <input type="checkbox" id="chatIncludeLogs" checked />
+                <span>Attach test logs</span>
+              </label>
+              <button id="btnClearChat" class="chip-btn" title="Clear conversation history">Clear</button>
+            </div>
+          </div>
+
+          <div id="chatMessagesList" class="chat-messages">
+            <div class="chat-bubble assistant">
+              <div><strong>Welcome to AI Refine Chat!</strong></div>
+              <div>I can help you debug errors, optimize prompts for high-speed <code>code_mode</code> batching, add UI components, or configure host permissions.</div>
+              <div style="font-size: 11px; color: var(--color-text-muted);">Try asking: <em>"I get a timeout error on tabs, please optimize with code_mode"</em> or <em>"Grant access to all URLs and add an undo toast"</em>.</div>
+            </div>
+          </div>
+
+          <div class="chat-input-bar">
+            <div class="chat-quick-chips">
+              <button class="chip-btn" data-chat-suggest="Fix latest error from Test Runner">🔧 Fix Test Error</button>
+              <button class="chip-btn" data-chat-suggest="Speed up execution with code_mode parallel batching">⚡ Speed up with code_mode</button>
+              <button class="chip-btn" data-chat-suggest="Add tab.canScript check to avoid restricted pages">🛡️ Add canScript guard</button>
+              <button class="chip-btn" data-chat-suggest="Grant <all_urls> and add undo button">🌐 Grant all_urls &amp; Undo</button>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: flex-end;">
+              <textarea id="chatInput" placeholder="Ask AI to refine, fix an error, or improve this extension..." style="min-height: 48px; max-height: 120px; font-size: 12px; padding: 6px 10px;"></textarea>
+              <button id="btnChatSend" class="btn btn-primary" style="padding: 8px 14px; height: 48px;">
+                Send
+              </button>
+            </div>
+            <div id="chatProgressText" style="display: none; font-size: 10.5px; color: var(--color-accent); font-family: var(--pib-font-mono);"></div>
           </div>
         </div>
       </aside>

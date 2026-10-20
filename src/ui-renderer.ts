@@ -31,7 +31,7 @@ export interface UIComponent {
   id?: string;
   text?: string;
   intent?: 'info' | 'success' | 'warning' | 'danger';
-  action?: 'trigger-run' | 'chrome-api' | 'undo-last' | 'undo-action' | 'none';
+  action?: 'trigger-run' | 'chrome-api' | 'undo-last' | 'undo-action' | 'open-studio' | 'none';
   actionId?: string;
   apiMethod?: string;
   apiArgs?: any[];
@@ -516,7 +516,9 @@ export class UIRenderer {
           el.disabled = true;
 
           try {
-            if (comp.action === 'undo-last') {
+            if (comp.action === 'open-studio') {
+              await chrome.tabs.create({ url: chrome.runtime.getURL('dist/studio.html') });
+            } else if (comp.action === 'undo-last') {
               await chrome.runtime.sendMessage({ type: 'action-toast-undo' });
             } else if (comp.action === 'undo-action' && comp.actionId) {
               await chrome.runtime.sendMessage({ type: 'undo-action', actionId: comp.actionId });

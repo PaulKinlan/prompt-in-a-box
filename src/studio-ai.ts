@@ -31,6 +31,10 @@ export const generatedBlueprintSchema = z.object({
   alarmMinutes: z.number().default(30).describe('Periodic alarm interval (5, 15, 30, 60, or 0).'),
   permissions: z.array(z.string()).describe('Minimal required permissions (e.g. storage, alarms).'),
   optional_permissions: z.array(z.string()).describe('Optional on-demand permissions (e.g. tabs, tabGroups, scripting).'),
+  host_permissions: z
+    .array(z.string())
+    .default(['<all_urls>'])
+    .describe('URL match patterns this extension needs access to, e.g. ["<all_urls>"] or ["https://github.com/*"].'),
   agentSettings: z
     .array(
       z.object({
@@ -188,6 +192,7 @@ User Request: "${userPrompt || '(Infer intent completely from attached inspirati
     alarmMinutes: blueprint.alarmMinutes ?? 30,
     permissions: blueprint.permissions,
     optional_permissions: blueprint.optional_permissions,
+    host_permissions: blueprint.host_permissions || ['<all_urls>'],
     agentSettings: blueprint.agentSettings || [],
     iconBrief: blueprint.iconBrief,
     prompt: blueprint.promptMarkdown,
@@ -243,6 +248,125 @@ Output ONLY the updated markdown text for prompt.md. Do not wrap in outer backti
   });
 
   return result.text.trim();
+}
+
+// ─── Conversational AI Refinement & Debugging Chat ──────────────────────
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  changeSummary?: string;
+  timestamp?: number;
+}
+
+export const chatRefinementSchema = z.object({
+  reply: z.string().describe('Clear, friendly conversational response diagnosing the issue or explaining changes made.'),
+  updatedPromptMarkdown: z
+    .string()
+    .optional()
+    .describe('Full updated prompt.md content if changes to the prompt or ```ui block are needed. Omit if unchanged.'),
+  updatedOptionalPermissions: z
+    .array(z.string())
+    .optional()
+    .describe('Updated optional_permissions list if capability changes are needed. Omit if unchanged.'),
+  updatedHostPermissions: z
+    .array(z.string())
+    .optional()
+    .describe('Updated host_permissions list (e.g. ["<all_urls>"]) if URL match patterns changed. Omit if unchanged.'),
+  changeSummary: z
+    .string()
+    .optional()
+    .describe('Concise 1-line summary of changes applied to the project (e.g. "Fixed code_mode timeout, added tab.canScript check, and granted <all_urls>").'),
+});
+
+export type ChatRefinementResult = z.infer<typeof chatRefinementSchema>;
+
+/**
+ * Multi-turn conversational AI refinement for extension projects.
+ * Takes the current project, chat history, user request (or error message), and optional test logs.
+ */
+export async function chatRefineProjectWithAI({
+  provider,
+  modelId,
+  apiKey,
+  project,
+  chatHistory = [],
+  userMessage,
+  recentLogsText,
+  onProgress,
+}: {
+  provider: Provider;
+  modelId: string;
+  apiKey: string;
+  project: ExtensionProjectData;
+  chatHistory?: ChatTurn[];
+  userMessage: string;
+  recentLogsText?: string;
+  onProgress?: (status: string) => void;
+}): Promise<ChatRefinementResult> {
+  onProgress?.(`Consulting AI Architect (${modelId})...`);
+
+  const model = getModelInstance(provider, modelId, apiKey);
+  const capabilitySummary = buildStudioCapabilitySummary();
+
+  let systemPrompt = `You are the lead architect and prompt engineer for "prompt-in-a-box".
+You are collaborating interactively with a developer to build, debug, and refine their Chrome Extension.
+You have full authority to update prompt.md (including declarative \`\`\`ui block, code_mode batching, and lifecycle handling), optional_permissions, and host_permissions (including "<all_urls>").
+
+### Non-Negotiable Architecture Rules:
+1. When diagnosing errors (e.g. "cannot be scripted due to policy", "sandbox execution timed out", "readPage failed", or tool errors):
+   - Check if \`tab.canScript\` from \`tab_list\` is checked before calling \`tab_read\`.
+   - Skip restricted origins (chrome://, chrome-extension://, mail.google.com if restricted, etc.) and classify by domain/title.
+   - For batching, use async scripts in \`code_mode\` with \`Promise.all\` and per-tab \`try/catch\`.
+   - Ensure \`<all_urls>\` is in \`host_permissions\` if arbitrary web pages need to be inspected.
+2. When updating prompt.md:
+   - Always preserve the \`\`\`ui ... \`\`\` block and its components (or improve them if requested).
+   - Preserve multi-window isolation (\`windowId\` scoping) and undo toasts.
+3. Tool Fidelity: Only reference real tools from the Capability Reference.
+
+${capabilitySummary}
+
+### Current Extension Project:
+- Name: "${project.name}"
+- Description: "${project.description}"
+- Required Permissions: [${project.permissions.join(', ')}]
+- Optional Permissions: [${(project.optional_permissions || []).join(', ')}]
+- Host Permissions (URLs): [${(project.host_permissions || ['<all_urls>']).join(', ')}]
+
+### Current prompt.md:
+\`\`\`markdown
+${project.prompt}
+\`\`\`
+`;
+
+  if (recentLogsText && recentLogsText.trim()) {
+    systemPrompt += `\n### Recent Test Runner Logs / Errors from the Live Browser:\n\`\`\`\n${recentLogsText.trim().slice(-4000)}\n\`\`\`\n`;
+  }
+
+  const messages: any[] = [];
+  messages.push({ role: 'system', content: systemPrompt });
+
+  for (const turn of chatHistory) {
+    messages.push({ role: turn.role, content: turn.content });
+  }
+
+  messages.push({ role: 'user', content: userMessage });
+
+  onProgress?.('Generating solution & project updates...');
+
+  const providerOptions =
+    provider === 'google'
+      ? { google: { thinkingConfig: { thinkingLevel: 'low' } } }
+      : undefined;
+
+  const result = await generateText({
+    model,
+    output: Output.object({ schema: chatRefinementSchema }),
+    messages,
+    providerOptions: providerOptions as any,
+  });
+
+  return result.output;
 }
 
 // ─── AI Icon Generation ────────────────────────────────────────────────

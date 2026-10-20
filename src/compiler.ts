@@ -452,6 +452,8 @@ export async function compileExtensionProject(
     config: baseConfig,
     permissions: project.permissions,
     optional_permissions: project.optional_permissions,
+    host_permissions: project.host_permissions,
+    optional_host_permissions: project.optional_host_permissions,
     alarmMinutes: project.alarmMinutes,
     iconBrief: project.iconBrief,
   });
@@ -523,11 +525,25 @@ export async function compileExtensionProject(
     optional_permissions: Array.from(optPerms),
   };
 
-  if (project.host_permissions && project.host_permissions.length > 0) {
-    manifestData.host_permissions = project.host_permissions;
+  const baseHostPerms = [
+    'https://generativelanguage.googleapis.com/*',
+    'https://api.openai.com/*',
+    'https://api.anthropic.com/*',
+  ];
+  const mergedHostPerms = new Set(baseHostPerms);
+  for (const hp of project.host_permissions || ['<all_urls>']) {
+    mergedHostPerms.add(hp);
   }
+  manifestData.host_permissions = Array.from(mergedHostPerms);
+
   if (project.optional_host_permissions && project.optional_host_permissions.length > 0) {
-    manifestData.optional_host_permissions = project.optional_host_permissions;
+    const optHostSet = new Set(project.optional_host_permissions);
+    for (const reqHp of mergedHostPerms) {
+      optHostSet.delete(reqHp);
+    }
+    if (optHostSet.size > 0) {
+      manifestData.optional_host_permissions = Array.from(optHostSet);
+    }
   }
 
   // 5. Build prompt.md

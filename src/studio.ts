@@ -22,8 +22,11 @@ import {
   generateIconWithAI,
   resolveImageModelId,
   DEFAULT_ICON_MODEL,
+  chatRefineProjectWithAI,
   type InspirationAttachment,
+  type ChatTurn,
 } from './studio-ai';
+import { type AgentLogEvent, type AgentLogChannel } from './logger';
 
 // ─── Default Starter Templates ─────────────────────────────────────────
 
@@ -134,6 +137,7 @@ const STARTER_PROJECTS: ExtensionProjectData[] = [
     alarmMinutes: 30,
     permissions: ['storage', 'alarms'],
     optional_permissions: ['tabs', 'tabGroups', 'scripting'],
+    host_permissions: ['<all_urls>'],
     agentSettings: [
       { id: 'auto_sort', label: 'Auto-sort on schedule', hint: 'Sort tabs periodically', type: 'boolean', default: true },
       { id: 'group_color', label: 'Color theme', hint: 'Default group color', type: 'select', default: 'purple', options: [{ label: 'Purple', value: 'purple' }, { label: 'Blue', value: 'blue' }] }
@@ -151,12 +155,29 @@ const STARTER_PROJECTS: ExtensionProjectData[] = [
     alarmMinutes: 60,
     permissions: ['storage', 'alarms'],
     optional_permissions: ['bookmarks'],
+    host_permissions: ['<all_urls>'],
     iconBrief: { symbol: 'bookmark', colors: ['#10b981', '#06b6d4'], styleDescription: 'Emerald green bookmark' },
     includeStudio: false,
   },
 ];
 
 // ─── Studio State ──────────────────────────────────────────────────────
+
+interface EditorUndoSnapshot {
+  promptText: string;
+  hostPermissions: string[];
+  optionalPermissions: string[];
+  tab: string;
+}
+
+interface ChatMessageWithUndo {
+  role: 'user' | 'assistant';
+  content: string;
+  appliedChange?: {
+    summary: string;
+    undoSnapshot: EditorUndoSnapshot;
+  };
+}
 
 let projects: ExtensionProjectData[] = [];
 let currentProject: ExtensionProjectData = STARTER_PROJECTS[0];
@@ -165,6 +186,17 @@ let activeStudioOverride = false;
 let attachments: InspirationAttachment[] = [];
 let uiRenderer: UIRenderer | null = null;
 let currentConfig: Config | null = null;
+
+// Editor Undo / Redo Stacks
+const editorUndoStack: EditorUndoSnapshot[] = [];
+const editorRedoStack: EditorUndoSnapshot[] = [];
+
+// Structured Live Test Runner Telemetry Log Buffer
+const runnerLogEntries: AgentLogEvent[] = [];
+
+// Interactive AI Refine Chat History
+const chatHistory: ChatTurn[] = [];
+const chatUiMessages: ChatMessageWithUndo[] = [];
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const $input = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
@@ -201,6 +233,10 @@ async function initStudio(): Promise<void> {
   renderToolsReference();
   updateLiveUiPreview();
   renderIcons();
+  renderHostPermissionsUI();
+  updateUndoRedoButtons();
+  renderRunnerLogs();
+  renderChatMessages();
 }
 
 // ─── Permissions List Rendering ────────────────────────────────────────
@@ -274,17 +310,39 @@ function updatePermissionsCheckboxes(): void {
 function renderProjectDropdown(): void {
   const sel = $('projectSelect') as HTMLSelectElement;
   sel.innerHTML = '';
+
+  const myGroup = document.createElement('optgroup');
+  myGroup.label = 'My Projects';
   for (const p of projects) {
     const opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = `${p.name} (v${p.version || '1.0.0'})`;
     if (p.id === currentProject.id) opt.selected = true;
-    sel.appendChild(opt);
+    myGroup.appendChild(opt);
   }
+  sel.appendChild(myGroup);
+
+  const tplGroup = document.createElement('optgroup');
+  tplGroup.label = 'New from Starter Template...';
+
+  const optSortingHat = document.createElement('option');
+  optSortingHat.value = 'template:sorting-hat';
+  optSortingHat.textContent = '+ Sorting Hat Tab Organizer';
+  tplGroup.appendChild(optSortingHat);
+
+  const optBookmark = document.createElement('option');
+  optBookmark.value = 'template:bookmark-gardener';
+  optBookmark.textContent = '+ Bookmark Gardener';
+  tplGroup.appendChild(optBookmark);
+
+  sel.appendChild(tplGroup);
 }
 
 function loadProjectIntoUI(p: ExtensionProjectData): void {
   currentProject = p;
+  if (!currentProject.host_permissions || currentProject.host_permissions.length === 0) {
+    currentProject.host_permissions = ['<all_urls>'];
+  }
   $input('extNameInput').value = p.name || '';
   $input('extSlugInput').value = p.slug || '';
   $input('extAlarmInput').value = String(p.alarmMinutes ?? 30);
@@ -347,10 +405,14 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
   }
 
   updatePermissionsCheckboxes();
+  renderHostPermissionsUI();
   renderCodeEditor();
   renderIcons();
   updateLiveUiPreview();
   checkOverrideStatus();
+  if ($('chatActiveProjectName')) {
+    $('chatActiveProjectName').textContent = p.name || 'Current Project';
+  }
 }
 
 async function saveProject(): Promise<void> {
@@ -480,6 +542,125 @@ function updateActiveOverrideButton(): void {
   }
 }
 
+// ─── Website & URL Access (host_permissions) ──────────────────────────
+
+function renderHostPermissionsUI(): void {
+  if (!currentProject.host_permissions) {
+    currentProject.host_permissions = ['<all_urls>'];
+  }
+
+  const checkAll = $input('checkAllUrls');
+  if (checkAll) {
+    checkAll.checked = currentProject.host_permissions.includes('<all_urls>');
+  }
+
+  const container = $('hostPermissionsList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const nonAllUrls = currentProject.host_permissions.filter((p) => p !== '<all_urls>');
+  if (nonAllUrls.length === 0 && !currentProject.host_permissions.includes('<all_urls>')) {
+    container.innerHTML = '<span style="font-size: 10.5px; color: var(--color-warning);">⚠️ No website origins granted. Tab reading and scripting will be restricted.</span>';
+    return;
+  }
+
+  for (const pat of nonAllUrls) {
+    const chip = document.createElement('div');
+    chip.className = 'attachment-chip';
+    chip.style.cssText = 'font-family: var(--pib-font-mono); font-size: 11px;';
+    chip.innerHTML = `<span>${escapeHtml(pat)}</span>`;
+    const btnDel = document.createElement('button');
+    btnDel.innerHTML = '&times;';
+    btnDel.title = `Remove ${pat}`;
+    btnDel.addEventListener('click', () => {
+      currentProject.host_permissions = (currentProject.host_permissions || []).filter((x) => x !== pat);
+      saveProject();
+      renderHostPermissionsUI();
+      if (activeEditorTab === 'manifest') renderCodeEditor();
+    });
+    chip.appendChild(btnDel);
+    container.appendChild(chip);
+  }
+}
+
+// ─── Editor Undo / Redo ────────────────────────────────────────────────
+
+function pushEditorUndoSnapshot(): void {
+  const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
+  editorUndoStack.push({
+    promptText: currentPrompt,
+    hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
+    optionalPermissions: [...(currentProject.optional_permissions || [])],
+    tab: activeEditorTab,
+  });
+  if (editorUndoStack.length > 50) {
+    editorUndoStack.shift();
+  }
+  editorRedoStack.length = 0;
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons(): void {
+  const undoBtn = $btn('btnEditorUndo');
+  const redoBtn = $btn('btnEditorRedo');
+  if (undoBtn) undoBtn.disabled = editorUndoStack.length === 0;
+  if (redoBtn) redoBtn.disabled = editorRedoStack.length === 0;
+}
+
+function performEditorUndo(): void {
+  if (editorUndoStack.length === 0) return;
+  const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
+  editorRedoStack.push({
+    promptText: currentPrompt,
+    hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
+    optionalPermissions: [...(currentProject.optional_permissions || [])],
+    tab: activeEditorTab,
+  });
+
+  const snap = editorUndoStack.pop()!;
+  currentProject.prompt = snap.promptText;
+  currentProject.host_permissions = snap.hostPermissions;
+  currentProject.optional_permissions = snap.optionalPermissions;
+
+  if (activeEditorTab === 'prompt') {
+    $textarea('codeEditor').value = snap.promptText;
+  }
+  saveProject();
+  updateLiveUiPreview();
+  updateEditorStatus();
+  renderHostPermissionsUI();
+  updatePermissionsCheckboxes();
+  updateUndoRedoButtons();
+  showToast('Undo', 'ok');
+}
+
+function performEditorRedo(): void {
+  if (editorRedoStack.length === 0) return;
+  const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
+  editorUndoStack.push({
+    promptText: currentPrompt,
+    hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
+    optionalPermissions: [...(currentProject.optional_permissions || [])],
+    tab: activeEditorTab,
+  });
+
+  const snap = editorRedoStack.pop()!;
+  currentProject.prompt = snap.promptText;
+  currentProject.host_permissions = snap.hostPermissions;
+  currentProject.optional_permissions = snap.optionalPermissions;
+
+  if (activeEditorTab === 'prompt') {
+    $textarea('codeEditor').value = snap.promptText;
+  }
+  saveProject();
+  updateLiveUiPreview();
+  updateEditorStatus();
+  renderHostPermissionsUI();
+  updatePermissionsCheckboxes();
+  updateUndoRedoButtons();
+  showToast('Redo', 'ok');
+}
+
 // ─── Tabbed Code Editor ────────────────────────────────────────────────
 
 function renderCodeEditor(): void {
@@ -511,6 +692,7 @@ function renderCodeEditor(): void {
       description: currentProject.description,
       permissions: currentProject.permissions,
       optional_permissions: currentProject.optional_permissions,
+      host_permissions: currentProject.host_permissions || ['<all_urls>'],
       prompt_in_a_box: {
         prompt: 'prompt.md',
         alarm_minutes: currentProject.alarmMinutes,
@@ -666,6 +848,7 @@ async function handleGenerateAiIcon(): Promise<void> {
 // ─── Visual UI Mutator ─────────────────────────────────────────────────
 
 function mutatePromptUiBlock(mutator: (uiObj: Record<string, any>) => void): void {
+  pushEditorUndoSnapshot();
   const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
   const match = currentPrompt.match(/```(?:ui|json\s+ui|json:ui)\s*\n([\s\S]*?)\n```/i);
 
@@ -738,6 +921,7 @@ function renderToolsReference(): void {
 // ─── Snippets ──────────────────────────────────────────────────────────
 
 function insertSnippet(type: string): void {
+  pushEditorUndoSnapshot();
   const editor = $('codeEditor') as HTMLTextAreaElement;
   let snippet = '';
 
@@ -777,6 +961,7 @@ function insertSnippet(type: string): void {
 }
 
 function formatUiBlock(): void {
+  pushEditorUndoSnapshot();
   const editor = $('codeEditor') as HTMLTextAreaElement;
   const text = editor.value;
   const match = text.match(/```(?:ui|json\s+ui|json:ui)\s*\n([\s\S]*?)\n```/i);
@@ -942,6 +1127,7 @@ async function handleAiGenerate(): Promise<void> {
     if (blueprint.alarmMinutes !== undefined) currentProject.alarmMinutes = blueprint.alarmMinutes;
     if (blueprint.permissions) currentProject.permissions = blueprint.permissions;
     if (blueprint.optional_permissions) currentProject.optional_permissions = blueprint.optional_permissions;
+    if (blueprint.host_permissions) currentProject.host_permissions = blueprint.host_permissions;
     if (blueprint.agentSettings) currentProject.agentSettings = blueprint.agentSettings;
     if (blueprint.iconBrief) {
       currentProject.iconBrief = {
@@ -995,6 +1181,8 @@ async function handleAiRefine(): Promise<void> {
   const progressEl = $('aiProgressText');
   progressEl.style.display = 'block';
   $btn('btnAiRefine').disabled = true;
+
+  pushEditorUndoSnapshot();
 
   try {
     const updatedPrompt = await refinePromptWithAI({
@@ -1052,7 +1240,7 @@ async function handleExportFolder(): Promise<void> {
   }
 }
 
-// ─── Live Test Runner ──────────────────────────────────────────────────
+// ─── Live Test Runner & Structured Console ──────────────────────────────
 
 async function runLiveTest(): Promise<void> {
   const trigger = $select('runnerTriggerSelect').value;
@@ -1064,8 +1252,14 @@ async function runLiveTest(): Promise<void> {
   updateActiveOverrideButton();
 
   $btn('btnRunLiveTest').disabled = true;
-  $('runnerConsole').innerHTML = '';
-  appendRunnerLog('step-start', `Triggering live run (${trigger})...`);
+  runnerLogEntries.length = 0;
+  appendRunnerLog({
+    id: `log-${Date.now()}`,
+    runId: 'test-run',
+    timestamp: Date.now(),
+    channel: 'step-start',
+    title: `Triggering live run (${trigger})...`,
+  });
 
   try {
     const res = await chrome.runtime.sendMessage({
@@ -1075,41 +1269,528 @@ async function runLiveTest(): Promise<void> {
     });
 
     if (res?.error) {
-      appendRunnerLog('error', `Run Error: ${res.error}`);
+      appendRunnerLog({
+        id: `log-${Date.now()}`,
+        runId: 'test-run',
+        timestamp: Date.now(),
+        channel: 'error',
+        title: `Run Error: ${res.error}`,
+      });
     } else {
-      appendRunnerLog('run-complete', `Run complete (${res.status}) in ${res.steps || 1} steps:`, res.summary);
+      appendRunnerLog({
+        id: `log-${Date.now()}`,
+        runId: 'test-run',
+        timestamp: Date.now(),
+        channel: 'run-complete',
+        step: res.steps || 1,
+        title: `Run complete (${res.status}) in ${res.steps || 1} steps: ${res.summary || ''}`,
+        data: res,
+      });
       if (res.tokens?.estimatedCost) {
-        appendRunnerLog('step-start', `Cost: $${res.tokens.estimatedCost.toFixed(4)} | Tokens: ${res.tokens.input} in / ${res.tokens.output} out`);
+        appendRunnerLog({
+          id: `log-${Date.now()}`,
+          runId: 'test-run',
+          timestamp: Date.now(),
+          channel: 'usage',
+          title: `Cost: $${res.tokens.estimatedCost.toFixed(4)} | Tokens: ${res.tokens.input} in / ${res.tokens.output} out`,
+          data: res.tokens,
+        });
       }
     }
   } catch (err) {
-    appendRunnerLog('error', `Failed to execute: ${(err as Error).message}`);
+    appendRunnerLog({
+      id: `log-${Date.now()}`,
+      runId: 'test-run',
+      timestamp: Date.now(),
+      channel: 'error',
+      title: `Failed to execute: ${(err as Error).message}`,
+    });
   } finally {
     $btn('btnRunLiveTest').disabled = false;
     updateLiveUiPreview();
   }
 }
 
-function appendRunnerLog(channel: string, title: string, data?: unknown): void {
-  const consoleEl = $('runnerConsole');
-  const div = document.createElement('div');
-  div.className = `console-log ${channel}`;
-  let text = `[${new Date().toLocaleTimeString()}] ${title}`;
-  if (data) {
-    text += '\n' + JSON.stringify(data, null, 2);
+function appendRunnerLog(event: AgentLogEvent): void {
+  runnerLogEntries.push(event);
+  if (runnerLogEntries.length > 200) {
+    runnerLogEntries.shift();
   }
+  renderRunnerLogs();
+}
+
+function tryParseJson(str: unknown): unknown {
+  if (typeof str !== 'string') return undefined;
+  const trimmed = str.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
   div.textContent = text;
-  consoleEl.appendChild(div);
-  consoleEl.scrollTop = consoleEl.scrollHeight;
+  return div.innerHTML;
+}
+
+function buildJsonTreeElement(data: unknown, keyName?: string, depth = 0, defaultOpen = true): HTMLElement {
+  if (typeof data === 'string') {
+    const parsed = tryParseJson(data);
+    if (parsed !== undefined && typeof parsed === 'object' && parsed !== null) {
+      data = parsed;
+    }
+  }
+
+  if (data === null || data === undefined) {
+    const el = document.createElement('div');
+    el.className = 'json-leaf';
+    el.innerHTML = `${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}<span class="json-null">${data === null ? 'null' : 'undefined'}</span>`;
+    return el;
+  }
+
+  if (typeof data === 'boolean') {
+    const el = document.createElement('div');
+    el.className = 'json-leaf';
+    el.innerHTML = `${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}<span class="json-boolean">${data}</span>`;
+    return el;
+  }
+
+  if (typeof data === 'number') {
+    const el = document.createElement('div');
+    el.className = 'json-leaf';
+    el.innerHTML = `${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}<span class="json-number">${data}</span>`;
+    return el;
+  }
+
+  if (typeof data === 'string') {
+    const el = document.createElement('div');
+    el.className = 'json-leaf';
+    const isMultiLine = data.includes('\n');
+    if (isMultiLine) {
+      const details = document.createElement('details');
+      details.className = 'json-node';
+      details.innerHTML = `
+        <summary class="json-summary">
+          ${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}
+          <span class="json-string">"${escapeHtml(data.slice(0, 45))}..." (${data.length} chars)</span>
+        </summary>
+        <pre style="margin: 4px 0 0 12px; font-size: 11px; white-space: pre-wrap; color: #86efac;">${escapeHtml(data)}</pre>
+      `;
+      return details;
+    } else {
+      el.innerHTML = `${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}<span class="json-string">"${escapeHtml(data)}"</span>`;
+      return el;
+    }
+  }
+
+  if (Array.isArray(data)) {
+    const details = document.createElement('details');
+    details.className = 'json-node';
+    if (depth < 2 && defaultOpen) details.open = true;
+
+    const count = data.length;
+    const summary = document.createElement('summary');
+    summary.className = 'json-summary';
+    summary.innerHTML = `${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}<span>Array(${count})</span>`;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.style.marginLeft = '12px';
+    data.forEach((item, idx) => {
+      body.appendChild(buildJsonTreeElement(item, `[${idx}]`, depth + 1, defaultOpen));
+    });
+    details.appendChild(body);
+    return details;
+  }
+
+  if (typeof data === 'object') {
+    const details = document.createElement('details');
+    details.className = 'json-node';
+    if (depth < 2 && defaultOpen) details.open = true;
+
+    const keys = Object.keys(data as Record<string, unknown>);
+    const summary = document.createElement('summary');
+    summary.className = 'json-summary';
+    summary.innerHTML = `${keyName ? `<span class="json-key">${escapeHtml(keyName)}: </span>` : ''}<span>{${keys.length} keys}</span>`;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.style.marginLeft = '12px';
+    for (const k of keys) {
+      body.appendChild(buildJsonTreeElement((data as Record<string, unknown>)[k], k, depth + 1, defaultOpen));
+    }
+    details.appendChild(body);
+    return details;
+  }
+
+  const fallback = document.createElement('div');
+  fallback.className = 'json-leaf';
+  fallback.textContent = String(data);
+  return fallback;
+}
+
+function renderRunnerLogs(): void {
+  const consoleEl = $('runnerConsole');
+  if (!consoleEl) return;
+
+  const filterChannel = ($select('logFilterSelect')?.value || 'all') as string;
+  const filterSearch = ($input('logSearchInput')?.value || '').toLowerCase().trim();
+
+  const filtered = runnerLogEntries.filter((log) => {
+    if (filterChannel === 'error' && log.channel !== 'error') return false;
+    if (filterChannel === 'tools' && log.channel !== 'tool-call' && log.channel !== 'tool-result') return false;
+    if (filterChannel === 'steps' && log.channel !== 'step-start' && log.channel !== 'run-complete' && log.channel !== 'assistant') return false;
+
+    if (filterSearch) {
+      const matchTitle = (log.title || '').toLowerCase().includes(filterSearch);
+      const matchBody = (log.body || '').toLowerCase().includes(filterSearch);
+      const matchData = log.data ? JSON.stringify(log.data).toLowerCase().includes(filterSearch) : false;
+      if (!matchTitle && !matchBody && !matchData) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    consoleEl.innerHTML = `<div style="color: #71717a; font-style: italic; padding: 12px;">${runnerLogEntries.length === 0 ? 'Live agent telemetry console ready. Click "Run Live Test" to simulate execution against real browser tabs & tools.' : 'No logs match current filter.'}</div>`;
+    return;
+  }
+
+  consoleEl.innerHTML = '';
+  for (const log of filtered) {
+    const card = document.createElement('div');
+    card.className = `log-card channel-${log.channel || 'step-start'}`;
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'log-card-header';
+
+    const meta = document.createElement('div');
+    meta.className = 'log-meta';
+
+    const badge = document.createElement('span');
+    badge.className = `log-badge badge-${log.channel || 'step-start'}`;
+    badge.textContent = log.channel || 'LOG';
+    meta.appendChild(badge);
+
+    if (log.step !== undefined) {
+      const stepBadge = document.createElement('span');
+      stepBadge.className = 'badge-tag';
+      stepBadge.style.cssText = 'background: #27272a; color: #a1a1aa; font-size: 9.5px;';
+      stepBadge.textContent = `Step ${log.step}`;
+      meta.appendChild(stepBadge);
+    }
+
+    if (log.durationMs !== undefined) {
+      const durBadge = document.createElement('span');
+      durBadge.className = 'badge-tag';
+      durBadge.style.cssText = 'background: #27272a; color: #a1a1aa; font-size: 9.5px;';
+      durBadge.textContent = `${log.durationMs}ms`;
+      meta.appendChild(durBadge);
+    }
+
+    const time = document.createElement('span');
+    time.className = 'log-time';
+    time.textContent = new Date(log.timestamp || Date.now()).toLocaleTimeString();
+    meta.appendChild(time);
+
+    header.appendChild(meta);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'log-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'log-btn';
+    copyBtn.title = 'Copy this log entry';
+    copyBtn.innerHTML = '📋 Copy';
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const payload = {
+        channel: log.channel,
+        step: log.step,
+        durationMs: log.durationMs,
+        title: log.title,
+        body: log.body,
+        data: log.data,
+      };
+      navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.innerHTML = '📋 Copy'; }, 1500);
+      });
+    });
+    actions.appendChild(copyBtn);
+
+    if (log.channel === 'error' || (typeof log.title === 'string' && log.title.toLowerCase().includes('error'))) {
+      const fixBtn = document.createElement('button');
+      fixBtn.className = 'log-btn fix-chat';
+      fixBtn.title = 'Fix this error in AI Refine Chat';
+      fixBtn.innerHTML = '🔧 Fix in Chat';
+      fixBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openChatWithError(log);
+      });
+      actions.appendChild(fixBtn);
+    }
+
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    // Title
+    const title = document.createElement('div');
+    title.className = 'log-title';
+    title.textContent = log.title || '';
+    card.appendChild(title);
+
+    // Body
+    if (log.body) {
+      const parsedBody = tryParseJson(log.body);
+      if (parsedBody && typeof parsedBody === 'object') {
+        const tree = document.createElement('div');
+        tree.className = 'json-tree';
+        tree.appendChild(buildJsonTreeElement(parsedBody, undefined, 0, true));
+        card.appendChild(tree);
+      } else if (log.body.length > 200 || log.body.includes('\n')) {
+        const bodyDetails = document.createElement('details');
+        bodyDetails.className = 'json-node';
+        bodyDetails.innerHTML = `
+          <summary class="json-summary">Details (${log.body.length} chars)</summary>
+          <pre style="margin: 4px 0 0; padding: 6px; background: #0d0d10; border-radius: 4px; font-size: 11px; white-space: pre-wrap; color: #cbd5e1;">${escapeHtml(log.body)}</pre>
+        `;
+        card.appendChild(bodyDetails);
+      } else {
+        const b = document.createElement('div');
+        b.style.cssText = 'font-size: 11px; color: #a1a1aa; white-space: pre-wrap;';
+        b.textContent = log.body;
+        card.appendChild(b);
+      }
+    }
+
+    // Data (Tree view)
+    if (log.data !== undefined && log.data !== null) {
+      const tree = document.createElement('div');
+      tree.className = 'json-tree';
+      tree.appendChild(buildJsonTreeElement(log.data, undefined, 0, true));
+      card.appendChild(tree);
+    }
+
+    consoleEl.appendChild(card);
+  }
+}
+
+function openChatWithError(log: AgentLogEvent): void {
+  $('tabChat').click();
+  const input = $textarea('chatInput');
+  const errorMsg = log.body || (log.data ? JSON.stringify(log.data) : log.title);
+  input.value = `I got this error during testing: "${log.title}". Details: ${errorMsg}. Please fix the prompt, handle the edge case, and adjust permissions if needed.`;
+  input.focus();
+}
+
+// ─── AI Refinement Chat ────────────────────────────────────────────────
+
+function renderChatMessages(): void {
+  const list = $('chatMessagesList');
+  if (!list) return;
+
+  list.innerHTML = '';
+  // Welcome bubble
+  const welcome = document.createElement('div');
+  welcome.className = 'chat-bubble assistant';
+  welcome.innerHTML = `
+    <div><strong>AI Extension Architect</strong> is ready to collaborate on <strong>${escapeHtml(currentProject.name)}</strong>.</div>
+    <div>You can ask me to debug errors from the Test Runner, optimize prompt batching via <code>code_mode</code>, add UI components, or manage URL access.</div>
+    <div style="font-size: 11px; color: var(--color-text-muted);">Try asking: <em>"I get a timeout error on tabs, please optimize with code_mode"</em> or <em>"Grant access to all URLs and add an undo toast"</em>.</div>
+  `;
+  list.appendChild(welcome);
+
+  for (let i = 0; i < chatUiMessages.length; i++) {
+    const msg = chatUiMessages[i];
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${msg.role}`;
+
+    const textDiv = document.createElement('div');
+    textDiv.style.whiteSpace = 'pre-wrap';
+    textDiv.textContent = msg.content;
+    bubble.appendChild(textDiv);
+
+    if (msg.appliedChange) {
+      const applied = document.createElement('div');
+      applied.className = 'chat-applied-badge';
+      applied.innerHTML = `<span>✅ ${escapeHtml(msg.appliedChange.summary)}</span>`;
+
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'chip-btn';
+      undoBtn.style.padding = '2px 6px';
+      undoBtn.textContent = '↶ Undo';
+      const snap = msg.appliedChange.undoSnapshot;
+      undoBtn.addEventListener('click', () => {
+        currentProject.prompt = snap.promptText;
+        currentProject.host_permissions = snap.hostPermissions;
+        currentProject.optional_permissions = snap.optionalPermissions;
+        if (activeEditorTab === 'prompt') {
+          $textarea('codeEditor').value = snap.promptText;
+        }
+        saveProject();
+        updateLiveUiPreview();
+        updateEditorStatus();
+        renderHostPermissionsUI();
+        updatePermissionsCheckboxes();
+        undoBtn.disabled = true;
+        undoBtn.textContent = 'Undone';
+        showToast('Restored previous project state', 'ok');
+      });
+      applied.appendChild(undoBtn);
+      bubble.appendChild(applied);
+    }
+
+    list.appendChild(bubble);
+  }
+
+  list.scrollTop = list.scrollHeight;
+}
+
+async function sendChatMessage(customText?: string): Promise<void> {
+  const input = $textarea('chatInput');
+  const userText = (customText || input.value).trim();
+  if (!userText) return;
+
+  const cfg = await getConfig();
+  const provider = cfg.provider;
+  const apiKey = cfg.keys[provider];
+  if (!apiKey) {
+    showToast(`No ${provider} API key configured. Open Settings.`, 'error');
+    return;
+  }
+
+  input.value = '';
+  chatUiMessages.push({ role: 'user', content: userText });
+  chatHistory.push({ role: 'user', content: userText });
+  renderChatMessages();
+
+  const progressEl = $('chatProgressText');
+  progressEl.style.display = 'block';
+  $btn('btnChatSend').disabled = true;
+
+  // Gather recent test runner logs if enabled
+  let logsContext = '';
+  if ($input('chatIncludeLogs').checked && runnerLogEntries.length > 0) {
+    logsContext = runnerLogEntries
+      .slice(-15)
+      .map((e) => `[${e.channel}] ${e.title} ${e.body || ''} ${e.data ? JSON.stringify(e.data) : ''}`)
+      .join('\n');
+  }
+
+  const modelId = $select('aiModelSelect').value;
+
+  try {
+    const result = await chatRefineProjectWithAI({
+      provider,
+      modelId,
+      apiKey,
+      project: currentProject,
+      chatHistory: chatHistory.slice(-6),
+      userMessage: userText,
+      recentLogsText: logsContext,
+      onProgress: (status) => {
+        progressEl.textContent = status;
+      },
+    });
+
+    let appliedSummary = result.changeSummary;
+    let undoSnapshot: EditorUndoSnapshot | undefined;
+
+    const hasChanges = Boolean(
+      result.updatedPromptMarkdown ||
+      result.updatedOptionalPermissions ||
+      result.updatedHostPermissions
+    );
+
+    if (hasChanges) {
+      undoSnapshot = {
+        promptText: currentProject.prompt || '',
+        hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
+        optionalPermissions: [...(currentProject.optional_permissions || [])],
+        tab: activeEditorTab,
+      };
+      pushEditorUndoSnapshot();
+
+      if (result.updatedPromptMarkdown) {
+        currentProject.prompt = result.updatedPromptMarkdown;
+        if (activeEditorTab === 'prompt') {
+          $textarea('codeEditor').value = result.updatedPromptMarkdown;
+        }
+      }
+
+      if (result.updatedOptionalPermissions) {
+        currentProject.optional_permissions = result.updatedOptionalPermissions;
+        updatePermissionsCheckboxes();
+      }
+
+      if (result.updatedHostPermissions) {
+        currentProject.host_permissions = result.updatedHostPermissions;
+        renderHostPermissionsUI();
+      }
+
+      await saveProject();
+      updateLiveUiPreview();
+      updateEditorStatus();
+      if (activeEditorTab === 'manifest') renderCodeEditor();
+    }
+
+    chatHistory.push({ role: 'assistant', content: result.reply });
+    chatUiMessages.push({
+      role: 'assistant',
+      content: result.reply,
+      appliedChange: hasChanges
+        ? {
+            summary: appliedSummary || 'Updated project configuration & prompt',
+            undoSnapshot: undoSnapshot!,
+          }
+        : undefined,
+    });
+    renderChatMessages();
+    showToast('AI response received', 'ok');
+  } catch (err) {
+    chatUiMessages.push({
+      role: 'assistant',
+      content: `❌ Error: ${(err as Error).message}`,
+    });
+    renderChatMessages();
+    showToast(`AI chat failed: ${(err as Error).message}`, 'error');
+  } finally {
+    progressEl.style.display = 'none';
+    $btn('btnChatSend').disabled = false;
+  }
 }
 
 // ─── Event Listeners ───────────────────────────────────────────────────
 
 function setupEventListeners(): void {
-  // Project selection & new project
+  // Project selection & new project & template cloning
   $('projectSelect').addEventListener('change', (e) => {
-    const selId = (e.target as HTMLSelectElement).value;
-    const p = projects.find((x) => x.id === selId);
+    const selVal = (e.target as HTMLSelectElement).value;
+    if (selVal.startsWith('template:')) {
+      const tplKey = selVal.replace('template:', '');
+      const base = tplKey === 'sorting-hat' ? STARTER_PROJECTS[0] : STARTER_PROJECTS[1];
+      const newP: ExtensionProjectData = {
+        ...base,
+        id: `${base.slug}-${Date.now().toString(36)}`,
+        name: `${base.name} (Copy)`,
+        host_permissions: base.host_permissions ? [...base.host_permissions] : ['<all_urls>'],
+      };
+      projects.push(newP);
+      renderProjectDropdown();
+      loadProjectIntoUI(newP);
+      saveProject();
+      showToast(`Created new project from "${base.name}" template`, 'ok');
+      return;
+    }
+
+    const p = projects.find((x) => x.id === selVal);
     if (p) loadProjectIntoUI(p);
   });
 
@@ -1125,6 +1806,7 @@ function setupEventListeners(): void {
       alarmMinutes: 30,
       permissions: ['storage', 'alarms'],
       optional_permissions: ['tabs'],
+      host_permissions: ['<all_urls>'],
       iconBrief: { symbol: 'spark', colors: ['#6366f1', '#a855f7'] },
     };
     projects.push(newP);
@@ -1134,21 +1816,94 @@ function setupEventListeners(): void {
     showToast('Created new extension project', 'ok');
   });
 
-  $('btnTemplates').addEventListener('click', () => {
-    const choice = prompt('Choose a starter template:\n1. Sorting Hat (Smart Tab Organizer)\n2. Bookmark Gardener\n(Enter 1 or 2):');
-    if (choice === '1') {
-      const p = { ...STARTER_PROJECTS[0], id: `sorting-hat-${Date.now().toString(36)}` };
-      projects.push(p);
-      renderProjectDropdown();
-      loadProjectIntoUI(p);
-      saveProject();
-    } else if (choice === '2') {
-      const p = { ...STARTER_PROJECTS[1], id: `bookmark-gardener-${Date.now().toString(36)}` };
-      projects.push(p);
-      renderProjectDropdown();
-      loadProjectIntoUI(p);
-      saveProject();
+  $('btnDeleteProject').addEventListener('click', async () => {
+    if (projects.length <= 1) {
+      showToast('Cannot delete the only remaining project', 'error');
+      return;
     }
+    const confirmed = confirm(`Are you sure you want to delete "${currentProject.name}"?`);
+    if (!confirmed) return;
+
+    const doomedId = currentProject.id;
+    projects = projects.filter((p) => p.id !== doomedId);
+    currentProject = projects[0];
+    await chrome.storage.local.set({ studioProjects: projects, activeStudioProjectId: currentProject.id });
+    renderProjectDropdown();
+    loadProjectIntoUI(currentProject);
+    showToast('Project deleted', 'ok');
+  });
+
+  // Editor Undo / Redo buttons
+  $('btnEditorUndo').addEventListener('click', performEditorUndo);
+  $('btnEditorRedo').addEventListener('click', performEditorRedo);
+
+  // Keyboard shortcuts for Editor Undo / Redo
+  $textarea('codeEditor').addEventListener('keydown', (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        performEditorRedo();
+      } else {
+        performEditorUndo();
+      }
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+      e.preventDefault();
+      performEditorRedo();
+    }
+  });
+
+  // Website & URL Access (host_permissions) listeners
+  $('checkAllUrls').addEventListener('change', () => {
+    const isChecked = $input('checkAllUrls').checked;
+    let list = currentProject.host_permissions ? [...currentProject.host_permissions] : [];
+    if (isChecked && !list.includes('<all_urls>')) {
+      list.unshift('<all_urls>');
+    } else if (!isChecked) {
+      list = list.filter((p) => p !== '<all_urls>');
+    }
+    currentProject.host_permissions = list;
+    saveProject();
+    renderHostPermissionsUI();
+    if (activeEditorTab === 'manifest') renderCodeEditor();
+  });
+
+  $('btnAddHostPattern').addEventListener('click', () => {
+    const inp = $input('hostPatternInput');
+    const pat = inp.value.trim();
+    if (!pat) return;
+    let list = currentProject.host_permissions ? [...currentProject.host_permissions] : [];
+    if (!list.includes(pat)) {
+      list.push(pat);
+      currentProject.host_permissions = list;
+      saveProject();
+      renderHostPermissionsUI();
+      if (activeEditorTab === 'manifest') renderCodeEditor();
+      showToast(`Added URL access pattern: ${pat}`, 'ok');
+    }
+    inp.value = '';
+  });
+
+  $input('hostPatternInput').addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('btnAddHostPattern').click();
+    }
+  });
+
+  document.querySelectorAll('[data-host-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const preset = btn.getAttribute('data-host-preset');
+      if (!preset) return;
+      let list = currentProject.host_permissions ? [...currentProject.host_permissions] : [];
+      if (!list.includes(preset)) {
+        list.push(preset);
+        currentProject.host_permissions = list;
+        saveProject();
+        renderHostPermissionsUI();
+        if (activeEditorTab === 'manifest') renderCodeEditor();
+        showToast(`Added preset pattern: ${preset}`, 'ok');
+      }
+    });
   });
 
   // Top header buttons
@@ -1371,22 +2126,94 @@ function setupEventListeners(): void {
     });
   });
 
-  // Right pane subview switch
+  // Right pane 3-subview switch
   $('tabPreview').addEventListener('click', () => {
     $('tabPreview').classList.add('active');
     $('tabRunner').classList.remove('active');
+    $('tabChat').classList.remove('active');
     $('previewContainer').style.display = 'block';
     $('runnerContainer').style.display = 'none';
+    $('chatContainer').style.display = 'none';
   });
 
   $('tabRunner').addEventListener('click', () => {
     $('tabRunner').classList.add('active');
     $('tabPreview').classList.remove('active');
+    $('tabChat').classList.remove('active');
     $('previewContainer').style.display = 'none';
     $('runnerContainer').style.display = 'flex';
+    $('chatContainer').style.display = 'none';
   });
 
-  // AI buttons
+  $('tabChat').addEventListener('click', () => {
+    $('tabChat').classList.add('active');
+    $('tabPreview').classList.remove('active');
+    $('tabRunner').classList.remove('active');
+    $('previewContainer').style.display = 'none';
+    $('runnerContainer').style.display = 'none';
+    $('chatContainer').style.display = 'flex';
+    renderChatMessages();
+  });
+
+  // Log Toolbar Controls
+  $('logFilterSelect').addEventListener('change', renderRunnerLogs);
+  $('logSearchInput').addEventListener('input', renderRunnerLogs);
+
+  $('btnExpandAllLogs').addEventListener('click', () => {
+    const details = $('runnerConsole').querySelectorAll<HTMLDetailsElement>('details.json-node');
+    details.forEach((d) => { d.open = true; });
+  });
+
+  $('btnCollapseAllLogs').addEventListener('click', () => {
+    const details = $('runnerConsole').querySelectorAll<HTMLDetailsElement>('details.json-node');
+    details.forEach((d) => { d.open = false; });
+  });
+
+  $('btnCopyAllLogs').addEventListener('click', () => {
+    const formatted = runnerLogEntries.map((e) => {
+      let str = `[${e.channel || 'log'}] ${e.title || ''}`;
+      if (e.body) str += `\n${e.body}`;
+      if (e.data) str += `\n${JSON.stringify(e.data, null, 2)}`;
+      return str;
+    }).join('\n\n---\n\n');
+    navigator.clipboard.writeText(formatted || 'No logs').then(() => {
+      showToast(`Copied ${runnerLogEntries.length} log entries to clipboard!`, 'ok');
+    });
+  });
+
+  $('btnClearLogs').addEventListener('click', () => {
+    runnerLogEntries.length = 0;
+    renderRunnerLogs();
+    showToast('Cleared logs', 'ok');
+  });
+
+  // AI Refine Chat Controls
+  $('btnChatSend').addEventListener('click', () => sendChatMessage());
+
+  $textarea('chatInput').addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  $('btnClearChat').addEventListener('click', () => {
+    chatHistory.length = 0;
+    chatUiMessages.length = 0;
+    renderChatMessages();
+    showToast('Chat history cleared', 'ok');
+  });
+
+  document.querySelectorAll('[data-chat-suggest]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const suggest = btn.getAttribute('data-chat-suggest');
+      if (suggest) {
+        sendChatMessage(suggest);
+      }
+    });
+  });
+
+  // AI Generator and Refine in Left Pane
   $('btnAiGenerate').addEventListener('click', handleAiGenerate);
   $('btnAiRefine').addEventListener('click', handleAiRefine);
 
@@ -1396,7 +2223,7 @@ function setupEventListeners(): void {
   // Listen for agent logs broadcast from background
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'agent-log' && msg.event) {
-      appendRunnerLog(msg.event.channel || 'step-start', msg.event.title || '', msg.event.data);
+      appendRunnerLog(msg.event);
     }
   });
 }
