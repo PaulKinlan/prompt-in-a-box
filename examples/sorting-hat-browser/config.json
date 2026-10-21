@@ -1,5 +1,5 @@
 {
-  "version": "1.0.14",
+  "version": "1.0.15",
   "providers": {
     "allowed": [
       "google"
@@ -64,7 +64,7 @@
     ]
   },
   "ui": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showStudio": false,
     "showCosts": false,
     "showTokenUsage": false,
@@ -107,7 +107,7 @@
     "allowDeleteArtifacts": false
   },
   "features": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showProviderSelector": true,
     "showModelSelector": true,
     "showProviderTools": false,
@@ -120,6 +120,6 @@
     "allowArtifacts": false,
     "allowManualRun": true
   },
-  "pack_hash": "c7fb9b98199a084fdecb7c8100452bbff43c83f68bda8caa152fb5087f4fbc18",
+  "pack_hash": "493fcdb1dc975c94c98f00cf091cabc94f29a104257066655aac69a9cdb2f6db",
   "prompt": "prompt.md"
 }

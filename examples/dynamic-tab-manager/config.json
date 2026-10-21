@@ -1,5 +1,5 @@
 {
-  "version": "0.7.11",
+  "version": "0.7.12",
   "providers": {
     "allowed": [
       "anthropic",
@@ -67,7 +67,7 @@
     "lockProviderTools": false
   },
   "ui": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showCosts": true,
     "showTokenUsage": true,
     "showToolCallDetails": true,
@@ -110,7 +110,7 @@
     "allowDeleteArtifacts": true
   },
   "features": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showProviderSelector": true,
     "showModelSelector": true,
     "showProviderTools": true,
@@ -123,6 +123,6 @@
     "allowArtifacts": true,
     "allowManualRun": true
   },
-  "pack_hash": "6cd88c03b49919a448e6d0280f1baa7dcb8eb4422ce5679257b2f7c0d606a07a",
+  "pack_hash": "8095445d952116ed9621a27f3414fccaeaa10bf272b21d69b1ba5513db58a7ae",
   "prompt": "prompt.md"
 }

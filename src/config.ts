@@ -46,8 +46,8 @@ export interface UIConfig {
   showStudio: boolean;
 
   // Popup
-  showAuditUI: boolean;
   showAgentUI: boolean;
+  showAuditUI: boolean;
   showPopupHeader: boolean;
   showViewSwitcher: boolean;
   showStatusCard: boolean;
@@ -102,8 +102,8 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   showStudio: false,
 
   // Popup
-  showAuditUI: true,
   showAgentUI: true,
+  showAuditUI: true,
   showPopupHeader: true,
   showViewSwitcher: true,
   showStatusCard: true,
@@ -151,8 +151,8 @@ export interface ExtensionConfig {
   version?: string;
   prompt?: string;
   pack_hash?: string;
-  showAuditUI?: boolean;
   showAgentUI?: boolean;
+  showAuditUI?: boolean;
   providers?: {
     allowed?: Provider[];
     default?: Provider;
@@ -179,8 +179,8 @@ export interface ExtensionConfig {
   ui?: Partial<UIConfig>;
   agentSettings?: AgentSettingsConfig | null;
   features?: {
-    showAuditUI?: boolean;
     showAgentUI?: boolean;
+    showAuditUI?: boolean;
     showProviderSelector?: boolean;
     showModelSelector?: boolean;
     showProviderTools?: boolean;
@@ -218,7 +218,7 @@ export interface Config {
   agentSettings?: AgentSettingsConfig | null;
 }
 
-export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSettings' | 'permissions' | 'prompt' | 'pack_hash' | 'showAuditUI' | 'showAgentUI'>> & {
+export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSettings' | 'permissions' | 'prompt' | 'pack_hash' | 'showAgentUI' | 'showAuditUI'>> & {
   agentSettings: AgentSettingsConfig | null;
   permissions?: {
     allowed?: string[];
@@ -226,8 +226,8 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSetting
   };
   prompt?: string;
   pack_hash?: string;
-  showAuditUI?: boolean;
   showAgentUI?: boolean;
+  showAuditUI?: boolean;
 } = {
   version: typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest().version : '0.7.0',
   prompt: 'prompt.md',
@@ -301,6 +301,7 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSetting
   ui: DEFAULT_UI_CONFIG,
   agentSettings: null,
   features: {
+    showAgentUI: true,
     showAuditUI: true,
     showProviderSelector: true,
     showModelSelector: true,
@@ -326,6 +327,7 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
     if (res.ok) {
       const data = (await res.json()) as ExtensionConfig;
       const featureKeys = [
+        'showAgentUI',
         'showAuditUI',
         'showProviderSelector',
         'showModelSelector',
@@ -357,11 +359,14 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
       }
 
       if (
-        data.showAuditUI === false ||
         data.showAgentUI === false ||
+        data.showAuditUI === false ||
         rawUi.showAgentUI === false ||
-        rawFeatures.showAgentUI === false
+        rawUi.showAuditUI === false ||
+        rawFeatures.showAgentUI === false ||
+        rawFeatures.showAuditUI === false
       ) {
+        resolvedFeatures.showAgentUI = false;
         resolvedFeatures.showAuditUI = false;
       }
 
@@ -660,13 +665,24 @@ export async function getConfig(): Promise<Config> {
   const ui: UIConfig = {
     ...DEFAULT_UI_CONFIG,
     ...(staticCfg.ui || {}),
-    showAuditUI:
-      staticCfg.showAuditUI === false ||
+    showAgentUI:
       staticCfg.showAgentUI === false ||
+      staticCfg.showAuditUI === false ||
       staticCfg.ui?.showAgentUI === false ||
-      staticCfg.features?.showAgentUI === false
+      staticCfg.ui?.showAuditUI === false ||
+      staticCfg.features?.showAgentUI === false ||
+      staticCfg.features?.showAuditUI === false
         ? false
-        : resolveFlag('showAuditUI'),
+        : resolveFlag('showAgentUI'),
+    showAuditUI:
+      staticCfg.showAgentUI === false ||
+      staticCfg.showAuditUI === false ||
+      staticCfg.ui?.showAgentUI === false ||
+      staticCfg.ui?.showAuditUI === false ||
+      staticCfg.features?.showAgentUI === false ||
+      staticCfg.features?.showAuditUI === false
+        ? false
+        : resolveFlag('showAgentUI'),
     showProviderSelector: resolveFlag('showProviderSelector'),
     showModelSelector: resolveFlag('showModelSelector'),
     showProviderTools: resolveFlag('showProviderTools'),

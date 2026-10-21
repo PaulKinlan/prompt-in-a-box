@@ -219,7 +219,7 @@ Extensions can declare static policies in `config.json` (or per-example `config.
   "version": "1.0.0",
   "prompt": "prompt.md",
   "pack_hash": "...",
-  "showAuditUI": true,
+  "showAgentUI": true,
   "providers": {
     "allowed": ["google", "anthropic", "openai"],
     "default": "google",
@@ -272,7 +272,7 @@ Extensions can declare static policies in `config.json` (or per-example `config.
     ]
   },
   "ui": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showCosts": true,
     "showTokenUsage": true,
     "showToolCallDetails": true,
@@ -315,7 +315,7 @@ Extensions can declare static policies in `config.json` (or per-example `config.
     "allowDeleteArtifacts": true
   },
   "features": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showProviderSelector": true,
     "showModelSelector": true,
     "showProviderTools": true,
@@ -341,7 +341,7 @@ Extensions can declare static policies in `config.json` (or per-example `config.
 | `version` | `string` | `"1.0.0"` | Version of the extension package. Auto-bumped on build when contents change. |
 | `prompt` | `string` | `"prompt.md"` | Relative path to the markdown file defining the agent's prompt and logic. |
 | `pack_hash` | `string` | `""` | SHA-256 fingerprint of the extension package contents used for change detection. |
-| `showAuditUI` | `boolean` | `true` | When set to `false`, hides the **Agent UI** tab (`#dynamicPopup` and the `[ Dashboard \| Agent UI ]` view switcher) from the popup, presenting users strictly with the standard **Dashboard** view (`#standardPopup`) to avoid distracting them. Can also be placed under `ui` or `features` (alias: `showAgentUI`). |
+| `showAgentUI` | `boolean` | `true` | When set to `false`, hides the **Agent UI** tab (`#dynamicPopup` and the `[ Dashboard \| Agent UI ]` view switcher) from the popup, presenting users strictly with the standard **Dashboard** view (`#standardPopup`) to avoid distracting them. Can also be placed under `ui` or `features` (alias: `showAuditUI`). |
 
 #### 2. Provider Settings (`providers`)
 | Key | Type | Default | Description |
@@ -390,7 +390,7 @@ Fine-grained controls to display or hide individual surfaces and controls:
 ##### A. Popup Surface
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `showAuditUI` | `boolean` | `true` | When `false`, hides the **Agent UI** tab (`#dynamicPopup` and the `Dashboard \| Agent UI` view switcher) from the popup, locking the view to the standard **Dashboard** (`#standardPopup`) so users are not distracted. |
+| `showAgentUI` | `boolean` | `true` | When `false`, hides the **Agent UI** tab (`#dynamicPopup` and the `Dashboard \| Agent UI` view switcher) from the popup, locking the view to the standard **Dashboard** (`#standardPopup`) so users are not distracted. |
 | `showPopupHeader` | `boolean` | `true` | Top header bar showing extension icon, name, and action buttons. |
 | `showViewSwitcher` | `boolean` | `true` | Segmented tab switcher (`Dashboard` vs `Agent UI`) when a declarative ` ```ui ` block exists. |
 | `showStatusCard` | `boolean` | `true` | Status card displaying provider chip, API key status, model name, and alarm interval dropdown. |
@@ -454,7 +454,7 @@ Fine-grained controls to display or hide individual surfaces and controls:
 
 #### 9. Feature Flags (`features`)
 Mirrors core capability switches for policy governance:
-- `showAuditUI`: When `false`, disables the Agent UI tab in the popup.
+- `showAgentUI`: When `false`, disables the Agent UI tab in the popup.
 - `showProviderSelector`, `showModelSelector`, `showProviderTools`, `showPermissionsManager`, `showSchedule`: Control settings visibility.
 - `showAuditLog`, `allowExportAudit`, `allowClearAudit`: Control audit log accessibility.
 - `allowSidePanel`, `allowArtifacts`, `allowManualRun`: Control primary runtime capabilities.

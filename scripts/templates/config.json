@@ -1,5 +1,5 @@
 {
-  "version": "0.7.15",
+  "version": "0.7.16",
   "providers": {
     "allowed": [
       "anthropic",
@@ -67,7 +67,7 @@
     "lockProviderTools": false
   },
   "ui": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showCosts": true,
     "showTokenUsage": true,
     "showToolCallDetails": true,
@@ -110,7 +110,7 @@
     "allowDeleteArtifacts": true
   },
   "features": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showProviderSelector": true,
     "showModelSelector": true,
     "showProviderTools": true,

@@ -1,7 +1,7 @@
 {
-  "version": "0.7.15",
+  "version": "0.7.16",
   "prompt": "prompt.md",
-  "pack_hash": "b3412cd9739579eabaf68eae3e966d7b412fb074ed9315c0eb2d067ea070f3b5",
+  "pack_hash": "13690ee5ccfdcbd172fadb1dcca1db51fa4c01ced04781a966a68dca8f2bbb82",
   "providers": {
     "allowed": [
       "anthropic",
@@ -69,7 +69,7 @@
     "lockProviderTools": false
   },
   "ui": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showCosts": true,
     "showTokenUsage": true,
     "showToolCallDetails": true,
@@ -112,7 +112,7 @@
     "allowDeleteArtifacts": true
   },
   "features": {
-    "showAuditUI": true,
+    "showAgentUI": true,
     "showProviderSelector": true,
     "showModelSelector": true,
     "showProviderTools": true,

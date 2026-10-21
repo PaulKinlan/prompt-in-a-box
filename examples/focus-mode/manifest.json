@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Focus Mode",
-  "version": "0.7.11",
+  "version": "0.7.12",
   "description": "Standalone Focus Mode Chrome Extension built with prompt-in-a-box.",
   "background": {
     "service_worker": "dist/background.js",

@@ -300,7 +300,7 @@
     ],
     "alarmMinutes": 30,
     "uiConfig": {
-      "showAuditUI": true,
+      "showAgentUI": true,
       "showCosts": true,
       "showTokenUsage": true,
       "showToolCallDetails": true,
@@ -399,7 +399,7 @@
     ],
     "alarmMinutes": 30,
     "uiConfig": {
-      "showAuditUI": true,
+      "showAgentUI": true,
       "showCosts": true,
       "showTokenUsage": true,
       "showToolCallDetails": true,
@@ -662,7 +662,7 @@
     ],
     "alarmMinutes": 15,
     "uiConfig": {
-      "showAuditUI": true,
+      "showAgentUI": true,
       "showStudio": false,
       "showCosts": false,
       "showTokenUsage": false,

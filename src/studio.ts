@@ -432,7 +432,7 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
 
   // Shell UI options
   const ui = p.uiConfig || {};
-  $input('uiShowAuditUI').checked = ui.showAuditUI !== false;
+  $input('uiShowAgentUI').checked = ui.showAgentUI !== false && ui.showAuditUI !== false;
   $input('uiShowPopupHeader').checked = ui.showPopupHeader !== false;
   $input('uiShowStatusCard').checked = ui.showStatusCard !== false;
   $input('uiShowViewSwitcher').checked = ui.showViewSwitcher !== false;
@@ -495,7 +495,8 @@ async function saveProject(): Promise<void> {
   };
 
   currentProject.uiConfig = {
-    showAuditUI: $input('uiShowAuditUI').checked,
+    showAgentUI: $input('uiShowAgentUI').checked,
+    showAuditUI: $input('uiShowAgentUI').checked,
     showPopupHeader: $input('uiShowPopupHeader').checked,
     showStatusCard: $input('uiShowStatusCard').checked,
     showViewSwitcher: $input('uiShowViewSwitcher').checked,

@@ -132,7 +132,14 @@ async function loadSummary(): Promise<void> {
     if ($('openStudio')) $('openStudio').style.display = 'none';
   }
 
-  if (cfg.ui?.showAuditUI === false || staticCfg.features?.showAuditUI === false || (staticCfg as any).showAuditUI === false) {
+  if (
+    cfg.ui?.showAgentUI === false ||
+    staticCfg.features?.showAgentUI === false ||
+    (staticCfg as any).showAgentUI === false ||
+    cfg.ui?.showAuditUI === false ||
+    staticCfg.features?.showAuditUI === false ||
+    (staticCfg as any).showAuditUI === false
+  ) {
     if ($('viewSwitcher')) $('viewSwitcher').style.display = 'none';
     if ($('dynamicPopup')) $('dynamicPopup').style.display = 'none';
     if ($('standardPopup')) $('standardPopup').style.display = 'block';
@@ -495,8 +502,11 @@ async function checkDynamicUI(): Promise<void> {
   const cfg = await getConfig();
   const staticCfg = await getStaticConfig();
 
-  // If showAuditUI is disabled, completely hide the Agent UI from popup and stay on standard Dashboard view
+  // If showAgentUI is disabled, completely hide the Agent UI from popup and stay on standard Dashboard view
   if (
+    cfg.ui?.showAgentUI === false ||
+    staticCfg.features?.showAgentUI === false ||
+    (staticCfg as any).showAgentUI === false ||
     cfg.ui?.showAuditUI === false ||
     staticCfg.features?.showAuditUI === false ||
     (staticCfg as any).showAuditUI === false
