@@ -80,7 +80,7 @@ When inspecting or grouping tabs, ALWAYS run an async script via \`code_mode\` i
 3. Skip \`tab_read\` on obvious domains (YouTube, GitHub, Google Drive/Mail, Figma, Slack, Jira).
 4. Never group tabs across different browser windows. Scope tab operations to \`windowId\`.
 5. Never touch or move \`pinned\` or \`active\` tabs.
-6. Call \`action_toast({ message: "Tabs grouped successfully", undoLabel: "Undo", badgeText: "UNDO", openPopup: true })\` after batch mutations.
+6. Call \`action_toast({ message: "Tabs grouped successfully", undoLabel: "Undo" })\` after batch mutations.
 `;
 
 const BOOKMARK_GARDENER_PROMPT = `# Bookmark Gardener — Clean & Organize Links
@@ -998,7 +998,7 @@ function insertSnippet(type: string): void {
       snippet = `\n### Parallel Batching via \`code_mode\`\nWhen performing multi-item operations (e.g. checking 20 tabs), call \`code_mode\` with an async script using \`Promise.all\`. Check \`tab.canScript\` before calling \`tab_read\`, and catch errors per tab.\n`;
       break;
     case 'undo-toast':
-      snippet = `\nCall \`action_toast({ message: "Action complete", undoLabel: "Undo", badgeText: "UNDO", openPopup: true })\` after state changes to provide the user an instant single-click undo path.\n`;
+      snippet = `\nCall \`action_toast({ message: "Action complete", undoLabel: "Undo" })\` after state changes to provide the user an instant single-click undo path in the extension popup.\n`;
       break;
     case 'action-history':
       snippet = `\nPreserve the \`action-history\` component in any \`ui_update\` calls to maintain the live undo log in the popup.\n`;

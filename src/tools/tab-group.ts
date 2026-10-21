@@ -5,7 +5,7 @@ import { recordAction, type TabGroupColor } from '../action-history';
 
 export const tabGroup = tool({
   description:
-    'Group tabs together safely. Supports single-group mode or batch mode (creating multiple tab groups across windows in one call), auto-reuses existing groups with matching titles in the same window, preserves collapsed state, and ignores pinned tabs.',
+    'Group tabs together safely. Supports single-group mode or batch mode (creating multiple tab groups across windows in one call), auto-reuses existing groups with matching titles in the same window, strictly preserves collapsed state without expanding collapsed groups, and ignores pinned tabs.',
   inputSchema: z.object({
     groups: z
       .array(
@@ -71,8 +71,12 @@ export const tabGroup = tool({
       if (t.id !== undefined) tabMap.set(t.id, t);
     }
     const groupMap = new Map<number, chrome.tabGroups.TabGroup>();
+    const desiredCollapsedByGroupId = new Map<number, boolean>();
     for (const g of allGroups) {
       groupMap.set(g.id, g);
+      if (g.collapsed) {
+        desiredCollapsedByGroupId.set(g.id, true);
+      }
     }
 
     // Helper to process a single group definition
@@ -175,6 +179,11 @@ export const tabGroup = tool({
         }
       }
 
+      // If grouping tabs that previously came from a collapsed group, preserve collapsed state
+      if (wasCollapsed === undefined && previousTabs.some((pt) => pt.groupCollapsed === true)) {
+        wasCollapsed = true;
+      }
+
       const targetTabIds = liveTabs
         .filter((t) => effectiveWindowId === undefined || t.windowId === effectiveWindowId)
         .map((t) => t.id!);
@@ -192,21 +201,30 @@ export const tabGroup = tool({
         finalGroupId = await chrome.tabs.group(groupProps as any);
       }
 
-      const hasActiveTab = liveTabs.some((t) => t.active);
-      let targetCollapsed = spec.targetCollapsed !== undefined ? spec.targetCollapsed : wasCollapsed;
-      if (hasActiveTab && spec.targetCollapsed === undefined) {
-        targetCollapsed = false;
+      // Strictly preserve collapsed state: An already-collapsed group MUST NEVER be expanded
+      let targetCollapsed: boolean;
+      if (wasCollapsed === true) {
+        targetCollapsed = true;
+      } else if (spec.targetCollapsed !== undefined) {
+        targetCollapsed = spec.targetCollapsed;
+      } else {
+        targetCollapsed = wasCollapsed ?? false;
       }
+
+      const resolvedColor = spec.targetColor ?? (prevGroupMeta?.color as TabGroupColor | undefined);
 
       if (finalGroupId !== undefined) {
         const updateProps: chrome.tabGroups.UpdateProperties = {};
         if (spec.targetTitle !== undefined) updateProps.title = spec.targetTitle;
-        if (spec.targetColor !== undefined) updateProps.color = spec.targetColor;
-        if (targetCollapsed !== undefined) updateProps.collapsed = targetCollapsed;
+        if (resolvedColor !== undefined) updateProps.color = resolvedColor;
+        updateProps.collapsed = targetCollapsed;
         try {
           await chrome.tabGroups.update(finalGroupId, updateProps);
         } catch {
           // ignore
+        }
+        if (targetCollapsed) {
+          desiredCollapsedByGroupId.set(finalGroupId, true);
         }
       }
 
@@ -228,10 +246,25 @@ export const tabGroup = tool({
         groupId: finalGroupId,
         windowId: effectiveWindowId,
         title: spec.targetTitle,
-        color: spec.targetColor,
-        collapsed: targetCollapsed ?? false,
+        color: resolvedColor,
+        collapsed: targetCollapsed,
         tabCount: targetTabIds.length,
       };
+    };
+
+    // Helper to ensure all groups that should be collapsed remain collapsed
+    // (since moving/grouping tabs across the tabstrip can natively expand groups in Chrome)
+    const enforceCollapsedStates = async () => {
+      try {
+        const currentGroups = await chrome.tabGroups.query({});
+        for (const cg of currentGroups) {
+          if (desiredCollapsedByGroupId.get(cg.id) === true && !cg.collapsed) {
+            await chrome.tabGroups.update(cg.id, { collapsed: true }).catch(() => {});
+          }
+        }
+      } catch {
+        // ignore
+      }
     };
 
     // 1. Batch mode
@@ -252,13 +285,15 @@ export const tabGroup = tool({
         }
       }
 
+      await enforceCollapsedStates();
+
       const autoMessage = toastMessage || `Sorted ${totalTabs} tabs into ${results.length} groups`;
       try {
         await (actionToast.execute as any)(
           {
             message: autoMessage,
             undoLabel: 'Undo Sort',
-            badgeText: '↺',
+            badgeText: '',
             openPopup: false,
           },
           { toolCallId: 'auto-toast', messages: [] },
@@ -300,13 +335,15 @@ export const tabGroup = tool({
       return { ok: false, error: 'No accessible unpinned tabs to group', tabCount: 0 };
     }
 
+    await enforceCollapsedStates();
+
     if (toastMessage) {
       try {
         await (actionToast.execute as any)(
           {
             message: toastMessage,
             undoLabel: 'Undo Sort',
-            badgeText: '↺',
+            badgeText: '',
             openPopup: false,
           },
           { toolCallId: 'auto-toast', messages: [] },

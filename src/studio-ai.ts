@@ -129,7 +129,7 @@ Design a complete, production-grade Chrome Extension based on the inspiration an
    - Always check \`tab.canScript\` from \`tab_list\` before calling \`tab_read\`. Skip discarded/restricted pages and classify by domain/title.
 3. **Multi-Window Etiquette & Undo**:
    - Always scope tab actions to \`windowId\`. Never group across windows. Never touch pinned or active tabs.
-   - Fire \`action_toast({ message, undoLabel: "Undo", badgeText: "UNDO", openPopup: true })\` after mutations.
+   - Fire \`action_toast({ message, undoLabel: "Undo" })\` after mutations.
 4. **Permissions**:
    - Keep required permissions minimal (\`storage\`, \`alarms\`, \`offscreen\`). Place powerful capabilities in \`optional_permissions\` (\`tabs\`, \`tabGroups\`, \`scripting\`, \`bookmarks\`, etc.).
 5. **Configurable Settings (\`agentSettings\`)**:

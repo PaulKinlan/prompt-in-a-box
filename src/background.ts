@@ -147,7 +147,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // ignore
   }
 
-  if (details.reason === 'install' || !cfg.onboarded) {
+  if (details.reason === 'install' && !cfg.onboarded) {
     chrome.runtime.openOptionsPage();
   }
 
@@ -688,6 +688,8 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
       metaById.set(g.id, g);
     }
 
+    const restoredMeta: Array<{ groupId: number; meta: { title?: string; color?: TabGroupColor; collapsed?: boolean } }> = [];
+
     for (const [oldGroupId, groupInfo] of groupMap.entries()) {
       if (groupInfo.tabIds.length === 0) continue;
       try {
@@ -698,22 +700,32 @@ async function restoreSortSnapshot(): Promise<{ ok: boolean; restoredTabs: numbe
         } as any);
         const meta = metaById.get(oldGroupId);
         if (meta) {
-          await chrome.tabGroups.update(newGroupId, {
-            title: meta.title,
-            color: meta.color,
-            collapsed: meta.collapsed,
-          });
+          restoredMeta.push({ groupId: newGroupId, meta });
         }
       } catch {
         // ignore
       }
     }
 
-    // Restore exact tab index positions per window
+    // Restore exact tab index positions per window BEFORE applying collapsed states,
+    // because chrome.tabs.move expands collapsed groups
     const sortedTabs = [...tabs].sort((a, b) => a.index - b.index);
     for (const t of sortedTabs) {
       try {
         await chrome.tabs.move(t.id, { index: t.index });
+      } catch {
+        // ignore
+      }
+    }
+
+    // Apply metadata & collapsed state last so groups remain strictly collapsed
+    for (const item of restoredMeta) {
+      try {
+        await chrome.tabGroups.update(item.groupId, {
+          title: item.meta.title,
+          color: item.meta.color,
+          collapsed: item.meta.collapsed,
+        });
       } catch {
         // ignore
       }

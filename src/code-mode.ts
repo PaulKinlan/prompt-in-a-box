@@ -567,7 +567,7 @@ export async function buildRuntimeCodeModePrompt(availableTools: ToolSet): Promi
     storage_set:
       'await tools.storage_set({ key: string, value: any }) → saves JSON-serializable state',
     action_toast:
-      'await tools.action_toast({ message: string, undoLabel?: string, badgeText?: string, openPopup?: boolean }) → sets extension icon badge and shows undo prompt',
+      'await tools.action_toast({ message: string, undoLabel?: string }) → records undo snapshot for the extension popup without interrupting the user',
     action_history:
       'await tools.action_history({ limit?: number }) → returns recent tool actions journal',
     action_undo:

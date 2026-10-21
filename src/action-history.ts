@@ -314,12 +314,20 @@ async function executeInverse(undo: UndoPayload): Promise<void> {
         }
       }
 
+      const restoredGroups: Array<{ groupId: number; title?: string; color?: TabGroupColor; collapsed?: boolean }> = [];
+
       for (const [prevGroupId, groupInfo] of regroupMap.entries()) {
         try {
           // Try adding back to original group ID
           await chrome.tabs.group({
             tabIds: groupInfo.tabIds as [number, ...number[]],
             groupId: prevGroupId > 0 ? prevGroupId : undefined,
+          });
+          restoredGroups.push({
+            groupId: prevGroupId,
+            title: groupInfo.title,
+            color: groupInfo.color,
+            collapsed: groupInfo.collapsed,
           });
         } catch {
           // Original group ID was destroyed; recreate group
@@ -329,13 +337,12 @@ async function executeInverse(undo: UndoPayload): Promise<void> {
               tabIds: groupInfo.tabIds as [number, ...number[]],
               createProperties: createProps,
             } as any);
-            if (groupInfo.title || groupInfo.color || groupInfo.collapsed !== undefined) {
-              await chrome.tabGroups.update(newGid, {
-                title: groupInfo.title,
-                color: groupInfo.color,
-                collapsed: groupInfo.collapsed,
-              });
-            }
+            restoredGroups.push({
+              groupId: newGid,
+              title: groupInfo.title,
+              color: groupInfo.color,
+              collapsed: groupInfo.collapsed,
+            });
           } catch {
             // best effort
           }
@@ -349,6 +356,21 @@ async function executeInverse(undo: UndoPayload): Promise<void> {
           await chrome.tabs.move(t.tabId, { index: t.index });
         } catch {
           // tab might be gone
+        }
+      }
+
+      // Apply metadata & collapsed state AFTER moving tabs, because chrome.tabs.move can expand collapsed groups
+      for (const rg of restoredGroups) {
+        if (rg.title || rg.color || rg.collapsed !== undefined) {
+          try {
+            await chrome.tabGroups.update(rg.groupId, {
+              title: rg.title,
+              color: rg.color,
+              collapsed: rg.collapsed,
+            });
+          } catch {
+            // Ignore
+          }
         }
       }
 
