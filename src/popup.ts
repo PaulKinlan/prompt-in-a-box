@@ -132,6 +132,12 @@ async function loadSummary(): Promise<void> {
     if ($('openStudio')) $('openStudio').style.display = 'none';
   }
 
+  if (cfg.ui?.showAuditUI === false || staticCfg.features?.showAuditUI === false || (staticCfg as any).showAuditUI === false) {
+    if ($('viewSwitcher')) $('viewSwitcher').style.display = 'none';
+    if ($('dynamicPopup')) $('dynamicPopup').style.display = 'none';
+    if ($('standardPopup')) $('standardPopup').style.display = 'block';
+  }
+
   // Load Undo Toast Banner
   await checkUndoToast();
 
@@ -486,6 +492,20 @@ function getComponents(spec?: UISchema | null): any[] {
 }
 
 async function checkDynamicUI(): Promise<void> {
+  const cfg = await getConfig();
+  const staticCfg = await getStaticConfig();
+
+  // If showAuditUI is disabled, completely hide the Agent UI from popup and stay on standard Dashboard view
+  if (
+    cfg.ui?.showAuditUI === false ||
+    staticCfg.features?.showAuditUI === false ||
+    (staticCfg as any).showAuditUI === false
+  ) {
+    if (viewSwitcher) viewSwitcher.style.display = 'none';
+    showStandard();
+    return;
+  }
+
   const data = (await chrome.storage.local.get('__pib_dynamic_ui')) as {
     __pib_dynamic_ui?: UISchema;
   };
@@ -500,7 +520,6 @@ async function checkDynamicUI(): Promise<void> {
   }
 
   if (spec && comps.length > 0) {
-    const cfg = await getConfig();
     if (cfg.ui?.showViewSwitcher === false) {
       viewSwitcher.style.display = 'none';
     } else {

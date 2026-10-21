@@ -300,6 +300,7 @@
     ],
     "alarmMinutes": 30,
     "uiConfig": {
+      "showAuditUI": true,
       "showCosts": true,
       "showTokenUsage": true,
       "showToolCallDetails": true,
@@ -398,6 +399,7 @@
     ],
     "alarmMinutes": 30,
     "uiConfig": {
+      "showAuditUI": true,
       "showCosts": true,
       "showTokenUsage": true,
       "showToolCallDetails": true,
@@ -660,6 +662,7 @@
     ],
     "alarmMinutes": 15,
     "uiConfig": {
+      "showAuditUI": true,
       "showStudio": false,
       "showCosts": false,
       "showTokenUsage": false,
@@ -694,12 +697,12 @@
       "showAuditFilters": true,
       "allowExportAudit": true,
       "allowClearAudit": true,
-      "allowArtifacts": true,
-      "showArtifactStats": true,
-      "showArtifactFilters": true,
-      "allowCopyArtifact": true,
-      "allowDownloadArtifact": true,
-      "allowDeleteArtifacts": true
+      "allowArtifacts": false,
+      "showArtifactStats": false,
+      "showArtifactFilters": false,
+      "allowCopyArtifact": false,
+      "allowDownloadArtifact": false,
+      "allowDeleteArtifacts": false
     }
   },
   {

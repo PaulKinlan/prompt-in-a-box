@@ -210,21 +210,254 @@ Implementation is in `src/provider-tools.ts`. The pattern mirrors what the CHAOS
 
 ## Configuration & Policy Locking (`config.json`)
 
-Extensions can declare static policies in `config.json` (or per-example `config.json`) to enforce locked enterprise or evaluation configurations:
+Extensions can declare static policies in `config.json` (or per-example `config.json`) to enforce locked enterprise, deployment, or evaluation configurations.
 
-- **Default Provider & Model**: Configured out-of-the-box to use Google Gemini with **`gemini-3.8-flash`** as the default model.
-- **Schedule Presets**: Choose periodic intervals (5m, 15m, 30m, 1h, 4h) or **Never (`0`)** to disable periodic background alarms completely.
-- **Granular UI Flags (`ui` block)**: 37 granular boolean flags to show or hide any element across the Popup, Side Panel, Options/Settings, and Artifacts Browser (e.g. `showCosts`, `showHistory`, `showProviderCard`, `showAuditStats`, etc.).
-- **User Agent Settings (`agentSettings`)**: Declarative schema for prompt-specific runtime user preferences (rendered as toggles or dropdowns in popup & side panel, automatically injected into the agent prompt message).
-- **Grouped Capabilities & Permissions**: Modeled on Chrome Agent Platform (`Browsing`, `Content`, `System`) with clear action gates and manifest requirement badges.
-- **Rich Page Content Extraction & Automation**:
-  - `tab_read`: Scrapes metadata, headings, and Reader-Mode markdown.
-  - `capture_page`: Pure reader-mode structured Markdown with YAML frontmatter.
-  - `find_elements`, `click_element`, `type_text`, `select_option`, `scroll_page`, `wait_for`: Safe accessibility-snapshot DOM interaction.
-  - `extract_tables`: Extracts tabular DOM structures.
-- **Undo Toast Bubble (`action_toast`)**: Pops open an undo toast attached to the extension icon after major operations (like tab sorting), allowing instant deterministic restoration.
-- **Declarative Agent UI (`prompt.md`)**: Describe the agent's popup and side panel UI directly inside `prompt.md` using a fenced ```` ```ui ```` JSON block! The extension renders it immediately upon opening (even before the background model runs), while `ui_update` allows the agent loop to dynamically update it during runtime.
-- **Universal Action History & Undo Journal**: All mutating tools (`tab_group`, `tab_ungroup`, `tab_move`, `tab_pin`, `tab_mute`, `tab_close`, `tab_open`, `tab_navigate`, `tab_duplicate`, `window_create`, `window_close`, `window_resize`, `bookmark_add`, `bookmark_remove`, `reading_list_add`, `storage_set`) automatically log to a deterministic action journal. The UI features both a prominent "Undo Last Sort / Revert All" button and per-item "Undo" buttons on each row in the recent actions list!
+### Complete `config.json` Structure
+
+```json
+{
+  "version": "1.0.0",
+  "prompt": "prompt.md",
+  "pack_hash": "...",
+  "showAuditUI": true,
+  "providers": {
+    "allowed": ["google", "anthropic", "openai"],
+    "default": "google",
+    "lockProvider": false
+  },
+  "models": {
+    "default": "gemini-3.8-flash",
+    "lockModel": false,
+    "allowCustomModelInput": true,
+    "allowed": {
+      "google": ["gemini-3.8-flash", "gemini-4-argon"],
+      "anthropic": ["claude-sonnet-5-5", "claude-haiku-5-5"],
+      "openai": ["gpt-6.1-sol", "gpt-5.6-sol"]
+    }
+  },
+  "schedule": {
+    "defaultAlarmMinutes": 30,
+    "lockSchedule": false
+  },
+  "providerTools": {
+    "disabledByDefault": [],
+    "lockProviderTools": false
+  },
+  "permissions": {
+    "allowed": ["tabs", "storage", "alarms"],
+    "blocked": []
+  },
+  "agentSettings": {
+    "storageKey": "my_extension_settings",
+    "title": "Extension Preferences",
+    "fields": [
+      {
+        "id": "enableFeatureX",
+        "label": "Enable Feature X",
+        "hint": "Turns on auxiliary scanning.",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "scanMode",
+        "label": "Scan Mode",
+        "hint": "Choose between quick and deep scanning.",
+        "type": "select",
+        "default": "quick",
+        "options": [
+          { "label": "Quick Scan", "value": "quick" },
+          { "label": "Deep Scan", "value": "deep" }
+        ]
+      }
+    ]
+  },
+  "ui": {
+    "showAuditUI": true,
+    "showCosts": true,
+    "showTokenUsage": true,
+    "showToolCallDetails": true,
+    "showHistory": true,
+    "showVersionBadge": true,
+    "showPolicyBadge": true,
+    "showStudio": false,
+    "showPopupHeader": true,
+    "showViewSwitcher": true,
+    "showStatusCard": true,
+    "showKeyStatusBadge": true,
+    "showScheduleSummary": true,
+    "showRecentArtifacts": true,
+    "showPopupFooter": true,
+    "allowSettingsAccess": true,
+    "allowSidePanel": true,
+    "showSidePanelHeader": true,
+    "showSidePanelStatusBar": true,
+    "showActivityDrawer": true,
+    "showRecentRuns": true,
+    "showOnboardingBanner": true,
+    "showProviderSelector": true,
+    "showApiKeyInput": true,
+    "showModelSelector": true,
+    "showProviderTools": true,
+    "showPermissionsManager": true,
+    "showSchedule": true,
+    "allowTestConnection": true,
+    "allowManualRun": true,
+    "showAuditLog": true,
+    "showAuditStats": true,
+    "showAuditFilters": true,
+    "allowExportAudit": true,
+    "allowClearAudit": true,
+    "allowArtifacts": true,
+    "showArtifactStats": true,
+    "showArtifactFilters": true,
+    "allowCopyArtifact": true,
+    "allowDownloadArtifact": true,
+    "allowDeleteArtifacts": true
+  },
+  "features": {
+    "showAuditUI": true,
+    "showProviderSelector": true,
+    "showModelSelector": true,
+    "showProviderTools": true,
+    "showPermissionsManager": true,
+    "showSchedule": true,
+    "showAuditLog": true,
+    "allowExportAudit": true,
+    "allowClearAudit": true,
+    "allowSidePanel": true,
+    "allowArtifacts": true,
+    "allowManualRun": true
+  }
+}
+```
+
+---
+
+### Configuration Reference Guide
+
+#### 1. Top-Level Options
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `version` | `string` | `"1.0.0"` | Version of the extension package. Auto-bumped on build when contents change. |
+| `prompt` | `string` | `"prompt.md"` | Relative path to the markdown file defining the agent's prompt and logic. |
+| `pack_hash` | `string` | `""` | SHA-256 fingerprint of the extension package contents used for change detection. |
+| `showAuditUI` | `boolean` | `true` | When set to `false`, hides the **Agent UI** tab (`#dynamicPopup` and the `[ Dashboard \| Agent UI ]` view switcher) from the popup, presenting users strictly with the standard **Dashboard** view (`#standardPopup`) to avoid distracting them. Can also be placed under `ui` or `features` (alias: `showAgentUI`). |
+
+#### 2. Provider Settings (`providers`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `allowed` | `string[]` | `["anthropic", "google", "openai"]` | Whitelist of AI providers available to this extension. |
+| `default` | `string` | `"google"` | Initial provider selected when the extension is installed. |
+| `lockProvider` | `boolean` | `false` | When `true`, locks the provider to `default` and disables provider switching in the settings UI. |
+
+#### 3. Model Settings (`models`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `default` | `string` | `"gemini-3.8-flash"` | Default model identifier used by the agent loop. |
+| `lockModel` | `boolean` | `false` | When `true`, locks the active model and disables model selection in the settings UI. |
+| `allowCustomModelInput` | `boolean` | `true` | When `false`, restricts users strictly to model choices enumerated in `allowed`. |
+| `allowed` | `object` | *(Curated model lists)* | Maps each provider (`google`, `anthropic`, `openai`) to an array of allowable model ID strings. |
+
+#### 4. Schedule Settings (`schedule`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `defaultAlarmMinutes` | `number` | `30` | Default periodic execution interval in minutes. Set to `0` for "Never" (manual run / event-triggered only). |
+| `lockSchedule` | `boolean` | `false` | When `true`, locks the background alarm schedule and prevents users from changing it. |
+
+#### 5. Provider Tools (`providerTools`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `disabledByDefault` | `string[]` | `[]` | Names of provider-native tools (`web_search`, `web_fetch`, `google_search`, `code_execution`, `url_context`) turned off by default. |
+| `lockProviderTools` | `boolean` | `false` | When `true`, prevents users from modifying provider tool toggles in settings. |
+
+#### 6. Permissions (`permissions`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `allowed` | `string[] \| undefined` | `undefined` | Optional whitelist of Chrome API permissions granted to the agent. |
+| `blocked` | `string[]` | `[]` | Blacklist of Chrome API permissions explicitly forbidden from being requested or used. |
+
+#### 7. User Agent Settings (`agentSettings`)
+Declarative schema for runtime agent preferences. Settings render automatically as toggles or dropdowns in both the popup and side panel, and are injected into the agent prompt on every run:
+| Key | Type | Description |
+|---|---|---|
+| `storageKey` | `string` | Storage key in `chrome.storage.local` where user-selected values are saved. |
+| `title` | `string` | Header text displayed above the preferences card in the UI. |
+| `fields` | `AgentSettingField[]` | Array of field definitions: `{ id, label, hint, description, type: "boolean" \| "select", default, options?: [{ label, value }] }`. |
+
+#### 8. Granular UI Visibility Flags (`ui`)
+Fine-grained controls to display or hide individual surfaces and controls:
+
+##### A. Popup Surface
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `showAuditUI` | `boolean` | `true` | When `false`, hides the **Agent UI** tab (`#dynamicPopup` and the `Dashboard \| Agent UI` view switcher) from the popup, locking the view to the standard **Dashboard** (`#standardPopup`) so users are not distracted. |
+| `showPopupHeader` | `boolean` | `true` | Top header bar showing extension icon, name, and action buttons. |
+| `showViewSwitcher` | `boolean` | `true` | Segmented tab switcher (`Dashboard` vs `Agent UI`) when a declarative ` ```ui ` block exists. |
+| `showStatusCard` | `boolean` | `true` | Status card displaying provider chip, API key status, model name, and alarm interval dropdown. |
+| `showKeyStatusBadge` | `boolean` | `true` | "Key Ready" / "Setup Key" status indicator. |
+| `showScheduleSummary` | `boolean` | `true` | Schedule interval dropdown inside the popup status card. |
+| `showRecentArtifacts` | `boolean` | `true` | "Recent Artifacts" section inside the popup. |
+| `showPopupFooter` | `boolean` | `true` | Footer navigation bar (Studio, Artifacts, Side Panel, Logs, Settings). |
+| `allowSettingsAccess` | `boolean` | `true` | Gear icon and Settings links that open the options page. |
+| `allowSidePanel` | `boolean` | `true` | Side Panel button and links. |
+
+##### B. Global / Cross-Surface
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `showCosts` | `boolean` | `true` | Estimated USD cost calculations in run completion summaries and stats. |
+| `showTokenUsage` | `boolean` | `true` | Input and output token counts in run summaries. |
+| `showToolCallDetails` | `boolean` | `true` | Tool execution counts and duration timings. |
+| `showHistory` | `boolean` | `true` | Recent action and run history rows. |
+| `showVersionBadge` | `boolean` | `true` | Version badge (`vX.Y.Z`) in headers. |
+| `showPolicyBadge` | `boolean` | `true` | "Policy Managed" indicator badge when configurations are locked. |
+| `showStudio` | `boolean` | `false` | Visual Extension Studio buttons and navigation links. |
+
+##### C. Side Panel Surface
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `showSidePanelHeader` | `boolean` | `true` | Top header bar in the side panel. |
+| `showSidePanelStatusBar` | `boolean` | `true` | Status pill bar in the side panel showing provider, model, and key readiness. |
+| `showActivityDrawer` | `boolean` | `true` | Collapsible activity drawer at the bottom of the side panel. |
+| `showRecentRuns` | `boolean` | `true` | Recent run execution entries inside the activity drawer. |
+
+##### D. Options Page — Settings Tab
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `showOnboardingBanner` | `boolean` | `true` | Welcome onboarding card for first-time configuration. |
+| `showProviderSelector` | `boolean` | `true` | Provider selection cards (Anthropic, Google, OpenAI). |
+| `showApiKeyInput` | `boolean` | `true` | API key input field. |
+| `showModelSelector` | `boolean` | `true` | Curated model dropdown. |
+| `showProviderTools` | `boolean` | `true` | Provider-native tool toggles. |
+| `showPermissionsManager`| `boolean` | `true` | Grouped Chrome capabilities / permissions manager. |
+| `showSchedule` | `boolean` | `true` | Background schedule frequency selector. |
+| `allowTestConnection` | `boolean` | `true` | "Test Key" verification button. |
+| `allowManualRun` | `boolean` | `true` | "Run Now" buttons in popup, side panel, and options. |
+
+##### E. Options Page — Audit & History Tab
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `showAuditLog` | `boolean` | `true` | Detailed audit log section in the options page. |
+| `showAuditStats` | `boolean` | `true` | Aggregated telemetry banner (total runs, success rate, spend). |
+| `showAuditFilters` | `boolean` | `true` | Search and trigger filter bar for audit entries. |
+| `allowExportAudit` | `boolean` | `true` | "Export JSON" audit download button. |
+| `allowClearAudit` | `boolean` | `true` | "Clear Audit Log" button. |
+
+##### F. Artifacts Browser (`artifacts.html`)
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `allowArtifacts` | `boolean` | `true` | Master switch for the artifacts browser and artifact creation subsystem. |
+| `showArtifactStats` | `boolean` | `true` | Summary metrics banner (total artifacts count, disk usage). |
+| `showArtifactFilters` | `boolean` | `true` | Kind, date, and keyword search filters. |
+| `allowCopyArtifact` | `boolean` | `true` | One-click copy artifact contents button. |
+| `allowDownloadArtifact` | `boolean` | `true` | File download button for artifacts. |
+| `allowDeleteArtifacts` | `boolean` | `true` | Delete artifact buttons. |
+
+#### 9. Feature Flags (`features`)
+Mirrors core capability switches for policy governance:
+- `showAuditUI`: When `false`, disables the Agent UI tab in the popup.
+- `showProviderSelector`, `showModelSelector`, `showProviderTools`, `showPermissionsManager`, `showSchedule`: Control settings visibility.
+- `showAuditLog`, `allowExportAudit`, `allowClearAudit`: Control audit log accessibility.
+- `allowSidePanel`, `allowArtifacts`, `allowManualRun`: Control primary runtime capabilities.
 
 ## Artifacts — things the agent creates for you
 

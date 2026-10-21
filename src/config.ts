@@ -46,6 +46,8 @@ export interface UIConfig {
   showStudio: boolean;
 
   // Popup
+  showAuditUI: boolean;
+  showAgentUI: boolean;
   showPopupHeader: boolean;
   showViewSwitcher: boolean;
   showStatusCard: boolean;
@@ -100,6 +102,8 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   showStudio: false,
 
   // Popup
+  showAuditUI: true,
+  showAgentUI: true,
   showPopupHeader: true,
   showViewSwitcher: true,
   showStatusCard: true,
@@ -147,6 +151,8 @@ export interface ExtensionConfig {
   version?: string;
   prompt?: string;
   pack_hash?: string;
+  showAuditUI?: boolean;
+  showAgentUI?: boolean;
   providers?: {
     allowed?: Provider[];
     default?: Provider;
@@ -173,6 +179,8 @@ export interface ExtensionConfig {
   ui?: Partial<UIConfig>;
   agentSettings?: AgentSettingsConfig | null;
   features?: {
+    showAuditUI?: boolean;
+    showAgentUI?: boolean;
     showProviderSelector?: boolean;
     showModelSelector?: boolean;
     showProviderTools?: boolean;
@@ -210,7 +218,7 @@ export interface Config {
   agentSettings?: AgentSettingsConfig | null;
 }
 
-export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSettings' | 'permissions' | 'prompt' | 'pack_hash'>> & {
+export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSettings' | 'permissions' | 'prompt' | 'pack_hash' | 'showAuditUI' | 'showAgentUI'>> & {
   agentSettings: AgentSettingsConfig | null;
   permissions?: {
     allowed?: string[];
@@ -218,6 +226,8 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSetting
   };
   prompt?: string;
   pack_hash?: string;
+  showAuditUI?: boolean;
+  showAgentUI?: boolean;
 } = {
   version: typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest().version : '0.7.0',
   prompt: 'prompt.md',
@@ -291,6 +301,7 @@ export const DEFAULT_STATIC_CONFIG: Required<Omit<ExtensionConfig, 'agentSetting
   ui: DEFAULT_UI_CONFIG,
   agentSettings: null,
   features: {
+    showAuditUI: true,
     showProviderSelector: true,
     showModelSelector: true,
     showProviderTools: true,
@@ -315,6 +326,7 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
     if (res.ok) {
       const data = (await res.json()) as ExtensionConfig;
       const featureKeys = [
+        'showAuditUI',
         'showProviderSelector',
         'showModelSelector',
         'showProviderTools',
@@ -342,6 +354,15 @@ export async function getExtensionConfig(): Promise<ExtensionConfig> {
         } else {
           resolvedFeatures[k] = DEFAULT_UI_CONFIG[k];
         }
+      }
+
+      if (
+        data.showAuditUI === false ||
+        data.showAgentUI === false ||
+        rawUi.showAgentUI === false ||
+        rawFeatures.showAgentUI === false
+      ) {
+        resolvedFeatures.showAuditUI = false;
       }
 
       cachedStaticConfig = {
@@ -639,6 +660,13 @@ export async function getConfig(): Promise<Config> {
   const ui: UIConfig = {
     ...DEFAULT_UI_CONFIG,
     ...(staticCfg.ui || {}),
+    showAuditUI:
+      staticCfg.showAuditUI === false ||
+      staticCfg.showAgentUI === false ||
+      staticCfg.ui?.showAgentUI === false ||
+      staticCfg.features?.showAgentUI === false
+        ? false
+        : resolveFlag('showAuditUI'),
     showProviderSelector: resolveFlag('showProviderSelector'),
     showModelSelector: resolveFlag('showModelSelector'),
     showProviderTools: resolveFlag('showProviderTools'),

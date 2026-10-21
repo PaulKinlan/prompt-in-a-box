@@ -494,6 +494,7 @@ export async function compileExtensionProject(
     },
     ui: {
       showStudio: Boolean(project.includeStudio),
+      showAuditUI: true,
       showCosts: true,
       showTokenUsage: true,
       showToolCallDetails: true,
