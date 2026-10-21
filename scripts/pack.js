@@ -54,13 +54,18 @@ if (exampleName) {
     process.exit(1);
   }
 
-  console.log(`📦 Building standalone example "${exampleName}"...`);
-  try {
-    // 1. Run build for this specific example
-    execSync(`node build.js ${exampleName}`, { stdio: 'inherit' });
-  } catch (err) {
-    console.error(`\n❌ Error building example "${exampleName}":`, err.message);
-    process.exit(1);
+  if (!process.env.PIB_SKIP_BUILD) {
+    console.log(`📦 Building standalone example "${exampleName}"...`);
+    try {
+      // 1. Run build for this specific example
+      execSync(`node build.js ${exampleName}`, {
+        stdio: 'inherit',
+        env: { ...process.env, PIB_PACK_RUNNING: '1' },
+      });
+    } catch (err) {
+      console.error(`\n❌ Error building example "${exampleName}":`, err.message);
+      process.exit(1);
+    }
   }
 
   // 1b. Check content hash and sync/bump version if contents changed
@@ -71,13 +76,19 @@ if (exampleName) {
   });
 
   const exampleDir = join('examples', exampleName);
-  const zipName = `${exampleName}.zip`;
+  const versionedZipName = `${exampleName}-${versionInfo.version}.zip`;
+  const canonicalZipName = `${exampleName}.zip`;
   const absoluteExampleDir = resolve(exampleDir);
-  const absoluteZipPath = join(absoluteExampleDir, zipName);
+  const absoluteVersionedZipPath = join(absoluteExampleDir, versionedZipName);
+  const absoluteCanonicalZipPath = join(absoluteExampleDir, canonicalZipName);
 
-  // 2. Remove old zip if exists inside example folder
-  if (existsSync(absoluteZipPath)) {
-    rmSync(absoluteZipPath);
+  // 2. Remove old zip files inside example folder so stale versions do not linger
+  for (const entry of readdirSync(absoluteExampleDir)) {
+    if (entry.endsWith('.zip')) {
+      try {
+        rmSync(join(absoluteExampleDir, entry));
+      } catch {}
+    }
   }
 
   // Ensure all required files exist
@@ -120,15 +131,19 @@ if (exampleName) {
     if (!args.includes('--with-studio')) {
       excludePatterns.push('"*studio*"');
     }
-    execSync(`zip -r ${zipName} . -x ${excludePatterns.join(' ')}`, {
+    execSync(`zip -r ${versionedZipName} . -x ${excludePatterns.join(' ')}`, {
       cwd: absoluteExampleDir,
       stdio: 'inherit',
     });
 
-    const size = (statSync(absoluteZipPath).size / 1024).toFixed(1);
+    // Also copy to unversioned canonical zip file
+    cpSync(absoluteVersionedZipPath, absoluteCanonicalZipPath);
+
+    const size = (statSync(absoluteVersionedZipPath).size / 1024).toFixed(1);
     console.log(`\n✨ Successfully built and packaged standalone example v${versionInfo.version}!`);
     console.log(`📂 Unpacked extension folder:  file://${absoluteExampleDir}`);
-    console.log(`📦 Standalone zip file:        file://${absoluteZipPath} (${size} kB)`);
+    console.log(`📦 Versioned zip file:        file://${absoluteVersionedZipPath} (${size} kB)`);
+    console.log(`📦 Standalone zip file:        file://${absoluteCanonicalZipPath}`);
     console.log(`🔖 Version:                   v${versionInfo.version}`);
     console.log(`🔑 Content Hash:             ${versionInfo.hash.slice(0, 16)}...`);
     console.log('\nLoad either unpacked folder directly in chrome://extensions or upload the ZIP to the Chrome Web Store.');
@@ -138,12 +153,17 @@ if (exampleName) {
   }
 } else {
   // --- Default Root Extension Pack ---
-  console.log('📦 Building default workspace extension...');
-  try {
-    execSync('node build.js', { stdio: 'inherit' });
-  } catch (err) {
-    console.error('\n❌ Error building default workspace:', err.message);
-    process.exit(1);
+  if (!process.env.PIB_SKIP_BUILD) {
+    console.log('📦 Building default workspace extension...');
+    try {
+      execSync('node build.js', {
+        stdio: 'inherit',
+        env: { ...process.env, PIB_PACK_RUNNING: '1' },
+      });
+    } catch (err) {
+      console.error('\n❌ Error building default workspace:', err.message);
+      process.exit(1);
+    }
   }
 
   // Check content hash and sync/bump version if contents changed
@@ -153,9 +173,16 @@ if (exampleName) {
     releaseType: args.includes('--minor') ? 'minor' : args.includes('--major') ? 'major' : 'patch',
   });
 
-  const ZIP_NAME = 'prompt-in-a-box.zip';
-  if (existsSync(ZIP_NAME)) {
-    rmSync(ZIP_NAME);
+  const versionedZipName = `prompt-in-a-box-${versionInfo.version}.zip`;
+  const canonicalZipName = 'prompt-in-a-box.zip';
+
+  // Clean up any old prompt-in-a-box-*.zip and prompt-in-a-box.zip in repo root
+  for (const entry of readdirSync('.')) {
+    if (entry.startsWith('prompt-in-a-box') && entry.endsWith('.zip')) {
+      try {
+        rmSync(entry);
+      } catch {}
+    }
   }
 
   const REQUIRED_DIST = [
@@ -211,13 +238,17 @@ if (exampleName) {
 
   console.log('\n📦 Zipping default extension into root ZIP...');
   try {
-    execSync(`zip -r ../${ZIP_NAME} . -x "*.map"`, {
+    execSync(`zip -r ../${versionedZipName} . -x "*.map"`, {
       cwd: resolve(STAGING_DIR),
       stdio: 'inherit',
     });
 
-    const size = (statSync(ZIP_NAME).size / 1024).toFixed(1);
-    console.log(`\n✨ Packed ${ZIP_NAME} v${versionInfo.version} (${size} kB) successfully at repository root!`);
+    // Also copy to canonical prompt-in-a-box.zip
+    cpSync(resolve(versionedZipName), resolve(canonicalZipName));
+
+    const size = (statSync(versionedZipName).size / 1024).toFixed(1);
+    console.log(`\n✨ Packed ${versionedZipName} v${versionInfo.version} (${size} kB) successfully at repository root!`);
+    console.log(`📦 Latest alias:  ${canonicalZipName}`);
     console.log(`🔖 Version:       v${versionInfo.version}`);
     console.log(`🔑 Content Hash: ${versionInfo.hash.slice(0, 16)}...`);
   } catch (err) {

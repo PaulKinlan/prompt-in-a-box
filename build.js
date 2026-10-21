@@ -12,6 +12,7 @@
 import { build, context } from 'esbuild';
 import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { syncVersionOnPack } from './scripts/version.js';
 
 const watch = process.argv.includes('--watch');
 const prod = process.argv.includes('--prod');
@@ -449,6 +450,23 @@ async function run() {
     await build({ ...common, entryPoints: [e.in], outfile: e.out });
   }
   console.log('build complete');
+
+  // If running build directly (not from pack.js and not in watch mode),
+  // sync/bump the version and package the versioned zip file.
+  if (!watch && !process.env.PIB_PACK_RUNNING) {
+    syncVersionOnPack(exampleName || null);
+    if (exampleName) {
+      try {
+        const { execSync } = await import('node:child_process');
+        execSync(`node scripts/pack.js ${exampleName}`, {
+          stdio: 'inherit',
+          env: { ...process.env, PIB_SKIP_BUILD: '1' },
+        });
+      } catch (packErr) {
+        console.warn(`Warning: Could not package zip for ${exampleName}:`, packErr.message);
+      }
+    }
+  }
 }
 
 run().catch((err) => {

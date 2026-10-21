@@ -1,5 +1,5 @@
 {
-  "version": "1.0.16",
+  "version": "1.0.17",
   "providers": {
     "allowed": [
       "google"
@@ -31,18 +31,32 @@
     "title": "Sorting Hat Preferences",
     "fields": [
       {
+        "id": "preferExistingGroups",
+        "label": "Fit into existing groups first",
+        "hint": "Match newly opened ungrouped tabs into relevant existing tab groups before creating any new group.",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "id": "splitLargeGroups",
+        "label": "Split broad groups into sub-groups",
+        "hint": "Allow splitting large existing groups (6+ tabs) into focused sub-groups if clear thematic clusters emerge.",
+        "type": "boolean",
+        "default": false
+      },
+      {
         "id": "sortMode",
         "label": "Sorting Scope",
-        "hint": "Choose whether to sort only ungrouped tabs or re-evaluate all tabs (status quo).",
+        "hint": "Only sort ungrouped tabs (never pull tabs out of existing groups) or re-evaluate all tabs across groups.",
         "type": "select",
         "default": "ungrouped_only",
         "options": [
           {
-            "label": "Sort only ungrouped tabs",
+            "label": "Only ungrouped tabs (keep existing groups)",
             "value": "ungrouped_only"
           },
           {
-            "label": "Status quo (re-sort existing groups too)",
+            "label": "Re-evaluate all tabs (full reshuffle)",
             "value": "status_quo"
           }
         ]
@@ -120,6 +134,6 @@
     "allowArtifacts": false,
     "allowManualRun": true
   },
-  "pack_hash": "d742e4af010574c326a594b413ca7aeb56b4488e1cf0271a8911310a3dea28a2",
+  "pack_hash": "67ab1d098bbb18e8e4495dbde581063abbca9c2caf0084f207e670e0e88612d0",
   "prompt": "prompt.md"
 }

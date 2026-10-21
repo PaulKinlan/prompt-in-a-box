@@ -847,6 +847,7 @@ async function composeUserMessage(
           title: g.title || '',
           color: g.color,
           collapsed: g.collapsed,
+          tabCount: compactTabs.filter((t) => t.groupId === g.id).length,
         }));
         parts.push(`Current tab groups (${compactGroups.length}):\n\`\`\`json\n${JSON.stringify(compactGroups)}\n\`\`\``);
         contextSummary.groupCount = compactGroups.length;

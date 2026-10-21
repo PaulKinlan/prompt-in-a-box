@@ -10,7 +10,8 @@ export const tabGroup = tool({
     groups: z
       .array(
         z.object({
-          title: z.string().describe('Group title.'),
+          groupId: z.number().optional().describe('Optional existing groupId to add tabs into directly without creating a duplicate group.'),
+          title: z.string().optional().describe('Group title (optional when adding to an existing groupId; required when creating a new group).'),
           color: z
             .enum(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'])
             .optional(),
@@ -211,11 +212,19 @@ export const tabGroup = tool({
         targetCollapsed = wasCollapsed ?? false;
       }
 
-      const resolvedColor = spec.targetColor ?? (prevGroupMeta?.color as TabGroupColor | undefined);
+      const isExistingGroup = prevGroupMeta !== undefined;
+      const resolvedColor = (isExistingGroup && prevGroupMeta?.color)
+        ? (spec.targetColor ?? prevGroupMeta.color)
+        : (spec.targetColor ?? (prevGroupMeta?.color as TabGroupColor | undefined));
+
+      // If targeting an existing group, preserve its existing title unless explicitly overriding
+      const resolvedTitle = spec.targetTitle !== undefined && spec.targetTitle.trim().length > 0
+        ? spec.targetTitle
+        : prevGroupMeta?.title;
 
       if (finalGroupId !== undefined) {
         const updateProps: chrome.tabGroups.UpdateProperties = {};
-        if (spec.targetTitle !== undefined) updateProps.title = spec.targetTitle;
+        if (resolvedTitle !== undefined) updateProps.title = resolvedTitle;
         if (resolvedColor !== undefined) updateProps.color = resolvedColor;
         updateProps.collapsed = targetCollapsed;
         try {
@@ -230,11 +239,11 @@ export const tabGroup = tool({
 
       await recordAction({
         toolName: 'tab_group',
-        label: spec.targetTitle ? `Grouped ${targetTabIds.length} tabs into "${spec.targetTitle}"` : `Grouped ${targetTabIds.length} tabs`,
+        label: resolvedTitle ? `Grouped ${targetTabIds.length} tabs into "${resolvedTitle}"` : `Grouped ${targetTabIds.length} tabs`,
         detail: `${targetTabIds.length} tabs into group ${finalGroupId} (window ${effectiveWindowId})`,
         undo: {
           kind: 'tab_group',
-          createdNewGroup: spec.targetGroupId === undefined,
+          createdNewGroup: !isExistingGroup,
           groupId: finalGroupId,
           previousGroupMeta: prevGroupMeta,
           previousTabs,
@@ -245,7 +254,7 @@ export const tabGroup = tool({
         id: finalGroupId,
         groupId: finalGroupId,
         windowId: effectiveWindowId,
-        title: spec.targetTitle,
+        title: resolvedTitle,
         color: resolvedColor,
         collapsed: targetCollapsed,
         tabCount: targetTabIds.length,
@@ -274,6 +283,7 @@ export const tabGroup = tool({
       for (const g of groups) {
         const res = await processGroup({
           requestedTabItems: g.tabIds,
+          targetGroupId: g.groupId,
           targetTitle: g.title,
           targetColor: g.color,
           targetWindowId: g.windowId,

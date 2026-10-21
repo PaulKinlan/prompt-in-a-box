@@ -350,7 +350,7 @@ function createExampleReadme(analysis) {
 
   doc += `### Option C: Build and Package a Standalone ZIP\n`;
   doc += `\`\`\`bash\nnpm run pack ${analysis.slug}\n\`\`\`\n`;
-  doc += `Produces \`examples/${analysis.slug}/${analysis.slug}.zip\` ready for testing or Chrome Web Store distribution.\n`;
+  doc += `Produces \`examples/${analysis.slug}/${analysis.slug}-<version>.zip\` (and \`${analysis.slug}.zip\`) ready for testing or Chrome Web Store distribution.\n`;
 
   return doc;
 }
