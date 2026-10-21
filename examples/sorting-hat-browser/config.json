@@ -1,5 +1,5 @@
 {
-  "version": "1.0.17",
+  "version": "1.0.18",
   "providers": {
     "allowed": [
       "google"
@@ -38,13 +38,6 @@
         "default": true
       },
       {
-        "id": "splitLargeGroups",
-        "label": "Split broad groups into sub-groups",
-        "hint": "Allow splitting large existing groups (6+ tabs) into focused sub-groups if clear thematic clusters emerge.",
-        "type": "boolean",
-        "default": false
-      },
-      {
         "id": "sortMode",
         "label": "Sorting Scope",
         "hint": "Only sort ungrouped tabs (never pull tabs out of existing groups) or re-evaluate all tabs across groups.",
@@ -58,6 +51,47 @@
           {
             "label": "Re-evaluate all tabs (full reshuffle)",
             "value": "status_quo"
+          }
+        ]
+      },
+      {
+        "id": "minTabsForNewGroup",
+        "label": "Minimum tabs for new group",
+        "hint": "Keep isolated tabs ungrouped unless there are enough related tabs to warrant a new group.",
+        "type": "select",
+        "default": "2",
+        "options": [
+          {
+            "label": "At least 2 tabs",
+            "value": "2"
+          },
+          {
+            "label": "At least 3 tabs",
+            "value": "3"
+          }
+        ]
+      },
+      {
+        "id": "autoCollapse",
+        "label": "Auto-collapse new groups",
+        "hint": "Automatically collapse newly formed groups to save horizontal tabstrip space.",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "namingStyle",
+        "label": "Group naming style",
+        "hint": "Choose between concise broad categories or descriptive project/task names.",
+        "type": "select",
+        "default": "short_category",
+        "options": [
+          {
+            "label": "Short category (e.g. Docs, Shopping)",
+            "value": "short_category"
+          },
+          {
+            "label": "Task / Project specific (e.g. Q4 Planning)",
+            "value": "task_specific"
           }
         ]
       },
@@ -134,6 +168,6 @@
     "allowArtifacts": false,
     "allowManualRun": true
   },
-  "pack_hash": "67ab1d098bbb18e8e4495dbde581063abbca9c2caf0084f207e670e0e88612d0",
+  "pack_hash": "2b9c2b21e83cbe1aba6f3a12d9b859e24fe8450c22397df31822887a2787855c",
   "prompt": "prompt.md"
 }
