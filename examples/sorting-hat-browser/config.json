@@ -1,5 +1,5 @@
 {
-  "version": "1.0.18",
+  "version": "1.0.19",
   "providers": {
     "allowed": [
       "google"
@@ -51,23 +51,6 @@
           {
             "label": "Re-evaluate all tabs (full reshuffle)",
             "value": "status_quo"
-          }
-        ]
-      },
-      {
-        "id": "minTabsForNewGroup",
-        "label": "Minimum tabs for new group",
-        "hint": "Keep isolated tabs ungrouped unless there are enough related tabs to warrant a new group.",
-        "type": "select",
-        "default": "2",
-        "options": [
-          {
-            "label": "At least 2 tabs",
-            "value": "2"
-          },
-          {
-            "label": "At least 3 tabs",
-            "value": "3"
           }
         ]
       },
@@ -168,6 +151,6 @@
     "allowArtifacts": false,
     "allowManualRun": true
   },
-  "pack_hash": "2b9c2b21e83cbe1aba6f3a12d9b859e24fe8450c22397df31822887a2787855c",
+  "pack_hash": "d73c989659c5840b09af46d646d9e77112f58cc12c354032e35f47b7e28de020",
   "prompt": "prompt.md"
 }
