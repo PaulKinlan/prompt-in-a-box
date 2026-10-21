@@ -258,9 +258,10 @@ if (exampleName) {
         if (exampleContent.description) manifestContent.description = exampleContent.description;
         if (exampleContent.action) {
           manifestContent.action = { ...manifestContent.action, ...exampleContent.action };
-        } else if (exampleContent.name) {
+        }
+        if (manifestContent.name) {
           manifestContent.action = manifestContent.action || {};
-          manifestContent.action.default_title = exampleContent.name;
+          manifestContent.action.default_title = manifestContent.name;
         }
         
         if (exampleContent.prompt_in_a_box) {
@@ -317,7 +318,7 @@ if (exampleName) {
         console.log(`📋 Generating default standalone manifest for ${exampleName}...`);
       }
       
-      writeFileSync(exampleManifest, JSON.stringify(manifestContent, null, 2), 'utf8');
+      writeFileSync(exampleManifest, JSON.stringify(manifestContent, null, 2) + '\n', 'utf8');
       console.log(`✨ Manifest written successfully to ${exampleManifest}`);
     } catch (err) {
       console.error(`❌ Error building manifest for example:`, err.message);

@@ -102,6 +102,18 @@ if (fs.existsSync(exampleManifest)) {
   }
 }
 
+// Ensure action.default_title matches the extension name
+const destManifestPath = path.join(repoRoot, 'manifest.json');
+if (fs.existsSync(destManifestPath)) {
+  try {
+    const m = JSON.parse(fs.readFileSync(destManifestPath, 'utf8'));
+    if (m.name && m.action) {
+      m.action.default_title = m.name;
+      fs.writeFileSync(destManifestPath, JSON.stringify(m, null, 2) + '\n', 'utf8');
+    }
+  } catch {}
+}
+
 // Copy config.json or restore default
 const exampleConfig = path.join(exampleDir, 'config.json');
 if (fs.existsSync(exampleConfig)) {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Prompt in a Box",
-  "version": "0.7.16",
+  "version": "0.7.17",
   "description": "A Chrome extension whose entire logic is a prompt. Load prompt.md, run an agent-do loop on a schedule, act through Chrome APIs granted by the manifest.",
   "background": {
     "service_worker": "dist/background.js",

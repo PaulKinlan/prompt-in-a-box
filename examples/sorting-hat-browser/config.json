@@ -1,5 +1,5 @@
 {
-  "version": "1.0.15",
+  "version": "1.0.16",
   "providers": {
     "allowed": [
       "google"
@@ -64,7 +64,7 @@
     ]
   },
   "ui": {
-    "showAgentUI": true,
+    "showAgentUI": false,
     "showStudio": false,
     "showCosts": false,
     "showTokenUsage": false,
@@ -81,9 +81,9 @@
     "showPopupFooter": false,
     "allowSettingsAccess": true,
     "allowSidePanel": false,
-    "showSidePanelHeader": true,
-    "showSidePanelStatusBar": true,
-    "showActivityDrawer": true,
+    "showSidePanelHeader": false,
+    "showSidePanelStatusBar": false,
+    "showActivityDrawer": false,
     "showRecentRuns": true,
     "showOnboardingBanner": true,
     "showProviderSelector": true,
@@ -107,7 +107,7 @@
     "allowDeleteArtifacts": false
   },
   "features": {
-    "showAgentUI": true,
+    "showAgentUI": false,
     "showProviderSelector": true,
     "showModelSelector": true,
     "showProviderTools": false,
@@ -120,6 +120,6 @@
     "allowArtifacts": false,
     "allowManualRun": true
   },
-  "pack_hash": "493fcdb1dc975c94c98f00cf091cabc94f29a104257066655aac69a9cdb2f6db",
+  "pack_hash": "d742e4af010574c326a594b413ca7aeb56b4488e1cf0271a8911310a3dea28a2",
   "prompt": "prompt.md"
 }
