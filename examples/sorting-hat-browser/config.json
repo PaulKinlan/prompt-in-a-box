@@ -1,5 +1,5 @@
 {
-  "version": "1.0.19",
+  "version": "1.0.20",
   "providers": {
     "allowed": [
       "google"
@@ -51,30 +51,6 @@
           {
             "label": "Re-evaluate all tabs (full reshuffle)",
             "value": "status_quo"
-          }
-        ]
-      },
-      {
-        "id": "autoCollapse",
-        "label": "Auto-collapse new groups",
-        "hint": "Automatically collapse newly formed groups to save horizontal tabstrip space.",
-        "type": "boolean",
-        "default": false
-      },
-      {
-        "id": "namingStyle",
-        "label": "Group naming style",
-        "hint": "Choose between concise broad categories or descriptive project/task names.",
-        "type": "select",
-        "default": "short_category",
-        "options": [
-          {
-            "label": "Short category (e.g. Docs, Shopping)",
-            "value": "short_category"
-          },
-          {
-            "label": "Task / Project specific (e.g. Q4 Planning)",
-            "value": "task_specific"
           }
         ]
       },
@@ -151,6 +127,6 @@
     "allowArtifacts": false,
     "allowManualRun": true
   },
-  "pack_hash": "d73c989659c5840b09af46d646d9e77112f58cc12c354032e35f47b7e28de020",
+  "pack_hash": "f63a60b5e59a064811337a06115dd2ac3228e6419ac9d4c0786a07a69c7f83a5",
   "prompt": "prompt.md"
 }
