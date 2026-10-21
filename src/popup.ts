@@ -342,16 +342,31 @@ const dashboardProgressMount = $('dashboardProgressMount');
 const dashboardConsoleMount = $('dashboardConsoleMount');
 const dashboardTelemetry = mountDashboardTelemetry(dashboardProgressMount, dashboardConsoleMount);
 
+function setRunButtonState(running: boolean, label = 'Running agent…'): void {
+  const btn = $('runNow') as HTMLButtonElement | null;
+  if (!btn) return;
+  if (running) {
+    btn.disabled = true;
+    btn.innerHTML = `
+      <svg class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+      </svg>
+      <span>${escapeHtml(label)}</span>
+    `;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+      </svg>
+      <span>Run Agent Now</span>
+    `;
+  }
+}
+
 $('runNow').addEventListener('click', async () => {
   dashboardTelemetry.startProgress('Running agent task...');
-  const btn = $('runNow') as HTMLButtonElement;
-  btn.disabled = true;
-  btn.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;">
-      <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-    </svg>
-    <span>Running agent…</span>
-  `;
+  setRunButtonState(true);
   try {
     const result = (await chrome.runtime.sendMessage({
       type: 'run-now',
@@ -374,13 +389,7 @@ $('runNow').addEventListener('click', async () => {
   } catch (err) {
     showStatus(err instanceof Error ? err.message : String(err), 'error');
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-      </svg>
-      <span>Run Agent Now</span>
-    `;
+    setRunButtonState(false);
   }
 });
 
@@ -584,13 +593,30 @@ chrome.runtime.onMessage.addListener((msg) => {
     printAgentLogToConsole(msg.event);
     if (msg.status?.active) {
       showStatus(msg.status.statusText, 'info');
+      setRunButtonState(true, msg.status.statusText || 'Running agent…');
     } else if (msg.event.channel === 'run-complete') {
       showStatus(msg.event.title, 'ok');
+      setRunButtonState(false);
     } else if (msg.event.channel === 'error') {
       showStatus(msg.event.title, 'error');
+      setRunButtonState(false);
+    } else if (msg.status && msg.status.active === false) {
+      setRunButtonState(false);
     }
   }
 });
+
+// Check if a run is currently active when opening popup
+void (async () => {
+  try {
+    const status = await chrome.runtime.sendMessage({ type: 'get-run-status' });
+    if (status?.active) {
+      setRunButtonState(true, status.statusText || 'Running agent…');
+    }
+  } catch {
+    // ignore
+  }
+})();
 
 void loadSummary();
 void loadArtifacts();

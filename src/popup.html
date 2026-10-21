@@ -220,6 +220,17 @@
         cursor: not-allowed;
       }
 
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .spin-icon {
+        animation: spin 0.85s linear infinite;
+        transform-origin: center;
+        display: inline-block;
+        flex-shrink: 0;
+      }
+
       /* Status Feedback */
       .status-box {
         margin-top: 10px;

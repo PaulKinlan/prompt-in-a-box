@@ -2360,12 +2360,34 @@
   display: none;
 }
 
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes progress-shimmer {
+  0% { opacity: 0.85; filter: brightness(1); }
+  50% { opacity: 1; filter: brightness(1.2); }
+  100% { opacity: 0.85; filter: brightness(1); }
+}
+
 .ui-progress-spinner {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
   color: var(--color-accent, #2563eb);
-  animation: spin 1s linear infinite;
+  animation: spin 0.85s linear infinite;
+  transform-origin: center;
+}
+
+.ui-progress-spinner svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  transform-origin: center;
 }
 
 .status-complete .ui-progress-spinner {
@@ -2410,6 +2432,10 @@
   background: linear-gradient(90deg, var(--color-accent, #2563eb), #38bdf8);
   border-radius: 999px;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.status-running .ui-progress-fill {
+  animation: progress-shimmer 1.8s ease-in-out infinite;
 }
 
 .status-complete .ui-progress-fill {
