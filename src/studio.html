@@ -1000,8 +1000,18 @@
 
           <!-- Chrome Permissions Card -->
           <div class="card">
-            <div class="card-title">
+            <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
               <span>Permissions</span>
+              <button id="btnInferPermissions" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; gap: 4px;" title="Analyze prompt.md to infer required Chrome permissions and host_permissions">
+                ✨ Infer from prompt.md
+              </button>
+            </div>
+            <div id="inferredPermissionsBanner" style="display: none; margin-bottom: 8px; padding: 8px 10px; background: rgba(99, 102, 241, 0.09); border: 1px solid rgba(99, 102, 241, 0.28); border-radius: 6px; font-size: 11.5px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <span style="font-weight: 600; color: var(--color-accent); font-size: 11.5px;">⚠️ Inferred missing permissions</span>
+                <button id="btnApplyInferredPerms" class="btn btn-primary" style="font-size: 10.5px; padding: 2px 7px;">Apply All</button>
+              </div>
+              <div id="inferredMissingBadges" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;"></div>
             </div>
             <div class="hint" style="font-size: 11px; margin: 0 0 6px;">Select browser capabilities granted to this extension:</div>
             <div id="permissionsCheckboxList" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;"></div>
@@ -1112,6 +1122,8 @@
             <button id="btnEditorUndo" class="chip-btn" title="Undo (Cmd+Z / Ctrl+Z)" disabled>Undo</button>
             <button id="btnEditorRedo" class="chip-btn" title="Redo (Cmd+Shift+Z / Ctrl+Y)" disabled>Redo</button>
           </div>
+          <button class="chip-btn" id="btnGenerateUiSkeleton" data-snippet="ui-skeleton" title="Generate rich UI skeleton from prompt.md and config.json" style="border-color: rgba(99, 102, 241, 0.45); color: var(--color-accent); font-weight: 600;">⚡ UI Skeleton</button>
+          <button class="chip-btn" id="btnInferPermsSnippet" title="Infer permissions from prompt.md">🔑 Infer Perms</button>
           <button class="chip-btn" data-snippet="ui-block">+ UI Block</button>
           <button class="chip-btn" data-snippet="code-mode">+ code_mode</button>
           <button class="chip-btn" data-snippet="undo-toast">+ Toast</button>
@@ -1132,6 +1144,7 @@
           <div style="display: flex; align-items: center; gap: 12px;">
             <span id="uiValidationStatus">UI: No block</span>
             <span id="codeModeStatus">code_mode: Unchecked</span>
+            <span id="permSyncStatus" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Click to sync permissions inferred from prompt.md">Permissions: ✓ Synced</span>
           </div>
           <div>
             <span id="charCount">0 chars</span>
@@ -1168,8 +1181,11 @@
                 <option value="compact-feed">Compact Feed</option>
               </select>
               <input type="color" id="uiAccentColorInput" value="#2563eb" title="Accent Color" style="width: 28px; height: 26px; padding: 1px 2px; border-radius: 4px; cursor: pointer; border: 1px solid var(--color-border-strong);" />
-              <button id="btnSuggestUiLayout" class="btn" style="padding: 4px 8px; font-size: 11px; white-space: nowrap;" title="Auto-suggest layout and components">
-                Auto-Layout
+              <button id="btnSuggestUiLayout" class="btn" style="padding: 4px 8px; font-size: 11px; white-space: nowrap;" title="Generate a tailored UI skeleton from prompt.md & config.json">
+                ⚡ UI Skeleton
+              </button>
+              <button id="btnAiUiSkeleton" class="btn" style="padding: 4px 8px; font-size: 11px; white-space: nowrap;" title="Synthesize bespoke UI skeleton with AI">
+                ✨ AI UI
               </button>
             </div>
 

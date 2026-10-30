@@ -6,7 +6,7 @@
  */
 
 import { getConfig, type Config } from './config';
-import { CAPABILITIES } from './capabilities';
+import { CAPABILITIES, inferPermissionsFromPrompt, type PermissionInferenceResult } from './capabilities';
 import { UIRenderer, extractUIBlockFromPrompt, sanitizeJsonStringLiterals, normalizeThemeName } from './ui-renderer';
 import generatedExamples from './generated-examples.json';
 import {
@@ -22,6 +22,7 @@ import {
   refinePromptWithAI,
   generateIconWithAI,
   generateThemeStyleWithAI,
+  generateUiSkeletonWithAI,
   resolveImageModelId,
   DEFAULT_ICON_MODEL,
   chatRefineProjectWithAI,
@@ -351,6 +352,128 @@ function updatePermissionsCheckboxes(): void {
   }
 }
 
+// ─── Permission Inference from prompt.md ───────────────────────────────
+
+function updatePermissionInferenceUI(applyImmediately = false): void {
+  const promptText = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : (currentProject.prompt || '');
+  const descText = currentProject.description || ($textarea('extDescInput') ? $textarea('extDescInput').value : '');
+  const currentPerms = [...(currentProject.permissions || []), ...(currentProject.optional_permissions || [])];
+  const currentHosts = currentProject.host_permissions || [];
+
+  const res = inferPermissionsFromPrompt({
+    prompt: promptText,
+    description: descText,
+    agentSettings: currentProject.agentSettings,
+    currentPermissions: currentPerms,
+    currentHostPermissions: currentHosts,
+  });
+
+  if (applyImmediately) {
+    pushEditorUndoSnapshot();
+    const core = new Set(['storage', 'alarms']);
+    const existingOpt = new Set(currentProject.optional_permissions || []);
+    let addedCount = 0;
+    for (const p of res.missingPermissions) {
+      if (!core.has(p)) {
+        existingOpt.add(p);
+        addedCount++;
+      }
+    }
+    currentProject.optional_permissions = Array.from(existingOpt);
+
+    const existingHosts = new Set(currentProject.host_permissions || []);
+    let addedHostsCount = 0;
+    for (const hp of res.missingHostPermissions) {
+      existingHosts.add(hp);
+      addedHostsCount++;
+    }
+    currentProject.host_permissions = Array.from(existingHosts);
+
+    updatePermissionsCheckboxes();
+    renderHostPermissionsUI();
+    saveProject();
+    if (activeEditorTab === 'manifest') renderCodeEditor();
+
+    if (addedCount > 0 || addedHostsCount > 0) {
+      showToast(`Inferred & applied: ${[...res.missingPermissions, ...res.missingHostPermissions].join(', ')}`, 'ok');
+    } else {
+      showToast('All inferred permissions & host access are already granted', 'ok');
+    }
+  }
+
+  // Update Status Bar #permSyncStatus
+  const statusEl = $('permSyncStatus');
+  if (statusEl) {
+    const totalMissing = res.missingPermissions.length + res.missingHostPermissions.length;
+    if (totalMissing > 0) {
+      statusEl.textContent = `Permissions: ⚠️ +${totalMissing} missing (click to sync)`;
+      statusEl.style.color = 'var(--color-warning, #f59e0b)';
+    } else {
+      statusEl.textContent = `Permissions: ✓ Synced (${res.permissions.length})`;
+      statusEl.style.color = 'var(--color-success, #10b981)';
+    }
+  }
+
+  // Update Inferred Banner in Blueprint Permissions Card
+  const banner = $('inferredPermissionsBanner');
+  const badgesContainer = $('inferredMissingBadges');
+  if (banner && badgesContainer) {
+    const totalMissing = res.missingPermissions.length + res.missingHostPermissions.length;
+    if (totalMissing > 0) {
+      banner.style.display = 'block';
+      badgesContainer.innerHTML = '';
+      for (const p of res.missingPermissions) {
+        const reason = (res.reasons[p] || []).join('; ') || 'Referenced in prompt';
+        const chip = document.createElement('span');
+        chip.className = 'badge-tag';
+        chip.style.cssText = 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 10px; cursor: help;';
+        chip.textContent = `+ ${p}`;
+        chip.title = reason;
+        badgesContainer.appendChild(chip);
+      }
+      for (const hp of res.missingHostPermissions) {
+        const reason = (res.reasons[hp] || []).join('; ') || 'URL pattern needed';
+        const chip = document.createElement('span');
+        chip.className = 'badge-tag';
+        chip.style.cssText = 'background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 10px; cursor: help;';
+        chip.textContent = `+ ${hp}`;
+        chip.title = reason;
+        badgesContainer.appendChild(chip);
+      }
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // Update badges on permissions checkboxes
+  const container = $('permissionsCheckboxList');
+  if (container) {
+    const labels = container.querySelectorAll<HTMLLabelElement>('label');
+    labels.forEach((label) => {
+      const cb = label.querySelector<HTMLInputElement>('input');
+      if (!cb) return;
+      const permId = cb.value;
+      const isInf = res.permissions.includes(permId);
+      const existingBadge = label.querySelector('.inferred-perm-badge');
+      if (isInf) {
+        const reason = (res.reasons[permId] || []).join('; ');
+        if (!existingBadge) {
+          const badge = document.createElement('span');
+          badge.className = 'badge-tag inferred-perm-badge';
+          badge.style.cssText = 'font-size: 9px; padding: 1px 4px; margin-left: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); cursor: help;';
+          badge.textContent = 'Inferred';
+          badge.title = reason;
+          label.appendChild(badge);
+        } else {
+          existingBadge.setAttribute('title', reason);
+        }
+      } else if (existingBadge) {
+        existingBadge.remove();
+      }
+    });
+  }
+}
+
 // ─── UI Sync & Project Management ──────────────────────────────────────
 
 function renderProjectDropdown(): void {
@@ -464,6 +587,7 @@ function loadProjectIntoUI(p: ExtensionProjectData): void {
   renderCodeEditor();
   renderIcons();
   updateLiveUiPreview();
+  updatePermissionInferenceUI(false);
   checkOverrideStatus();
   if ($('chatActiveProjectName')) {
     $('chatActiveProjectName').textContent = p.name || 'Current Project';
@@ -795,6 +919,8 @@ function updateEditorStatus(): void {
     cmEl.textContent = hasCodeMode ? 'code_mode: Enabled' : 'code_mode: Missing';
     cmEl.style.color = hasCodeMode ? 'var(--color-success)' : 'var(--color-warning)';
   }
+
+  updatePermissionInferenceUI(false);
 }
 
 // ─── Live Declarative UI Preview ───────────────────────────────────────
@@ -809,9 +935,16 @@ function updateLiveUiPreview(): void {
       <div style="padding: 24px 16px; text-align: center; color: var(--color-text-muted); font-size: 12.5px;">
         <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;">No UI Block Found</div>
         <p style="margin: 6px 0 12px; font-size: 11.5px;">Include a fenced <code>\`\`\`ui ... \`\`\`</code> JSON block in prompt.md to render an interactive dashboard.</p>
-        <button id="btnInsertDefaultUi" class="btn btn-primary" style="font-size: 11.5px; padding: 5px 10px;">Insert Sample UI Block</button>
+        <div style="display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;">
+          <button id="btnGenerateUiSkeletonEmpty" class="btn btn-primary" style="font-size: 11.5px; padding: 5px 10px;">⚡ Generate UI Skeleton from Prompt</button>
+          <button id="btnInsertDefaultUi" class="btn btn-secondary" style="font-size: 11.5px; padding: 5px 10px;">Insert Sample UI Block</button>
+        </div>
       </div>
     `;
+    const emptyGenBtn = $('btnGenerateUiSkeletonEmpty');
+    if (emptyGenBtn) {
+      emptyGenBtn.addEventListener('click', () => suggestUiLayoutAndComponents());
+    }
     const btn = $('btnInsertDefaultUi');
     if (btn) {
       btn.addEventListener('click', () => insertSnippet('ui-block'));
@@ -994,6 +1127,9 @@ function insertSnippet(type: string): void {
   let snippet = '';
 
   switch (type) {
+    case 'ui-skeleton':
+      suggestUiLayoutAndComponents();
+      return;
     case 'ui-block':
       snippet = `\`\`\`ui\n{\n  "title": "${currentProject.name} Dashboard",\n  "theme": "compact",\n  "components": [\n    { "type": "header", "text": "Quick Actions" },\n    { "type": "text", "text": "Execute operations with instant undo." },\n    { "type": "metrics", "metrics": [{ "label": "Active Items", "value": "12" }] },\n    { "type": "button", "id": "btn_run", "text": "Run Task Now", "intent": "info", "action": "trigger-run" },\n    { "type": "action-history", "id": "recent_actions", "limit": 10, "showUndoAll": true }\n  ]\n}\n\`\`\`\n\n`;
       break;
@@ -1837,165 +1973,338 @@ async function sendChatMessage(customText?: string): Promise<void> {
 
 // ─── Intelligent UI Layout & Dynamic Components Suggester ──────────────
 
-function suggestUiLayoutAndComponents(): void {
-  const promptText = (currentProject.prompt || '').toLowerCase();
-  const descText = (currentProject.description || '').toLowerCase();
-  const fullText = `${currentProject.name} ${descText} ${promptText}`.toLowerCase();
+function generateUiSkeletonFromPromptAndConfig(project: ExtensionProjectData): {
+  title: string;
+  theme: string;
+  layoutMode: string;
+  themeConfig: { accentColor: string; cardOpacity?: number; blurPx?: number; borderRadiusPx?: number };
+  components: any[];
+} {
+  const promptText = project.prompt || '';
+  const descText = project.description || '';
+  const fullText = `${project.name} ${descText} ${promptText}`.toLowerCase();
 
-  let recommendedLayout: 'stack' | 'bento-grid' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed' = 'bento-grid';
-  let recommendedTheme: 'compact' | 'warm-paper' | 'dark' | 'default' = 'compact';
-  let accentColor = '#3b82f6';
-
-  if (fullText.includes('chat') || fullText.includes('talk') || fullText.includes('assistant') || fullText.includes('conversation')) {
-    recommendedLayout = 'chat-first';
-    recommendedTheme = 'dark';
-    accentColor = '#8b5cf6';
-  } else if (fullText.includes('clean') || fullText.includes('dead') || fullText.includes('stale') || fullText.includes('tidy')) {
-    recommendedLayout = 'stack';
-    recommendedTheme = 'default';
-    accentColor = '#10b981';
-  } else if (fullText.includes('dark') || fullText.includes('cyber') || fullText.includes('hack') || fullText.includes('dev')) {
-    recommendedLayout = 'bento-grid';
-    recommendedTheme = 'dark';
-    accentColor = '#06b6d4';
-  } else if (fullText.includes('read') || fullText.includes('article') || fullText.includes('digest') || fullText.includes('summary')) {
-    recommendedLayout = 'two-column';
-    recommendedTheme = 'warm-paper';
-    accentColor = '#d97706';
-  } else if (fullText.includes('metric') || fullText.includes('quick') || fullText.includes('hygiene') || fullText.includes('feed')) {
-    recommendedLayout = 'compact-feed';
-    recommendedTheme = 'compact';
-    accentColor = '#2563eb';
+  // 1. Title: extract markdown # Heading if present, or use project.name
+  let title = `${project.name} Dashboard`;
+  const headingMatch = promptText.match(/^#\s+([^\n#]+)/m);
+  if (headingMatch && headingMatch[1].trim()) {
+    title = headingMatch[1].trim();
   }
 
-  // Construct dynamic components tailored to extension
+  // 2. Subtitle / Summary text
+  let summaryText = project.description || 'Autonomous browser agent dashboard';
+  const introMatch = promptText.match(/^#\s+[^\n]+\n+([^\n#`]{10,200})/m);
+  if (introMatch && introMatch[1].trim()) {
+    summaryText = introMatch[1].trim();
+  }
+
+  // 3. Inferred capabilities
+  const inf = inferPermissionsFromPrompt({
+    prompt: promptText,
+    description: descText,
+    agentSettings: project.agentSettings,
+    currentPermissions: project.permissions,
+    currentHostPermissions: project.host_permissions,
+  });
+  const permsSet = new Set(inf.permissions);
+
+  // 4. Determine Theme & Layout Mode
+  let theme: 'compact' | 'glassmorphic' | 'dark' | 'warm-paper' | 'default' = 'compact';
+  let layoutMode: 'bento-grid' | 'stack' | 'two-column' | 'tabbed' | 'chat-first' | 'compact-feed' = 'bento-grid';
+  let accentColor = '#6366f1';
+
+  if (fullText.includes('glass') || fullText.includes('sleek') || fullText.includes('floating')) {
+    theme = 'glassmorphic';
+    accentColor = '#818cf8';
+  } else if (fullText.includes('dark') || fullText.includes('cyber') || fullText.includes('dev') || fullText.includes('terminal')) {
+    theme = 'dark';
+    accentColor = '#38bdf8';
+  } else if (fullText.includes('read') || fullText.includes('paper') || fullText.includes('editorial') || fullText.includes('article')) {
+    theme = 'warm-paper';
+    accentColor = '#d97706';
+    layoutMode = 'two-column';
+  } else if (fullText.includes('chat') || fullText.includes('assistant') || fullText.includes('dialog')) {
+    theme = 'dark';
+    layoutMode = 'chat-first';
+    accentColor = '#a855f7';
+  } else {
+    theme = 'compact';
+    accentColor = '#3b82f6';
+  }
+
   const comps: any[] = [
-    { type: 'header', text: currentProject.name },
-    { type: 'text', text: currentProject.description || 'Extension agent is active.' },
+    { type: 'header', text: title, subtitle: summaryText },
+    { type: 'text', text: summaryText },
   ];
 
-  if (fullText.includes('tab') || fullText.includes('window') || fullText.includes('group')) {
+  // 5. High-signal Metrics tailored to domain
+  if (permsSet.has('tabGroups') || permsSet.has('tabs')) {
     comps.push({
       type: 'metrics',
       metrics: [
-        { label: 'Open Tabs', value: '18', subvalue: 'across 2 windows' },
-        { label: 'Groups', value: '3', subvalue: 'active' },
+        { label: 'Open Tabs', value: '16', subvalue: '2 windows' },
+        { label: 'Active Groups', value: '3', subvalue: 'organized' },
+        { label: 'Ungrouped', value: '4', subvalue: 'pending' },
       ],
     });
-    comps.push({
-      type: 'select',
-      id: 'window_scope',
-      label: 'Target Window',
-      storageKey: 'selected_window',
-      options: [
-        { label: 'Current Window', value: 'current' },
-        { label: 'All Windows', value: 'all' },
-      ],
-    });
-    comps.push({
-      type: 'task-list',
-      id: 'tab_actions',
-      label: 'Organize Queue',
-      storageKey: 'tab_tasks',
-      items: [
-        { id: '1', title: 'Group GitHub & documentation tabs', done: false },
-        { id: '2', title: 'Collapse inactive video tabs', done: true },
-      ],
-    });
-    comps.push({
-      type: 'button',
-      id: `btn_sort_tabs_${Date.now().toString(36)}`,
-      text: 'Sort & Group Tabs',
-      intent: 'info',
-      action: 'trigger-run',
-    });
-    comps.push({
-      type: 'chat',
-      id: 'agent_chat',
-      label: 'Tab Assistant Chat',
-      storageKey: 'agent_chat_log',
-      placeholder: 'Tell agent how to sort your tabs...',
-    });
-  } else if (fullText.includes('bookmark')) {
+  } else if (permsSet.has('bookmarks')) {
     comps.push({
       type: 'metrics',
       metrics: [
-        { label: 'Total Bookmarks', value: '142', subvalue: 'healthy' },
-        { label: 'Duplicates', value: '0', subvalue: 'clean' },
+        { label: 'Total Bookmarks', value: '142', subvalue: 'indexed' },
+        { label: 'Folders', value: '8', subvalue: 'active' },
+        { label: 'Cleaned', value: '0', subvalue: 'healthy' },
       ],
     });
+  } else if (permsSet.has('history')) {
     comps.push({
-      type: 'switch',
-      id: 'auto_archive',
-      label: 'Auto-archive dead links',
-      storageKey: 'auto_archive_enabled',
-      hint: 'Detect and archive 404 links during background alarm',
+      type: 'metrics',
+      metrics: [
+        { label: 'Visits Today', value: '38', subvalue: 'pages' },
+        { label: 'Unique Domains', value: '12', subvalue: 'domains' },
+        { label: 'Flagged', value: '0', subvalue: 'clean' },
+      ],
     });
+  } else if (permsSet.has('downloads')) {
     comps.push({
-      type: 'button',
-      id: `btn_scan_bookmarks_${Date.now().toString(36)}`,
-      text: 'Scan & Clean Bookmarks',
-      intent: 'success',
-      action: 'trigger-run',
+      type: 'metrics',
+      metrics: [
+        { label: 'Recent Files', value: '7', subvalue: 'last 24h' },
+        { label: 'Organized', value: '5', subvalue: 'sorted' },
+        { label: 'Storage', value: '120 MB', subvalue: 'managed' },
+      ],
     });
   } else {
     comps.push({
       type: 'metrics',
       metrics: [
-        { label: 'Status', value: 'Active', subvalue: 'monitoring' },
-        { label: 'Schedule', value: `${currentProject.alarmMinutes}m`, subvalue: 'interval' },
+        { label: 'Agent Status', value: 'Ready', subvalue: 'idle' },
+        { label: 'Schedule', value: `${project.alarmMinutes || 30}m`, subvalue: 'interval' },
       ],
-    });
-    comps.push({
-      type: 'switch',
-      id: 'auto_run_switch',
-      label: 'Autonomous Schedule',
-      storageKey: 'auto_run_enabled',
-      hint: 'Run scheduled checks every interval',
-    });
-    comps.push({
-      type: 'button',
-      id: `btn_run_now_${Date.now().toString(36)}`,
-      text: 'Run Operation',
-      intent: 'info',
-      action: 'trigger-run',
-    });
-    comps.push({
-      type: 'chat',
-      id: 'agent_chat',
-      label: 'Agent Chat',
-      storageKey: 'agent_chat_messages',
-      placeholder: 'Send instruction or ask a question...',
     });
   }
 
+  // 6. Action Commands (Primary and Secondary buttons)
+  const cmdMatches = Array.from(promptText.matchAll(/command['"]?\s*:\s*['"]([a-zA-Z0-9_-]+)['"]/g)).map((m) => m[1]);
+  const uniqueCommands = Array.from(new Set(cmdMatches));
+
+  if (uniqueCommands.length > 0) {
+    const primaryCmd = uniqueCommands[0];
+    const btnLabel = primaryCmd
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    comps.push({
+      type: 'button',
+      id: `btn_${primaryCmd}`,
+      text: `${btnLabel} Now`,
+      intent: 'primary',
+      action: 'trigger-run',
+      payload: { command: primaryCmd },
+    });
+    if (uniqueCommands.length > 1) {
+      for (const secCmd of uniqueCommands.slice(1, 3)) {
+        const secLabel = secCmd
+          .replace(/[_-]+/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        comps.push({
+          type: 'button',
+          id: `btn_${secCmd}`,
+          text: secLabel,
+          intent: secCmd.includes('undo') ? 'warning' : 'info',
+          action: 'trigger-run',
+          payload: { command: secCmd },
+        });
+      }
+    }
+  } else {
+    if (permsSet.has('tabGroups')) {
+      comps.push({
+        type: 'button',
+        id: 'btn_sort_tabs',
+        text: 'Sort & Organize Tabs Now',
+        intent: 'primary',
+        action: 'trigger-run',
+        payload: { command: 'sort_tabs' },
+      });
+    } else if (permsSet.has('bookmarks')) {
+      comps.push({
+        type: 'button',
+        id: 'btn_audit_bookmarks',
+        text: 'Audit & Clean Bookmarks Now',
+        intent: 'primary',
+        action: 'trigger-run',
+        payload: { command: 'audit_bookmarks' },
+      });
+    } else {
+      comps.push({
+        type: 'button',
+        id: 'btn_run_agent',
+        text: `Run ${project.name} Now`,
+        intent: 'primary',
+        action: 'trigger-run',
+        payload: { command: 'run' },
+      });
+    }
+  }
+
+  // 7. Interactive agentSettings controls (from config.json)
+  if (project.agentSettings && project.agentSettings.length > 0) {
+    const settingsStorageKey = (project.agentSettings[0] as any).storageKey || `${project.slug.replace(/-/g, '_')}_settings`;
+    for (const field of project.agentSettings.slice(0, 4)) {
+      if (field.type === 'boolean') {
+        comps.push({
+          type: 'switch',
+          id: field.id,
+          label: field.label || field.id,
+          hint: field.hint,
+          storageKey: settingsStorageKey,
+          checked: field.default ?? true,
+        });
+      } else if (field.type === 'select' && field.options && field.options.length > 0) {
+        comps.push({
+          type: 'select',
+          id: field.id,
+          label: field.label || field.id,
+          storageKey: settingsStorageKey,
+          options: field.options.map((opt: any) => typeof opt === 'string' ? { label: opt, value: opt } : opt),
+        });
+      }
+    }
+  }
+
+  // 8. Workflow Run Progress
+  let steps = ['Scan browser state', 'Evaluate prompt criteria', 'Execute agent actions'];
+  if (permsSet.has('tabGroups') || permsSet.has('tabs')) {
+    steps = ['Scan open tabs & window context', 'Classify tabs into research topics', 'Apply tab groups safely'];
+  } else if (permsSet.has('bookmarks')) {
+    steps = ['Scan bookmark tree & URLs', 'Detect broken links & duplicates', 'Reorganize folders'];
+  } else if (permsSet.has('history')) {
+    steps = ['Search browsing history visits', 'Cluster domain topics & frequency', 'Generate activity insights'];
+  }
   comps.push({
-    type: 'action-history',
-    id: 'history_log',
-    text: 'Action Journal & Undo',
-    limit: 15,
-    showUndoAll: true,
-    undoAllLabel: 'Undo Last Action',
+    type: 'run-progress',
+    id: 'run_progress',
+    steps,
   });
+
+  // 9. Mutating tools -> action-history
+  if (
+    permsSet.has('tabGroups') ||
+    permsSet.has('tabs') ||
+    permsSet.has('bookmarks') ||
+    permsSet.has('downloads') ||
+    permsSet.has('browsingData') ||
+    promptText.includes('action_history') ||
+    promptText.includes('action_toast')
+  ) {
+    comps.push({
+      type: 'action-history',
+      id: 'recent_actions',
+      text: 'Recent Actions & Undo',
+      limit: 15,
+      showUndoAll: true,
+      undoAllLabel: 'Undo Last Action',
+    });
+  }
+
+  return {
+    title,
+    theme,
+    layoutMode,
+    themeConfig: {
+      accentColor,
+      cardOpacity: theme === 'glassmorphic' ? 0.85 : 0.95,
+      blurPx: theme === 'glassmorphic' ? 16 : 8,
+      borderRadiusPx: 10,
+    },
+    components: comps,
+  };
+}
+
+function suggestUiLayoutAndComponents(): void {
+  const skel = generateUiSkeletonFromPromptAndConfig(currentProject);
 
   mutatePromptUiBlock((ui) => {
-    ui.title = `${currentProject.name} Dashboard`;
-    ui.theme = recommendedTheme;
-    ui.layoutMode = recommendedLayout;
+    ui.title = skel.title;
+    ui.theme = skel.theme;
+    ui.layoutMode = skel.layoutMode;
     ui.themeConfig = {
       ...(ui.themeConfig || {}),
-      accentColor,
+      ...skel.themeConfig,
     };
-    ui.components = comps;
-    ui.layout = comps;
+    ui.components = skel.components;
+    ui.layout = skel.components;
   });
 
-  if ($select('uiThemeSelect')) $select('uiThemeSelect').value = recommendedTheme;
-  if ($select('uiLayoutModeSelect')) $select('uiLayoutModeSelect').value = recommendedLayout;
-  if ($input('uiAccentColorInput')) $input('uiAccentColorInput').value = accentColor;
-  if ($input('uiTitleInput')) $input('uiTitleInput').value = `${currentProject.name} Dashboard`;
+  if ($select('uiThemeSelect')) $select('uiThemeSelect').value = skel.theme;
+  if ($select('uiLayoutModeSelect')) $select('uiLayoutModeSelect').value = skel.layoutMode;
+  if ($input('uiAccentColorInput')) $input('uiAccentColorInput').value = skel.themeConfig.accentColor;
+  if ($input('uiTitleInput')) $input('uiTitleInput').value = skel.title;
 
-  showToast(`Applied ${recommendedLayout} layout with ${recommendedTheme} theme!`, 'ok');
+  // Ensure showAgentUI is enabled so the generated dashboard is visible in popup
+  if (!currentProject.uiConfig) {
+    currentProject.uiConfig = {};
+  }
+  currentProject.uiConfig.showAgentUI = true;
+  const showUiCheckbox = $('uiShowAgentUI') as HTMLInputElement | null;
+  if (showUiCheckbox) showUiCheckbox.checked = true;
+
+  saveProject();
+  showToast(`Synthesized UI skeleton tailored to prompt & settings!`, 'ok');
+}
+
+async function handleAiUiSkeleton(): Promise<void> {
+  const cfg = await getConfig();
+  const provider = cfg.provider;
+  const apiKey = cfg.keys[provider];
+  if (!apiKey) {
+    showToast(`No ${provider} API key configured. Open Settings.`, 'error');
+    return;
+  }
+
+  showToast('Synthesizing bespoke UI skeleton with AI...', 'ok');
+  try {
+    const res = await generateUiSkeletonWithAI({
+      provider,
+      modelId: $select('aiModelSelect').value,
+      apiKey,
+      projectName: currentProject.name,
+      projectDescription: currentProject.description,
+      promptText: currentProject.prompt || '',
+      permissions: [...(currentProject.permissions || []), ...(currentProject.optional_permissions || [])],
+      agentSettings: currentProject.agentSettings,
+      currentTheme: $select('uiThemeSelect')?.value || 'compact',
+    });
+
+    mutatePromptUiBlock((ui) => {
+      ui.title = res.title || `${currentProject.name} Dashboard`;
+      ui.theme = res.theme || 'compact';
+      ui.layoutMode = res.layoutMode || 'bento-grid';
+      ui.themeConfig = {
+        ...(ui.themeConfig || {}),
+        accentColor: res.accentColor || '#6366f1',
+      };
+      ui.components = res.components;
+      ui.layout = res.components;
+    });
+
+    if ($select('uiThemeSelect')) $select('uiThemeSelect').value = res.theme;
+    if ($select('uiLayoutModeSelect')) $select('uiLayoutModeSelect').value = res.layoutMode;
+    if ($input('uiAccentColorInput')) $input('uiAccentColorInput').value = res.accentColor;
+    if ($input('uiTitleInput')) $input('uiTitleInput').value = res.title;
+
+    if (!currentProject.uiConfig) {
+      currentProject.uiConfig = {};
+    }
+    currentProject.uiConfig.showAgentUI = true;
+    const showUiCheckbox = $('uiShowAgentUI') as HTMLInputElement | null;
+    if (showUiCheckbox) showUiCheckbox.checked = true;
+
+    await saveProject();
+    showToast(`AI UI Generated: ${res.summary || 'Custom layout applied'}`, 'ok');
+  } catch (err) {
+    showToast(`AI UI generation failed: ${(err as Error).message}`, 'error');
+  }
 }
 
 // ─── Event Listeners ───────────────────────────────────────────────────
@@ -2347,6 +2656,26 @@ function setupEventListeners(): void {
 
   $('btnSuggestUiLayout').addEventListener('click', () => {
     suggestUiLayoutAndComponents();
+  });
+
+  $('btnAiUiSkeleton')?.addEventListener('click', () => {
+    handleAiUiSkeleton();
+  });
+
+  $('btnInferPermissions')?.addEventListener('click', () => {
+    updatePermissionInferenceUI(true);
+  });
+
+  $('btnApplyInferredPerms')?.addEventListener('click', () => {
+    updatePermissionInferenceUI(true);
+  });
+
+  $('btnInferPermsSnippet')?.addEventListener('click', () => {
+    updatePermissionInferenceUI(true);
+  });
+
+  $('permSyncStatus')?.addEventListener('click', () => {
+    updatePermissionInferenceUI(true);
   });
 
   const addCompButtons = document.querySelectorAll('[data-add-ui-comp]');

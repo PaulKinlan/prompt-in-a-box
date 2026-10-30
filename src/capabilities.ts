@@ -288,3 +288,341 @@ export async function removeCapability(id: string): Promise<boolean> {
     });
   });
 }
+
+// ─── Permission Inference from prompt.md & config.json ─────────────────────
+
+export interface PermissionInferenceResult {
+  permissions: string[];
+  hostPermissions: string[];
+  reasons: Record<string, string[]>;
+  missingPermissions: string[];
+  missingHostPermissions: string[];
+}
+
+export interface InferPermissionsOptions {
+  prompt: string;
+  description?: string;
+  agentSettings?: Array<{ id: string; label?: string; hint?: string }>;
+  currentPermissions?: string[];
+  currentHostPermissions?: string[];
+}
+
+/**
+ * Deterministically analyzes prompt.md text, extension description, and agentSettings
+ * to infer required Chrome permissions and host_permissions, returning detailed
+ * rationale for why each permission is required and which ones are currently missing.
+ */
+export function inferPermissionsFromPrompt(options: InferPermissionsOptions): PermissionInferenceResult {
+  const {
+    prompt = '',
+    description = '',
+    agentSettings = [],
+    currentPermissions = [],
+    currentHostPermissions = [],
+  } = options;
+
+  const combinedText = `${prompt}\n${description}`;
+  const reasons: Record<string, string[]> = {};
+
+  function addReason(perm: string, reason: string) {
+    if (!reasons[perm]) {
+      reasons[perm] = [];
+    }
+    if (!reasons[perm].includes(reason)) {
+      reasons[perm].push(reason);
+    }
+  }
+
+  // 1. Tool name detection mapped to capabilities
+  // Extract all tools from CAPABILITIES gates string
+  const toolToCapMap: Record<string, string> = {
+    // Tabs & Windows
+    tab_list: 'tabs',
+    tab_open: 'tabs',
+    tab_close: 'tabs',
+    tab_focus: 'tabs',
+    tab_navigate: 'tabs',
+    tab_duplicate: 'tabs',
+    tab_move: 'tabs',
+    tab_pin: 'tabs',
+    tab_reload: 'tabs',
+    tab_discard: 'tabs',
+    tab_mute: 'tabs',
+    window_list: 'tabs',
+    window_create: 'tabs',
+    window_update: 'tabs',
+    window_close: 'tabs',
+    action_toast: 'tabs',
+
+    // Tab Groups
+    tab_group: 'tabGroups',
+    tab_group_list: 'tabGroups',
+    tab_group_update: 'tabGroups',
+    tab_ungroup: 'tabGroups',
+
+    // Bookmarks
+    bookmark_search: 'bookmarks',
+    bookmark_add: 'bookmarks',
+    bookmark_list: 'bookmarks',
+    bookmark_remove: 'bookmarks',
+    bookmark_tree: 'bookmarks',
+    bookmark_recent: 'bookmarks',
+    bookmark_children: 'bookmarks',
+    bookmark_move: 'bookmarks',
+    bookmark_update: 'bookmarks',
+
+    // History
+    history_search: 'history',
+    history_visits: 'history',
+    history_add: 'history',
+    history_delete_url: 'history',
+    history_delete_range: 'history',
+
+    // Sessions
+    sessions_recent: 'sessions',
+    sessions_restore: 'sessions',
+
+    // Reading list
+    reading_list_query: 'readingList',
+    reading_list_add: 'readingList',
+    reading_list_update: 'readingList',
+    reading_list_remove: 'readingList',
+
+    // Context menus
+    context_menu_create: 'contextMenus',
+    context_menu_list: 'contextMenus',
+    context_menu_update: 'contextMenus',
+    context_menu_remove: 'contextMenus',
+    context_menu_clear: 'contextMenus',
+
+    // Page Content & Scripting
+    tab_read: 'scripting',
+    read_page: 'scripting',
+    capture_page: 'scripting',
+    find_elements: 'scripting',
+    click_element: 'scripting',
+    type_text: 'scripting',
+    select_option: 'scripting',
+    scroll_page: 'scripting',
+    wait_for: 'scripting',
+    wait_for_selector: 'scripting',
+    extract_tables: 'scripting',
+    evaluate_script: 'scripting',
+    press_key: 'scripting',
+    fill_form: 'scripting',
+    hover_element: 'scripting',
+
+    // Cookies
+    cookies_get: 'cookies',
+    cookies_get_all: 'cookies',
+    cookies_set: 'cookies',
+    cookies_remove: 'cookies',
+
+    // Browsing data
+    browsing_data_remove: 'browsingData',
+
+    // Page capture
+    page_capture_mhtml: 'pageCapture',
+
+    // Search
+    browser_search: 'search',
+
+    // System & hardware
+    idle_query: 'idle',
+    notification_show: 'notifications',
+    notify: 'notifications',
+    alarm_set: 'alarms',
+    alarm_list: 'alarms',
+    alarm_clear: 'alarms',
+    download_list: 'downloads',
+    download_file: 'downloads',
+    download_cancel: 'downloads',
+    download_open: 'downloads',
+    download_erase: 'downloads',
+    download_show: 'downloads',
+    tts_speak: 'tts',
+    tts_stop: 'tts',
+    power_keep_awake: 'power',
+    power_release: 'power',
+    extensions_list: 'management',
+    extension_get: 'management',
+    system_cpu_info: 'system.cpu',
+    system_memory_info: 'system.memory',
+    system_storage_info: 'system.storage',
+    system_display_info: 'system.display',
+    clipboard_write: 'clipboardWrite',
+    top_sites: 'topSites',
+  };
+
+  for (const [tool, capId] of Object.entries(toolToCapMap)) {
+    const regex = new RegExp(`\\b${tool}\\b`, 'i');
+    if (regex.test(combinedText)) {
+      addReason(capId, `Uses tool \`${tool}\``);
+    }
+  }
+
+  // 2. Chrome Event triggers detection in prompt
+  const eventTriggers: Array<{ pattern: RegExp; capId: string; name: string }> = [
+    { pattern: /tabs\.(onCreated|onUpdated|onRemoved|onActivated|onMoved|onHighlighted)/i, capId: 'tabs', name: 'tabs events' },
+    { pattern: /tabGroups\.(onCreated|onUpdated|onRemoved|onMoved)/i, capId: 'tabGroups', name: 'tabGroups events' },
+    { pattern: /bookmarks\.(onCreated|onRemoved|onChanged|onMoved)/i, capId: 'bookmarks', name: 'bookmarks events' },
+    { pattern: /history\.(onVisited|onVisitRemoved)/i, capId: 'history', name: 'history events' },
+    { pattern: /downloads\.(onCreated|onChanged|onErased)/i, capId: 'downloads', name: 'downloads events' },
+    { pattern: /contextMenus\.(onClicked)/i, capId: 'contextMenus', name: 'contextMenus events' },
+    { pattern: /idle\.(onStateChanged)/i, capId: 'idle', name: 'idle events' },
+    { pattern: /cookies\.(onChanged)/i, capId: 'cookies', name: 'cookies events' },
+    { pattern: /management\.(onInstalled|onUninstalled|onEnabled|onDisabled)/i, capId: 'management', name: 'management events' },
+    { pattern: /alarms\.(onAlarm)/i, capId: 'alarms', name: 'alarms events' },
+  ];
+
+  for (const ev of eventTriggers) {
+    if (ev.pattern.test(combinedText)) {
+      addReason(ev.capId, `Listens to Chrome ${ev.name}`);
+      if (ev.capId === 'tabGroups') {
+        addReason('tabs', 'Tab group workflows require tab access');
+      }
+    }
+  }
+
+  // 3. Natural language semantic heuristics
+  const heuristics: Array<{ pattern: RegExp; capId: string; reason: string }> = [
+    { pattern: /\b(tab group|tab groups|tab_group|grouping tabs|organize tabs into groups|collapse groups?|ungroup tabs?)\b/i, capId: 'tabGroups', reason: 'Mentions tab groups / grouping tabs' },
+    { pattern: /\b(open tab|close tab|active tab|pinned tab|tab strip|all tabs|list tabs|switch tab|duplicate tab|tabs in window)\b/i, capId: 'tabs', reason: 'Mentions tab operations / tab management' },
+    { pattern: /\b(read page|page content|DOM inspection|page body|extract text from page|click button on page|scrape page|summarize page content|webpage text)\b/i, capId: 'scripting', reason: 'Mentions reading or inspecting page DOM / content' },
+    { pattern: /\b(bookmark|bookmarks|favorite folders?|reading list bookmarks?)\b/i, capId: 'bookmarks', reason: 'Mentions bookmarks / bookmark management' },
+    { pattern: /\b(browsing history|visited pages?|recent visits|history search|visit history)\b/i, capId: 'history', reason: 'Mentions browsing history' },
+    { pattern: /\b(recently closed|restore closed tab|restore session)\b/i, capId: 'sessions', reason: 'Mentions recently closed tabs / sessions' },
+    { pattern: /\b(reading list|chrome reading list|articles to read later)\b/i, capId: 'readingList', reason: 'Mentions Chrome Reading List' },
+    { pattern: /\b(context menu|right-click menu|context-menu)\b/i, capId: 'contextMenus', reason: 'Mentions right-click context menus' },
+    { pattern: /\b(cookies?|session cookies?|auth cookies?)\b/i, capId: 'cookies', reason: 'Mentions cookies inspection / management' },
+    { pattern: /\b(clear cache|clear browsing data|wipe history and cookies)\b/i, capId: 'browsingData', reason: 'Mentions clearing browsing data' },
+    { pattern: /\b(mhtml|page capture|save page offline|offline archive)\b/i, capId: 'pageCapture', reason: 'Mentions saving page as MHTML archive' },
+    { pattern: /\b(idle detection|user is away|wait for idle|idle state|when idle)\b/i, capId: 'idle', reason: 'Mentions idle detection' },
+    { pattern: /\b(desktop notification|notification_show|push notification|alert the user with a notification)\b/i, capId: 'notifications', reason: 'Mentions desktop notifications' },
+    { pattern: /\b(download files?|download list|save downloaded file)\b/i, capId: 'downloads', reason: 'Mentions file downloads' },
+    { pattern: /\b(text to speech|speak aloud|tts_speak|read aloud)\b/i, capId: 'tts', reason: 'Mentions text-to-speech (TTS)' },
+    { pattern: /\b(keep awake|prevent sleep|power_keep_awake)\b/i, capId: 'power', reason: 'Mentions power keep-awake' },
+    { pattern: /\b(installed extensions|list extensions|manage extensions)\b/i, capId: 'management', reason: 'Mentions extension management' },
+    { pattern: /\b(clipboard|copy to clipboard|clipboard_write)\b/i, capId: 'clipboardWrite', reason: 'Mentions copying to clipboard' },
+    { pattern: /\b(top sites|frequently visited sites)\b/i, capId: 'topSites', reason: 'Mentions top visited sites' },
+  ];
+
+  for (const h of heuristics) {
+    if (h.pattern.test(combinedText)) {
+      addReason(h.capId, h.reason);
+    }
+  }
+
+  // 4. Check agentSettings fields for preferences implying permissions
+  for (const setting of agentSettings) {
+    const sId = (setting.id || '').toLowerCase();
+    const sLabel = (setting.label || '').toLowerCase();
+    const sHint = (setting.hint || '').toLowerCase();
+    const settingCombined = `${sId} ${sLabel} ${sHint}`;
+
+    if (settingCombined.includes('idle') || sId.includes('waitforidle')) {
+      addReason('idle', `Setting "${setting.label || setting.id}" references idle detection`);
+    }
+    if (settingCombined.includes('group') || settingCombined.includes('preferexistinggroups')) {
+      addReason('tabGroups', `Setting "${setting.label || setting.id}" configures tab groups`);
+      addReason('tabs', `Setting "${setting.label || setting.id}" configures tab grouping`);
+    }
+    if (settingCombined.includes('content') || settingCombined.includes('usepagecontent') || settingCombined.includes('dom')) {
+      addReason('scripting', `Setting "${setting.label || setting.id}" enables page content inspection`);
+    }
+    if (settingCombined.includes('notification')) {
+      addReason('notifications', `Setting "${setting.label || setting.id}" configures notifications`);
+    }
+  }
+
+  // If tabGroups is inferred, tabs is always required as well
+  if (reasons['tabGroups']) {
+    addReason('tabs', 'Tab grouping operations require the `tabs` permission');
+  }
+
+  // Compile final permissions list (always including standard storage and alarms if referenced)
+  const inferredPerms = new Set<string>();
+  for (const perm of Object.keys(reasons)) {
+    inferredPerms.add(perm);
+  }
+
+  // 5. Host permissions inference (URL access)
+  const inferredHostPerms = new Set<string>();
+  const hostReasons: Record<string, string[]> = {};
+
+  function addHostReason(pattern: string, reason: string) {
+    inferredHostPerms.add(pattern);
+    if (!hostReasons[pattern]) {
+      hostReasons[pattern] = [];
+    }
+    if (!hostReasons[pattern].includes(reason)) {
+      hostReasons[pattern].push(reason);
+    }
+  }
+
+  // If scripting, cookies, or pageCapture is inferred, check domain targets
+  const needsHostAccess =
+    inferredPerms.has('scripting') ||
+    inferredPerms.has('cookies') ||
+    inferredPerms.has('pageCapture');
+
+  if (needsHostAccess) {
+    // Look for specific domain patterns in prompt text
+    const explicitHostRegex = /(?:https?:\/\/|\*:\/\/)(?:[a-zA-Z0-9*_-]+\.)+[a-zA-Z0-9*_-]+(?:\/[^\s"'`<>]*)?/g;
+    const matches = combinedText.match(explicitHostRegex) || [];
+    const foundSpecific = new Set<string>();
+
+    for (const match of matches) {
+      if (match.includes('schema.org') || match.includes('w3.org') || match.includes('github.com/paulkinlan')) {
+        continue;
+      }
+      try {
+        const u = new URL(match.replace(/^\*:\/\//, 'https://'));
+        const hostPattern = `*://*.${u.hostname.replace(/^www\./, '')}/*`;
+        foundSpecific.add(hostPattern);
+        addHostReason(hostPattern, `Prompt references domain ${u.hostname}`);
+      } catch {
+        // Not a standard URL
+      }
+    }
+
+    // If specific domains weren't found, or prompt operates across general user tabs, infer <all_urls>
+    const isGeneralBrowsing =
+      foundSpecific.size === 0 ||
+      /\b(all tabs|any tab|open tabs|current tab|active tab|any page|every tab|all pages|general browsing|web pages)\b/i.test(combinedText) ||
+      inferredPerms.has('tabGroups') ||
+      inferredPerms.has('tabs');
+
+    if (isGeneralBrowsing) {
+      addHostReason('<all_urls>', 'Required by page content & scripting tools to inspect and read tabs across origins');
+    }
+  }
+
+  // Merge host reasons into reasons object for unified display
+  for (const [hp, rList] of Object.entries(hostReasons)) {
+    reasons[hp] = rList;
+  }
+
+  const permissionsList = Array.from(inferredPerms);
+  const hostPermissionsList = Array.from(inferredHostPerms);
+
+  // 6. Compute diffs vs currentPermissions and currentHostPermissions
+  const currentPermsSet = new Set(currentPermissions);
+  const missingPermissions = permissionsList.filter((p) => !currentPermsSet.has(p));
+
+  const hasBroadHostAccess =
+    currentHostPermissions.includes('<all_urls>') ||
+    currentHostPermissions.includes('*://*/*');
+
+  const missingHostPermissions = hasBroadHostAccess
+    ? []
+    : hostPermissionsList.filter((hp) => !currentHostPermissions.includes(hp));
+
+  return {
+    permissions: permissionsList,
+    hostPermissions: hostPermissionsList,
+    reasons,
+    missingPermissions,
+    missingHostPermissions,
+  };
+}

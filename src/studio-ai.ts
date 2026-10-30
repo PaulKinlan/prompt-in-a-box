@@ -448,6 +448,97 @@ Provide:
   return result.output;
 }
 
+// ─── AI UI Skeleton Generator ───────────────────────────────────────────
+
+export const uiSkeletonSchema = z.object({
+  title: z.string().describe('Display title for dashboard header'),
+  theme: z.enum(['compact', 'glassmorphic', 'dark', 'warm-paper', 'default']).default('compact'),
+  layoutMode: z.enum(['stack', 'bento-grid', 'two-column', 'tabbed', 'chat-first', 'compact-feed']).default('bento-grid'),
+  accentColor: z.string().describe('Hex accent color matching aesthetic, e.g. #6366f1'),
+  summary: z.string().describe('One sentence explanation of this UI structure'),
+  components: z.array(z.record(z.string(), z.any())).describe('List of UIComponent objects forming the layout'),
+});
+
+export type GeneratedUiSkeleton = z.infer<typeof uiSkeletonSchema>;
+
+export async function generateUiSkeletonWithAI({
+  provider,
+  modelId,
+  apiKey,
+  projectName,
+  projectDescription,
+  promptText,
+  permissions = [],
+  agentSettings = [],
+  currentTheme = 'compact',
+  onProgress,
+}: {
+  provider: Provider;
+  modelId: string;
+  apiKey: string;
+  projectName: string;
+  projectDescription?: string;
+  promptText: string;
+  permissions?: string[];
+  agentSettings?: any[];
+  currentTheme?: string;
+  onProgress?: (status: string) => void;
+}): Promise<GeneratedUiSkeleton> {
+  onProgress?.(`Synthesizing UI skeleton with AI (${provider} / ${modelId})...`);
+  const model = getModelInstance(provider, modelId, apiKey);
+
+  const prompt = `You are a Principal UI/UX Architect for Chrome browser extensions.
+Analyze this extension's prompt.md, description, and agentSettings to design a production-grade declarative UI block (\`\`\`ui) for its popup dashboard.
+
+### Extension Details:
+- **Name**: "${projectName}"
+- **Description**: "${projectDescription || '(No description)'}"
+- **Granted Permissions**: [${permissions.join(', ')}]
+- **Agent Settings (from config.json)**:
+${JSON.stringify(agentSettings, null, 2)}
+
+### Full prompt.md Content:
+\`\`\`markdown
+${promptText.slice(0, 8000)}
+\`\`\`
+
+### Declarative UI Component Catalog:
+- "header": { type: "header", text: string, subtitle?: string }
+- "text": { type: "text", text: string }
+- "metrics": { type: "metrics", metrics: Array<{ label: string, value: string, subvalue?: string }> } (3-4 crisp high-signal numbers)
+- "alert": { type: "alert", text: string, intent: "info" | "success" | "warning" | "danger" }
+- "button": { type: "button", text: string, intent: "primary" | "info" | "success" | "danger", action: "trigger-run", payload?: object } (use exact command names handled in prompt.md)
+- "switch": { type: "switch", id: string, label: string, hint?: string, storageKey?: string, checked?: boolean }
+- "select": { type: "select", id: string, label: string, storageKey?: string, options: Array<{ label: string, value: string }> }
+- "run-progress": { type: "run-progress", id: "run_progress", steps: string[] } (3 distinct sequential workflow steps)
+- "task-list": { type: "task-list", id: string, label: string, tasks: Array<{ id: string, text: string, done: boolean }> }
+- "action-history": { type: "action-history", id: "recent_actions", text: string, limit: 15, showUndoAll: boolean, undoAllLabel: string } (include if extension creates/modifies tabs, bookmarks, or browser items)
+- "chat": { type: "chat", id: "agent_chat", label: string, placeholder: string }
+
+### Requirements:
+1. Extract the actual action commands handled in prompt.md (e.g. payload: { command: "..." }) and map them to primary and secondary action buttons.
+2. Mirror the user-configurable preferences from \`agentSettings\` into interactive \`switch\` or \`select\` components with matching \`storageKey\`s.
+3. Design realistic initial \`metrics\` that represent this extension's core utility.
+4. Include \`run-progress\` with 3 realistic workflow steps for this extension.
+5. If the extension modifies tabs, bookmarks, or files, include \`action-history\` with \`showUndoAll: true\`.
+6. Select an appropriate theme ('compact', 'glassmorphic', 'dark', 'warm-paper', or 'default').
+`;
+
+  const providerOptions =
+    provider === 'google'
+      ? { google: { thinkingConfig: { thinkingLevel: 'low' } } }
+      : undefined;
+
+  const result = await generateText({
+    model,
+    output: Output.object({ schema: uiSkeletonSchema }),
+    messages: [{ role: 'user', content: prompt }],
+    providerOptions: providerOptions as any,
+  });
+
+  return result.output;
+}
+
 // ─── AI Icon Generation ────────────────────────────────────────────────
 
 export const DEFAULT_ICON_MODEL = 'gemini-nano-banana-2.1';
