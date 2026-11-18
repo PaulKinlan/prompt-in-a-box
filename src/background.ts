@@ -16,6 +16,7 @@
  *      (context-menu clicks, bookmark changes, downloads, etc.).
  */
 
+import './zod-jitless';
 import { runAgentLoop, DEFAULT_PRICING, estimateCost } from 'agent-do';
 import type { AgentHooks } from 'agent-do';
 
@@ -68,7 +69,19 @@ import {
   listArtifacts,
 } from './artifacts';
 import { startEvents } from './events/dispatcher';
-import { drainEvents } from './events/queue';
+import { drainEvents, peekEventCount } from './events/queue';
+import { recordToolMutationFromCall } from './events/mutation-guard';
+import {
+  promptNeedsBootstrap,
+  promptNeedsStartupRun,
+  setPendingBootstrap,
+  getPendingBootstrap,
+  clearPendingBootstrap,
+  activateStartupCooldown,
+  checkEventRunCircuitBreaker,
+  startServiceWorkerKeepalive,
+} from './lifecycle';
+import { sanitizeUntrustedText, wrapUntrustedBrowserData } from './security/untrusted';
 import {
   setCurrentRunId,
   undoActionById,
@@ -94,6 +107,7 @@ import {
   handleCodeModeToolCall,
   handleCodeModeLog,
   buildRuntimeCodeModePrompt,
+  tryRunSavedEventScripts,
 } from './code-mode';
 import { removeContextMenuIndex } from './tools/context-menu-list';
 
@@ -101,6 +115,8 @@ const ALARM_NAME = 'prompt-in-a-box-tick';
 const LAST_SCHEDULED_RUN_KEY = '__pib_last_scheduled_run_at';
 
 let activeRunPromise: Promise<AuditEntry> | null = null;
+let pendingEventRetrigger = false;
+let eventDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function ensureScheduled(alarmMinutes?: number, forceReset = false): Promise<void> {
   const cfg = await getConfig();
@@ -151,15 +167,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     chrome.runtime.openOptionsPage();
   }
 
-  // Only fire a bootstrap run if the prompt actually registers context menus or commands
+  // Clean up any stale context menus if prompt no longer uses them
   try {
     const promptText = await loadPrompt();
-    if (promptText.includes('context_menu_create') || promptText.includes('contextMenus')) {
-      const trigger: AuditEntry['trigger'] =
-        details.reason === 'update' ? 'update' : 'install';
-      await run(trigger).catch((err) => console.warn('[prompt-in-a-box] bootstrap run failed:', err));
-    } else {
-      // Clean up any stale context menus if prompt no longer uses them
+    if (!promptText.includes('context_menu_create') && !promptText.includes('contextMenus')) {
       try {
         if (typeof chrome.contextMenus?.removeAll === 'function') {
           chrome.contextMenus.removeAll();
@@ -169,14 +180,52 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         // ignore
       }
     }
+
+    if (promptNeedsBootstrap(promptText)) {
+      const trigger: 'install' | 'update' =
+        details.reason === 'update' ? 'update' : 'install';
+      if (activeKey(cfg)) {
+        await clearPendingBootstrap();
+        await run(trigger).catch((err) =>
+          console.warn('[prompt-in-a-box] bootstrap run failed:', err),
+        );
+      } else {
+        // Defer bootstrap until the user configures an API key on the Options page
+        await setPendingBootstrap(trigger);
+        log(`Deferred '${trigger}' bootstrap until an API key is configured.`);
+      }
+    } else {
+      await clearPendingBootstrap();
+    }
   } catch {
     // ignore
   }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  // Suppress per-tab event wakes during Chrome's initial session-restore burst
+  const cooldownMs = 10_000;
+  await activateStartupCooldown(cooldownMs);
   const cfg = await getConfig();
   await ensureScheduled(cfg.alarmMinutes);
+
+  // After session restore settles, run startup logic if the prompt subscribes to startup
+  // or if events accumulated in OPFS before/during startup.
+  setTimeout(() => {
+    void (async () => {
+      try {
+        const freshCfg = await getConfig();
+        if (!activeKey(freshCfg)) return;
+        const promptText = await loadPrompt();
+        const queuedCount = await peekEventCount();
+        if (promptNeedsStartupRun(promptText) || queuedCount > 0) {
+          await run('startup');
+        }
+      } catch (err) {
+        console.warn('[prompt-in-a-box] startup run failed:', err);
+      }
+    })();
+  }, cooldownMs + 500);
 });
 
 chrome.alarms?.onAlarm?.addListener(async (alarm) => {
@@ -231,11 +280,32 @@ chrome.notifications?.onClicked?.addListener((notificationId) => {
 
 // Subscribe to all Chrome events the manifest grants permission for.
 // Event firings append to an OPFS queue; immediate-trigger events
-// (context menu clicks etc.) call `run('event')` right away.
+// (context menu clicks, or prompt-subscribed events like tabs.onUpdated)
+// coalesce briefly and call `run('event')`.
 const triggerRun = async (): Promise<void> => {
+  if (eventDebounceTimer) {
+    clearTimeout(eventDebounceTimer);
+  }
+  await new Promise<void>((resolve) => {
+    eventDebounceTimer = setTimeout(() => {
+      eventDebounceTimer = null;
+      resolve();
+    }, 350);
+  });
   await run('event');
 };
-startEvents(triggerRun).catch((err) => {
+const fastPathEventRunner = async (ev: {
+  at: number;
+  source: string;
+  payload: unknown;
+}) => {
+  return await tryRunSavedEventScripts(ev, async () => {
+    const basePrompt = await loadPrompt();
+    return await buildToolSet(basePrompt);
+  });
+};
+
+startEvents(triggerRun, fastPathEventRunner).catch((err) => {
   console.warn('[prompt-in-a-box] events bootstrap failed:', err);
 });
 
@@ -278,8 +348,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const cfg = await getConfig();
         await ensureScheduled(cfg.alarmMinutes, true);
         // Permissions may have changed since last boot; re-scan.
-        startEvents(triggerRun).catch(() => {});
+        startEvents(triggerRun, fastPathEventRunner).catch(() => {});
         sendResponse({ ok: true });
+      } else if (msg?.type === 'complete-onboarding') {
+        const cfg = await getConfig();
+        let bootstrapTriggered = false;
+        if (activeKey(cfg)) {
+          const pending = await getPendingBootstrap();
+          if (pending) {
+            await clearPendingBootstrap();
+            bootstrapTriggered = true;
+            void run(pending).catch((err) =>
+              console.warn('[prompt-in-a-box] deferred bootstrap failed:', err),
+            );
+          } else {
+            try {
+              const promptText = await loadPrompt();
+              const auditIdx = await getAuditIndex();
+              if (auditIdx.length === 0 && promptNeedsBootstrap(promptText)) {
+                bootstrapTriggered = true;
+                void run('install').catch((err) =>
+                  console.warn('[prompt-in-a-box] initial onboarding bootstrap failed:', err),
+                );
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+        sendResponse({ ok: true, bootstrapTriggered });
       } else if (msg?.type === 'get-action-history') {
         const history = await listActionHistory(msg.limit || 30);
         sendResponse({ ok: true, history });
@@ -341,6 +438,9 @@ async function run(
   customUserMessage?: string,
 ): Promise<AuditEntry> {
   if (activeRunPromise) {
+    if (trigger === 'event') {
+      pendingEventRetrigger = true;
+    }
     if (trigger !== 'manual' && trigger !== 'onboarding-test') {
       log(`Skipping automatic trigger '${trigger}' because another run is already in progress.`);
       return await activeRunPromise;
@@ -363,11 +463,45 @@ async function run(
     const abortController = new AbortController();
     registerActiveRun(runToken, { runId, startedAt, trigger, abortController });
 
+    if (trigger === 'event') {
+      const cb = await checkEventRunCircuitBreaker({ maxRuns: 12, windowMs: 5 * 60_000 });
+      if (!cb.allowed) {
+        unregisterActiveRun(runToken);
+        const retrySec = Math.ceil(cb.retryAfterMs / 1000);
+        const msg = `Event run rate-limited (${cb.recentCount} event runs in 5m; retry in ~${retrySec}s). Queued events preserved.`;
+        log(msg);
+        void emitAgentLog(
+          {
+            runId,
+            channel: 'error',
+            title: 'Event storm circuit breaker active',
+            body: msg,
+          },
+          'Rate-limited',
+        );
+        const skippedEntry: AuditEntry = {
+          runId,
+          startedAt,
+          finishedAt: Date.now(),
+          trigger,
+          status: 'skipped',
+          provider: cfg.provider,
+          model: cfg.model,
+          summary: msg,
+          toolCalls: [],
+          tokens: { input: 0, output: 0, estimatedCost: 0 },
+        };
+        await writeAudit(skippedEntry);
+        return skippedEntry;
+      }
+    }
+
     if (trigger !== 'onboarding-test') {
       void chrome.storage.local.set({ [LAST_SCHEDULED_RUN_KEY]: startedAt }).catch(() => {});
     }
 
   if (!apiKey) {
+    unregisterActiveRun(runToken);
     const entry: AuditEntry = {
       runId,
       startedAt,
@@ -393,6 +527,7 @@ async function run(
     return entry;
   }
 
+  const keepalive = startServiceWorkerKeepalive(abortController);
   const basePrompt = await loadPrompt();
   const customTools = await buildToolSet(basePrompt);
   const providerTools = filterProviderTools(
@@ -451,6 +586,7 @@ async function run(
       if (abortController.signal.aborted) {
         throw new Error('Run stopped by user');
       }
+      recordToolMutationFromCall(event.toolName, event.args);
       streamLogger.flush();
       pendingByName.set(`${event.step}:${event.toolName}`, {
         at: Date.now(),
@@ -473,6 +609,7 @@ async function run(
       const key = `${event.step}:${event.toolName}`;
       const pending = pendingByName.get(key);
       pendingByName.delete(key);
+      recordToolMutationFromCall(event.toolName, pending?.args ?? event.args, event.result);
       toolCalls.push({
         at: pending?.at ?? Date.now(),
         name: event.toolName,
@@ -603,8 +740,18 @@ async function run(
     return entry;
   } catch (err) {
     streamLogger.flush();
-    const isAborted = abortController.signal.aborted || (err instanceof Error && (err.name === 'AbortError' || err.message.includes('stopped by user')));
-    const errorMsg = isAborted ? 'Run stopped by user' : (err instanceof Error ? err.message : String(err));
+    const didTimeout = keepalive.timedOut();
+    const isAborted =
+      !didTimeout &&
+      (abortController.signal.aborted ||
+        (err instanceof Error && (err.name === 'AbortError' || err.message.includes('stopped by user'))));
+    const errorMsg = didTimeout
+      ? 'Run exceeded 4.5-minute MV3 service worker time limit'
+      : isAborted
+        ? 'Run stopped by user'
+        : err instanceof Error
+          ? err.message
+          : String(err);
     void emitAgentLog(
       {
         runId,
@@ -631,6 +778,7 @@ async function run(
     log('run failed:', err);
     return entry;
   } finally {
+    keepalive.stop();
     unregisterActiveRun(runToken);
     void reconcileStaleRunStatus();
     clearActiveRunToolContext();
@@ -642,6 +790,14 @@ async function run(
     return await exec;
   } finally {
     activeRunPromise = null;
+    if (pendingEventRetrigger) {
+      pendingEventRetrigger = false;
+      void peekEventCount().then((count) => {
+        if (count > 0) {
+          void run('event');
+        }
+      });
+    }
   }
 }
 
@@ -794,6 +950,15 @@ async function composeUserMessage(
     actionLabel: customUserMessage,
   };
 
+  // Inject local time context so schedule/focus-hours prompts never confuse UTC and local time
+  const nowDate = new Date();
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const localHHMM = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+  parts.push(
+    `Current local time: ${dayNames[nowDate.getDay()]} ${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-${String(nowDate.getDate()).padStart(2, '0')} ${localHHMM} (dayOfWeek=${nowDate.getDay()}, timezone=${localTz}, epochMs=${nowDate.getTime()})`,
+  );
+
   // Inject user-configured agent settings if declared
   if (cfg.agentSettings?.fields && cfg.agentSettings.fields.length > 0) {
     const stored = await chrome.storage.local.get('agentSettingsValues');
@@ -807,9 +972,19 @@ async function composeUserMessage(
     parts.push(`Current user-configured agent settings:\n\`\`\`json\n${JSON.stringify(effective, null, 2)}\n\`\`\``);
   }
 
-  // Pre-inject live open tabs and groups for instant single-turn tab management
-  const manifestPerms = chrome.runtime.getManifest().permissions ?? [];
-  if (manifestPerms.includes('tabs') && chrome.tabs?.query) {
+  // Pre-inject live open tabs and groups (checking both manifest and runtime-granted optional permissions)
+  const activePerms = new Set<string>(chrome.runtime.getManifest().permissions ?? []);
+  try {
+    const runtimePerms = await new Promise<string[]>((resolve) => {
+      if (!chrome.permissions?.getAll) return resolve([]);
+      chrome.permissions.getAll((p) => resolve(p?.permissions ?? []));
+    });
+    for (const rp of runtimePerms) activePerms.add(rp);
+  } catch {
+    // ignore
+  }
+
+  if (activePerms.has('tabs') && chrome.tabs?.query) {
     try {
       const allTabs = await chrome.tabs.query({});
       const compactTabs = allTabs.map((t) => {
@@ -828,30 +1003,36 @@ async function composeUserMessage(
           pinned: t.pinned ?? false,
           active: t.active ?? false,
           domain,
-          title: (t.title ?? '').slice(0, 120),
-          url: urlStr.slice(0, 200),
+          title: sanitizeUntrustedText(t.title ?? '', 120),
+          url: sanitizeUntrustedText(urlStr, 200),
           canScript,
         };
       });
-      parts.push(`Current open browser tabs (${compactTabs.length}):\n\`\`\`json\n${JSON.stringify(compactTabs)}\n\`\`\``);
+      const browserStateChunks: string[] = [
+        `Current open browser tabs (${compactTabs.length}):\n\`\`\`json\n${JSON.stringify(compactTabs)}\n\`\`\``,
+      ];
 
       contextSummary.tabCount = compactTabs.length;
       contextSummary.ungroupedCount = compactTabs.filter((t) => !t.pinned && (t.groupId === -1 || t.groupId === undefined)).length;
       contextSummary.sampleDomains = Array.from(new Set(compactTabs.map((t) => t.domain).filter(Boolean))).slice(0, 4);
 
-      if (manifestPerms.includes('tabGroups') && chrome.tabGroups?.query) {
+      if (activePerms.has('tabGroups') && chrome.tabGroups?.query) {
         const allGroups = await chrome.tabGroups.query({});
         const compactGroups = allGroups.map((g) => ({
           id: g.id,
           windowId: g.windowId,
-          title: g.title || '',
+          title: sanitizeUntrustedText(g.title || '', 80),
           color: g.color,
           collapsed: g.collapsed,
           tabCount: compactTabs.filter((t) => t.groupId === g.id).length,
         }));
-        parts.push(`Current tab groups (${compactGroups.length}):\n\`\`\`json\n${JSON.stringify(compactGroups)}\n\`\`\``);
+        browserStateChunks.push(
+          `Current tab groups (${compactGroups.length}):\n\`\`\`json\n${JSON.stringify(compactGroups)}\n\`\`\``,
+        );
         contextSummary.groupCount = compactGroups.length;
       }
+
+      parts.push(wrapUntrustedBrowserData('open_tabs_and_groups', browserStateChunks.join('\n\n')));
     } catch {
       // ignore
     }
@@ -862,7 +1043,7 @@ async function composeUserMessage(
       .slice(0, 50) // safety cap in case a burst accumulated
       .map(
         (e) =>
-          `  - ${new Date(e.at).toISOString()} [${e.source}] ${JSON.stringify(e.payload).slice(0, 500)}`,
+          `  - ${new Date(e.at).toISOString()} [${e.source}] ${sanitizeUntrustedText(JSON.stringify(e.payload), 500)}`,
       )
       .join('\n');
     const truncationNote =
@@ -870,7 +1051,7 @@ async function composeUserMessage(
         ? `\n  (+${events.length - 50} more events truncated)`
         : '';
     parts.push(
-      `Chrome events have fired since your last run. Decide what, if anything, to act on.\n\n${lines}${truncationNote}`,
+      `Chrome events have fired since your last run. Decide what, if anything, to act on.\n\n${wrapUntrustedBrowserData('chrome_events', `${lines}${truncationNote}`)}`,
     );
   } else if (bootstrapHint) {
     parts.push('No queued events.');

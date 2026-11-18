@@ -512,17 +512,26 @@ function wireEventHandlers(): void {
       saveBtn.textContent = 'Saving…';
       try {
         const patch = collectConfig();
-        await setConfig(patch);
+        const hasActiveKey = Boolean(patch.provider && patch.keys?.[patch.provider]?.trim());
+        await setConfig(hasActiveKey ? { ...patch, onboarded: true } : patch);
         currentConfig = await getConfig();
         renderProviderGrid();
         renderActiveProvider();
         renderSchedule();
 
         await chrome.runtime.sendMessage({ type: 'reschedule-alarm' });
+        if (hasActiveKey) {
+          void chrome.runtime
+            .sendMessage({ type: 'complete-onboarding' })
+            .then(() => refreshAudit())
+            .catch(() => {});
+        }
         toast('Settings saved');
 
         const onboardingEl = $('onboarding');
-        if (onboardingEl) onboardingEl.hidden = true;
+        if (onboardingEl && (hasActiveKey || currentConfig.onboarded)) {
+          onboardingEl.hidden = true;
+        }
       } catch (err) {
         toast(`Save failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       } finally {
@@ -543,14 +552,19 @@ function wireEventHandlers(): void {
         const result = (await chrome.runtime.sendMessage({
           type: 'test-provider',
           config: patch,
-        })) as AuditEntry;
+        })) as AuditEntry | { error?: string } | undefined;
 
-        if (result.status === 'ok') {
+        if (!result) {
+          toast('Test error: no response from background service worker', 'error');
+        } else if (!('status' in result && result.status) && 'error' in result && result.error) {
+          toast(`Test error: ${result.error}`, 'error');
+        } else if ('status' in result && result.status === 'ok') {
           toast(`Connected to ${patch.provider}/${patch.model}! Test run complete.`);
-        } else if (result.status === 'skipped') {
-          toast(result.summary, 'error');
+        } else if ('status' in result && result.status === 'skipped') {
+          toast(result.summary || 'Test skipped', 'error');
         } else {
-          toast(`Test failed: ${result.summary}`, 'error');
+          const summary = ('summary' in result && result.summary) || ('error' in result && result.error) || 'Unknown error';
+          toast(`Test failed: ${summary}`, 'error');
         }
         await refreshAudit();
       } catch (err) {

@@ -191,8 +191,15 @@ export const QUEUED_SOURCES: EventSource[] = [
     () => chrome.tabs?.onUpdated,
     (emit) => {
       const h = (tabId: number, info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
-        if (info.status && info.status !== 'complete') return;
-        emit({ tabId, url: tab.url, title: tab.title, status: info.status });
+        if (info.status !== 'complete') return;
+        emit({
+          tabId,
+          url: tab.url,
+          title: tab.title,
+          pinned: tab.pinned ?? false,
+          windowId: tab.windowId,
+          status: info.status,
+        });
       };
       chrome.tabs?.onUpdated?.addListener(h);
       return () => {

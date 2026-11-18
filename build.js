@@ -116,12 +116,8 @@ export function generateExamplesCatalog() {
         if (rawPerms) {
           for (const raw of rawPerms) {
             const p = raw.replace(/`/g, '').trim();
-            if (p && !permissions.includes(p) && !optional_permissions.includes(p)) {
-              if (p === 'storage' || p === 'alarms') {
-                permissions.push(p);
-              } else {
-                optional_permissions.push(p);
-              }
+            if (p && !permissions.includes(p)) {
+              permissions.push(p);
             }
           }
         }
@@ -391,6 +387,9 @@ const common = {
   minify: prod,
   logLevel: 'info',
   plugins: [stubNodeOnlyImports],
+  banner: {
+    js: 'globalThis.__zod_globalConfig = Object.assign(globalThis.__zod_globalConfig || {}, { jitless: true });',
+  },
   define: {
     'import.meta.vitest': 'undefined',
   },

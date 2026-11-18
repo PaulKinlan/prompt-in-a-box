@@ -10,6 +10,8 @@
  * - Directly writes unpacked extension folders to disk via showDirectoryPicker()
  */
 
+import { CAPABILITIES } from './capabilities';
+
 export type IconArtStyle =
   | 'flat-vector'
   | '3d-clay'
@@ -577,12 +579,34 @@ export async function compileExtensionProject(
   baseConfig.pack_hash = contentHash;
 
   // 4. Build manifest.json (pure standard MV3 manifest without non-standard prompt_in_a_box)
-  const corePerms = new Set(['storage', 'alarms', 'offscreen']);
-  for (const p of project.permissions || []) corePerms.add(p);
+  // Permissions selected in Studio go into `permissions` so they are enabled out-of-the-box
+  // on install and appear checked in Settings. Remaining capabilities go into `optional_permissions`
+  // so users can still toggle extra capabilities at runtime in Settings.
+  const corePerms = new Set(['storage', 'alarms', 'offscreen', 'sidePanel']);
+  for (const p of project.permissions || []) {
+    const cap = CAPABILITIES.find((c) => c.id === p);
+    if (cap) {
+      for (const cp of cap.permissions) corePerms.add(cp);
+    } else {
+      corePerms.add(p);
+    }
+  }
 
   const optPerms = new Set<string>();
+  for (const cap of CAPABILITIES) {
+    for (const cp of cap.permissions) {
+      if (!corePerms.has(cp)) optPerms.add(cp);
+    }
+  }
   for (const p of project.optional_permissions || []) {
-    if (!corePerms.has(p)) optPerms.add(p);
+    const cap = CAPABILITIES.find((c) => c.id === p);
+    if (cap) {
+      for (const cp of cap.permissions) {
+        if (!corePerms.has(cp)) optPerms.add(cp);
+      }
+    } else if (!corePerms.has(p)) {
+      optPerms.add(p);
+    }
   }
 
   const manifestData: Record<string, unknown> = {
@@ -623,8 +647,10 @@ export async function compileExtensionProject(
       pages: ['dist/sandbox.html'],
     },
     content_security_policy: {
-      extension_pages: "script-src 'self'; object-src 'self';",
-      sandbox: "sandbox allow-scripts; script-src 'self' 'unsafe-eval' blob:; connect-src 'none';",
+      extension_pages:
+        "script-src 'self'; object-src 'none'; frame-src 'self' about: blob: data:; connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://api.openai.com;",
+      sandbox:
+        "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; child-src 'self'; connect-src 'none'; img-src data: blob:;",
     },
     permissions: Array.from(corePerms),
     optional_permissions: Array.from(optPerms),

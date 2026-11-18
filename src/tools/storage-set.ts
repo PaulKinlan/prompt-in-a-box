@@ -1,8 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { recordAction } from '../action-history';
-
-const STATE_PREFIX = 'state:';
+import { writeStateValue } from '../storage/state-keys';
 
 export const storageSet = tool({
   description:
@@ -12,29 +11,15 @@ export const storageSet = tool({
     value: z.any(),
   }),
   execute: async ({ key, value }) => {
-    const full = STATE_PREFIX + key;
-    let hadPrevious = false;
-    let previousValue: unknown;
-
-    try {
-      const existing = await chrome.storage.local.get(full);
-      if (full in existing) {
-        hadPrevious = true;
-        previousValue = existing[full];
-      }
-    } catch {
-      // Ignore
-    }
-
-    await chrome.storage.local.set({ [full]: value });
+    const { fullKey, shortKey, hadPrevious, previousValue } = await writeStateValue(key, value);
 
     await recordAction({
       toolName: 'storage_set',
-      label: `Updated state: "${key}"`,
+      label: `Updated state: "${shortKey}"`,
       detail: typeof value === 'object' ? JSON.stringify(value).slice(0, 50) : String(value),
       undo: {
         kind: 'storage_set',
-        fullKey: full,
+        fullKey,
         hadPrevious,
         previousValue,
       },

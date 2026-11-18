@@ -1,7 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-
-const STATE_PREFIX = 'state:';
+import { readStateValue } from '../storage/state-keys';
 
 export const storageGet = tool({
   description:
@@ -10,9 +9,6 @@ export const storageGet = tool({
     key: z.string().optional().describe('State key name. Defaults to "default".'),
   }),
   execute: async ({ key }) => {
-    const k = key && key.trim() ? key.trim() : 'default';
-    const full = STATE_PREFIX + k;
-    const got = await chrome.storage.local.get(full);
-    return got[full] ?? null;
+    return await readStateValue(key);
   },
 });

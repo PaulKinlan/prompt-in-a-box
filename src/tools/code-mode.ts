@@ -31,6 +31,16 @@ export const codeMode = tool({
       .describe(
         'Optional identifier name to save this code routine in extension storage so it can be re-executed by name on future runs without re-generating code.',
       ),
+    description: z
+      .string()
+      .optional()
+      .describe('Optional short description when saving a routine with `saveAs`.'),
+    onEvents: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Optional Chrome event source names (e.g. ["tabs.onUpdated"]) to bind when saving a routine. Matching events run this routine on a zero-token fast path with `input.event`; return `{ handled: true }` if handled or `{ handled: false }` to fall back to the LLM.',
+      ),
     scriptName: z
       .string()
       .optional()
@@ -44,11 +54,22 @@ export const codeMode = tool({
       .optional()
       .describe('Maximum number of inner tool calls permitted (default 100, max 250).'),
   }),
-  execute: async ({ code, input, saveAs, scriptName, timeoutMs, maxToolCalls }) => {
+  execute: async ({
+    code,
+    input,
+    saveAs,
+    description,
+    onEvents,
+    scriptName,
+    timeoutMs,
+    maxToolCalls,
+  }) => {
     return await executeCodeMode({
       code,
       input,
       saveAs,
+      description,
+      onEvents,
       scriptName,
       timeoutMs,
       maxToolCalls,
@@ -58,7 +79,7 @@ export const codeMode = tool({
 
 export const codeScripts = tool({
   description:
-    'Manage saved reusable code_mode scripts stored in the extension. Use this to list available scripts, inspect their code, or delete unused ones.',
+    'Manage saved reusable code_mode scripts stored in the extension (including any `onEvents` fast-path event subscriptions). Use this to list available scripts, inspect their code, or delete unused ones.',
   inputSchema: z.object({
     action: z
       .enum(['list', 'get', 'delete'])
@@ -66,23 +87,64 @@ export const codeScripts = tool({
     name: z
       .string()
       .optional()
-      .describe('The script name (required for get and delete).'),
+      .describe('The script name (required for get, and for delete unless deleting by onEvents).'),
+    onEvents: z
+      .array(z.string())
+      .optional()
+      .describe('Optional Chrome event source filter when listing or deleting event-bound scripts.'),
   }),
-  execute: async ({ action, name }) => {
+  execute: async ({ action, name, onEvents }) => {
     if (action === 'list') {
-      const scripts = await listSavedScripts();
+      const allScripts = await listSavedScripts();
+      const filtered =
+        Array.isArray(onEvents) && onEvents.length > 0
+          ? allScripts.filter(
+              (s) =>
+                Array.isArray(s.onEvents) &&
+                s.onEvents.some((ev) => onEvents.includes(ev) || ev === '*'),
+            )
+          : allScripts;
+      const scripts = filtered.map((s) => ({
+        ...s,
+        onEvents: s.onEvents ?? [],
+      }));
       return { ok: true, scripts };
     }
     if (action === 'get') {
       if (!name) return { ok: false, error: 'name is required for get' };
       const script = await loadScript(name);
       if (!script) return { ok: false, error: `Script '${name}' not found` };
-      return { ok: true, script };
+      return {
+        ok: true,
+        script: {
+          ...script,
+          onEvents: script.onEvents ?? [],
+        },
+      };
     }
     if (action === 'delete') {
-      if (!name) return { ok: false, error: 'name is required for delete' };
-      const res = await deleteScript(name);
-      return res;
+      if (name) {
+        const existing = await loadScript(name);
+        const res = await deleteScript(name);
+        return {
+          ...res,
+          deleted: res.ok ? [name] : [],
+          onEvents: existing?.onEvents ?? [],
+        };
+      }
+      if (Array.isArray(onEvents) && onEvents.length > 0) {
+        const allScripts = await listSavedScripts();
+        const matching = allScripts.filter(
+          (s) => Array.isArray(s.onEvents) && s.onEvents.some((ev) => onEvents.includes(ev)),
+        );
+        const deleted: string[] = [];
+        for (const s of matching) {
+          const res = await deleteScript(s.name);
+          if (res.ok) deleted.push(s.name);
+        }
+        return { ok: true, deleted, onEvents };
+      }
+      return { ok: false, error: 'name is required for delete' };
     }
     return { ok: false, error: `Unknown action: ${action}` };
   },

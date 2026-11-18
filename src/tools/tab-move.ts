@@ -1,6 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { recordAction } from '../action-history';
+import {
+  isMissingResourceError,
+  markAgentTabMutation,
+  markAgentWindowMutation,
+} from '../events/mutation-guard';
 
 export const tabMove = tool({
   description:
@@ -12,25 +17,75 @@ export const tabMove = tool({
   }),
   execute: async ({ tabIds, index, windowId }) => {
     const previousPositions: Array<{ tabId: number; windowId: number; index: number }> = [];
+    const liveTabIds: number[] = [];
+
     for (const id of tabIds) {
       try {
         const t = await chrome.tabs.get(id);
+        liveTabIds.push(id);
         previousPositions.push({ tabId: id, windowId: t.windowId, index: t.index });
       } catch {
-        // Tab might be gone
+        // Tab was closed before move; skip missing tab instead of failing the batch
       }
     }
 
-    const moved = await chrome.tabs.move(tabIds, { index, windowId });
-    const arr = Array.isArray(moved) ? moved : [moved];
+    if (liveTabIds.length === 0) {
+      return {
+        ok: false,
+        missing: true,
+        error: `No tab with id: ${tabIds.join(', ')}`,
+      };
+    }
+
+    markAgentTabMutation(liveTabIds);
+    if (windowId !== undefined) {
+      markAgentWindowMutation(windowId);
+    }
+
+    let arr: chrome.tabs.Tab[] = [];
+    try {
+      const moved = await chrome.tabs.move(liveTabIds, { index, windowId });
+      arr = (Array.isArray(moved) ? moved : [moved]).filter(Boolean);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/no window with id/i.test(msg)) {
+        return { ok: false, missing: true, windowId, error: msg };
+      }
+      if (isMissingResourceError(err)) {
+        // A tab closed mid-call; move surviving tabs individually
+        for (const id of liveTabIds) {
+          try {
+            markAgentTabMutation(id);
+            const single = await chrome.tabs.move(id, { index, windowId });
+            if (single) {
+              arr.push(...(Array.isArray(single) ? single : [single]));
+            }
+          } catch {
+            // Skip closed tab
+          }
+        }
+        if (arr.length === 0) {
+          return { ok: false, missing: true, error: msg };
+        }
+      } else {
+        return { ok: false, error: msg };
+      }
+    }
+
+    const movedIds = arr.map((t) => t.id).filter((id): id is number => id !== undefined);
+    if (movedIds.length > 0) {
+      markAgentTabMutation(movedIds);
+    }
 
     await recordAction({
       toolName: 'tab_move',
-      label: `Moved ${tabIds.length} tab${tabIds.length === 1 ? '' : 's'} to index ${index}`,
-      detail: `Tabs: ${tabIds.join(', ')}`,
+      label: `Moved ${arr.length} tab${arr.length === 1 ? '' : 's'} to index ${index}`,
+      detail: `Tabs: ${(movedIds.length > 0 ? movedIds : liveTabIds).join(', ')}`,
       undo: {
         kind: 'tab_move',
-        previousPositions,
+        previousPositions: previousPositions.filter(
+          (p) => movedIds.length === 0 || movedIds.includes(p.tabId),
+        ),
       },
     });
 

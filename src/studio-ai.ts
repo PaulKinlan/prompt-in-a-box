@@ -29,8 +29,8 @@ export const generatedBlueprintSchema = z.object({
   description: z.string().describe('1-2 sentence description explaining the purpose.'),
   intentSummary: z.string().describe('Core problem solved and user interaction loop.'),
   alarmMinutes: z.number().default(30).describe('Periodic alarm interval (5, 15, 30, 60, or 0).'),
-  permissions: z.array(z.string()).describe('Minimal required permissions (e.g. storage, alarms).'),
-  optional_permissions: z.array(z.string()).describe('Optional on-demand permissions (e.g. tabs, tabGroups, scripting).'),
+  permissions: z.array(z.string()).describe('Required permissions enabled on install (e.g. storage, alarms, tabs, notifications).'),
+  optional_permissions: z.array(z.string()).describe('Extra optional permissions the user can grant later in Settings.'),
   host_permissions: z
     .array(z.string())
     .default(['<all_urls>'])
@@ -131,7 +131,7 @@ Design a complete, production-grade Chrome Extension based on the inspiration an
    - Always scope tab actions to \`windowId\`. Never group across windows. Never touch pinned or active tabs.
    - Fire \`action_toast({ message, undoLabel: "Undo" })\` after mutations.
 4. **Permissions**:
-   - Keep required permissions minimal (\`storage\`, \`alarms\`, \`offscreen\`). Place powerful capabilities in \`optional_permissions\` (\`tabs\`, \`tabGroups\`, \`scripting\`, \`bookmarks\`, etc.).
+   - Place all capabilities the prompt actually relies on (\`storage\`, \`alarms\`, plus \`tabs\`, \`tabGroups\`, \`scripting\`, \`notifications\`, \`bookmarks\`, etc. as needed) directly in \`permissions\` so they are enabled on install without manual setup. Use \`optional_permissions\` only for non-essential extras.
 5. **Configurable Settings (\`agentSettings\`)**:
    - Define 2-3 user toggles or dropdowns.
 
@@ -272,10 +272,14 @@ export const chatRefinementSchema = z.object({
     .string()
     .optional()
     .describe('Full updated prompt.md content if changes to the prompt or ```ui block are needed. Omit if unchanged.'),
+  updatedPermissions: z
+    .array(z.string())
+    .optional()
+    .describe('Updated required permissions list (enabled on install) if capability changes are needed. Omit if unchanged.'),
   updatedOptionalPermissions: z
     .array(z.string())
     .optional()
-    .describe('Updated optional_permissions list if capability changes are needed. Omit if unchanged.'),
+    .describe('Updated optional_permissions list if optional capability changes are needed. Omit if unchanged.'),
   updatedHostPermissions: z
     .array(z.string())
     .optional()
@@ -318,7 +322,7 @@ export async function chatRefineProjectWithAI({
 
   let systemPrompt = `You are the lead architect and prompt engineer for "prompt-in-a-box".
 You are collaborating interactively with a developer to build, debug, and refine their Chrome Extension.
-You have full authority to update prompt.md (including declarative \`\`\`ui block, code_mode batching, and lifecycle handling), optional_permissions, and host_permissions (including "<all_urls>").
+You have full authority to update prompt.md (including declarative \`\`\`ui block, code_mode batching, and lifecycle handling), updatedPermissions (required capabilities enabled on install), and host_permissions (including "<all_urls>").
 
 ### Non-Negotiable Architecture Rules:
 1. When diagnosing errors (e.g. "cannot be scripted due to policy", "sandbox execution timed out", "readPage failed", or tool errors):

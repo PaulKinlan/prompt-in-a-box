@@ -2,6 +2,11 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { recordSortSnapshotIfNeeded } from './action-toast';
 import { recordAction, type TabGroupColor } from '../action-history';
+import {
+  isMissingResourceError,
+  markAgentGroupMutation,
+  markAgentTabMutation,
+} from '../events/mutation-guard';
 
 export const tabUngroup = tool({
   description: 'Remove one or more tabs from their tab groups so they become ungrouped again.',
@@ -11,19 +16,31 @@ export const tabUngroup = tool({
   execute: async ({ tabIds }) => {
     await recordSortSnapshotIfNeeded();
 
-    // Map existing groups before ungrouping
+    const liveTabIds: number[] = [];
+    const missingTabIds: number[] = [];
     const groupTabMap = new Map<number, number[]>();
+
     for (const id of tabIds) {
       try {
         const t = await chrome.tabs.get(id);
+        liveTabIds.push(id);
         if (t.groupId && t.groupId > 0) {
           const list = groupTabMap.get(t.groupId) || [];
           list.push(id);
           groupTabMap.set(t.groupId, list);
         }
       } catch {
-        // Tab might be gone
+        missingTabIds.push(id);
       }
+    }
+
+    if (liveTabIds.length === 0) {
+      return {
+        ok: false,
+        missing: true,
+        missingTabIds,
+        error: `No tab with id: ${tabIds.join(', ')}`,
+      };
     }
 
     const previousGroups: Array<{
@@ -52,11 +69,44 @@ export const tabUngroup = tool({
       }
     }
 
-    await chrome.tabs.ungroup(tabIds as [number, ...number[]]);
+    markAgentTabMutation(liveTabIds);
+    const affectedGroupIds = Array.from(groupTabMap.keys());
+    if (affectedGroupIds.length > 0) {
+      markAgentGroupMutation(affectedGroupIds);
+    }
+
+    let ungroupedIds = [...liveTabIds];
+    try {
+      await chrome.tabs.ungroup(liveTabIds as [number, ...number[]]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isMissingResourceError(err)) {
+        ungroupedIds = [];
+        for (const id of liveTabIds) {
+          try {
+            markAgentTabMutation(id);
+            await chrome.tabs.ungroup(id);
+            ungroupedIds.push(id);
+          } catch {
+            missingTabIds.push(id);
+          }
+        }
+        if (ungroupedIds.length === 0) {
+          return { ok: false, missing: true, missingTabIds, error: msg };
+        }
+      } else {
+        return { ok: false, error: msg };
+      }
+    }
+
+    markAgentTabMutation(ungroupedIds);
+    if (affectedGroupIds.length > 0) {
+      markAgentGroupMutation(affectedGroupIds);
+    }
 
     await recordAction({
       toolName: 'tab_ungroup',
-      label: `Ungrouped ${tabIds.length} tabs`,
+      label: `Ungrouped ${ungroupedIds.length} tab${ungroupedIds.length === 1 ? '' : 's'}`,
       detail: `Removed from ${previousGroups.length} group${previousGroups.length === 1 ? '' : 's'}`,
       undo: {
         kind: 'tab_ungroup',
@@ -64,6 +114,10 @@ export const tabUngroup = tool({
       },
     });
 
-    return { ok: true, ungroupedTabIds: tabIds };
+    return {
+      ok: true,
+      ungroupedTabIds: ungroupedIds,
+      ...(missingTabIds.length > 0 ? { missingTabIds } : {}),
+    };
   },
 });

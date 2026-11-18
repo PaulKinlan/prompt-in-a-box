@@ -15,6 +15,7 @@
 
 import { sendToOffscreen } from './offscreen-client';
 import { emitAgentLog } from './logger';
+import { recordToolMutationFromCall } from './events/mutation-guard';
 import type { ToolSet } from 'ai';
 import type { AuditToolCall } from './audit';
 
@@ -234,6 +235,8 @@ export async function handleCodeModeToolCall(msg: any): Promise<{
   session.toolCallsCount++;
   const callStarted = Date.now();
 
+  recordToolMutationFromCall(resolvedName, args);
+
   void emitAgentLog(
     {
       runId: session.runId,
@@ -258,6 +261,7 @@ export async function handleCodeModeToolCall(msg: any): Promise<{
 
   try {
     const result = await execPromise;
+    recordToolMutationFromCall(resolvedName, args, result);
     const durationMs = Date.now() - callStarted;
 
     void emitAgentLog(
@@ -321,6 +325,7 @@ export interface SavedScriptEntry {
   name: string;
   description?: string;
   code: string;
+  onEvents?: string[];
   updatedAt: number;
 }
 
@@ -328,17 +333,32 @@ export async function saveScript(
   name: string,
   code: string,
   description?: string,
+  onEvents?: string[],
 ): Promise<{ ok: boolean; error?: string }> {
   const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
   if (!cleanName) return { ok: false, error: 'Invalid script name' };
 
+  const normalizedEvents =
+    onEvents !== undefined
+      ? Array.from(new Set(onEvents.map((ev) => String(ev).trim()).filter(Boolean)))
+      : undefined;
+
   try {
     const stored = await chrome.storage.local.get(SAVED_SCRIPTS_KEY);
     const scripts = (stored[SAVED_SCRIPTS_KEY] || {}) as Record<string, SavedScriptEntry>;
+    const existing = scripts[cleanName];
+    const resolvedEvents =
+      normalizedEvents !== undefined
+        ? normalizedEvents.length > 0
+          ? normalizedEvents
+          : undefined
+        : existing?.onEvents;
+
     scripts[cleanName] = {
       name: cleanName,
-      description: description?.trim(),
+      description: description !== undefined ? description.trim() || undefined : existing?.description,
       code,
+      ...(resolvedEvents ? { onEvents: resolvedEvents } : {}),
       updatedAt: Date.now(),
     };
     await chrome.storage.local.set({ [SAVED_SCRIPTS_KEY]: scripts });
@@ -389,6 +409,8 @@ export interface ExecuteCodeModeOptions {
   input?: unknown;
   saveAs?: string;
   scriptName?: string;
+  description?: string;
+  onEvents?: string[];
   timeoutMs?: number;
   maxToolCalls?: number;
 }
@@ -430,7 +452,12 @@ export async function executeCodeMode(options: ExecuteCodeModeOptions): Promise<
 
   // 2. Save script if requested
   if (options.saveAs) {
-    await saveScript(options.saveAs, scriptCode);
+    await saveScript(options.saveAs, scriptCode, options.description, options.onEvents);
+  } else if (
+    options.scriptName &&
+    (options.onEvents !== undefined || options.description !== undefined)
+  ) {
+    await saveScript(options.scriptName, scriptCode, options.description, options.onEvents);
   }
 
   const runId = activeRunContext?.runId || `run_${Date.now()}`;
@@ -528,6 +555,88 @@ export async function executeCodeMode(options: ExecuteCodeModeOptions): Promise<
   }
 }
 
+/**
+ * Zero-Token Fast-Path Event Handler Runner.
+ *
+ * Checks whether any saved routines in `__pib_saved_scripts` subscribe to `event.source`
+ * (or `'*'`) via `onEvents`. If a matching routine runs and returns a truthy value
+ * without `{ handled: false }`, the event is considered handled without waking the LLM.
+ */
+export async function tryRunSavedEventScripts(
+  event: { at: number; source: string; payload: unknown },
+  getToolsForFastPath: () => Promise<ToolSet>,
+): Promise<{ handled: boolean; scriptName?: string; result?: unknown }> {
+  if (activeRunContext !== null) {
+    return { handled: false };
+  }
+
+  const savedScripts = await listSavedScripts();
+  const matching = savedScripts.filter(
+    (entry) =>
+      Array.isArray(entry.onEvents) &&
+      (entry.onEvents.includes(event.source) || entry.onEvents.includes('*')),
+  );
+
+  if (matching.length === 0) {
+    return { handled: false };
+  }
+
+  if (activeRunContext !== null) {
+    return { handled: false };
+  }
+
+  let tools: ToolSet;
+  try {
+    tools = await getToolsForFastPath();
+  } catch {
+    return { handled: false };
+  }
+
+  // Re-verify no active LLM run started while tools were building
+  if (activeRunContext !== null) {
+    return { handled: false };
+  }
+
+  const fastPathContext = {
+    runId: `fastpath_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    tools,
+  };
+  activeRunContext = fastPathContext;
+
+  try {
+    for (const entry of matching) {
+      const outcome = await executeCodeMode({
+        scriptName: entry.name,
+        input: { event, now: Date.now() },
+        timeoutMs: 8000,
+        maxToolCalls: 30,
+      });
+
+      if (outcome.ok) {
+        const res = outcome.result;
+        const explicitlyUnhandled =
+          typeof res === 'object' &&
+          res !== null &&
+          (res as Record<string, unknown>).handled === false;
+
+        if (Boolean(res) && !explicitlyUnhandled) {
+          return {
+            handled: true,
+            scriptName: entry.name,
+            result: res,
+          };
+        }
+      }
+    }
+
+    return { handled: false };
+  } finally {
+    if (activeRunContext === fastPathContext) {
+      activeRunContext = null;
+    }
+  }
+}
+
 // ─── Dynamic Runtime Code Mode Prompt Generator ───────────────────────
 
 /**
@@ -557,7 +666,7 @@ export async function buildRuntimeCodeModePrompt(availableTools: ToolSet): Promi
     tab_ungroup:
       'await tools.tab_ungroup({ tabIds: number[] }) → ungroups specified tabs',
     tab_close:
-      'await tools.tab_close({ tabIds: number[] }) → closes specified tabs',
+      'await tools.tab_close({ tabIds: number[], allowPinned?: boolean, expectedHost?: string }) → closes specified tabs safely (skips pinned tabs unless allowPinned=true and skips tabs that navigated away from expectedHost)',
     tab_open:
       'await tools.tab_open({ url: string, active?: boolean }) → creates new tab',
     tab_focus:
@@ -607,7 +716,12 @@ export async function buildRuntimeCodeModePrompt(availableTools: ToolSet): Promi
     if (saved.length > 0) {
       savedScriptsSection =
         '\n\n### Available Saved Routines\nYou previously saved the following reusable scripts in extension storage. You can run them directly via `code_mode({ scriptName: "<name>", input: { ... } })`:\n' +
-        saved.map((s) => `- \`${s.name}\`${s.description ? `: ${s.description}` : ''}`).join('\n');
+        saved
+          .map(
+            (s) =>
+              `- \`${s.name}\`${s.onEvents?.length ? ` [onEvents: ${s.onEvents.join(', ')}]` : ''}${s.description ? `: ${s.description}` : ''}`,
+          )
+          .join('\n');
     }
   } catch {
     // Ignore storage errors
@@ -635,7 +749,7 @@ Instead, **generate and execute an async JavaScript routine dynamically at runti
    - Both \`tools.<snake_case>(args)\` and \`tools.<camelCase>(args)\` are supported (e.g. \`tools.tab_list()\` or \`tools.tabList()\`).
    - Single-primitive shorthand is normalized automatically (e.g. \`tools.tab_read(tab.id)\` and \`tools.storage_get("key")\`).
    - Both \`.id\` and \`.tabId\` are populated on tab and group objects.
-6. **Reusable Routines**: You can optionally pass \`saveAs: "routine_name"\` to save your generated script in storage so future runs can execute it with zero code generation via \`scriptName: "routine_name"\`.
+6. **Reusable Routines**: You can optionally pass \`saveAs: "routine_name"\` to save your generated script in storage so future runs can execute it with zero code generation via \`scriptName: "routine_name"\`. You may also pass \`onEvents?: string[]\` (e.g. \`["tabs.onUpdated"]\`) when saving deterministic event-handling rules so they run automatically on matching Chrome events with zero LLM tokens (receiving \`input.event\` and returning \`{ handled: true }\` when handled or \`{ handled: false }\` to defer to the LLM).
 
 ### Currently Granted Runtime Tools inside \`code_mode\`:
 ${toolLines.join('\n')}${savedScriptsSection}

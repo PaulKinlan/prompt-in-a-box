@@ -8,6 +8,7 @@
  */
 
 import { listActionHistory, type ActionHistoryEntry } from './action-history';
+import { resolveStateKey, RESERVED_SYSTEM_KEYS } from './storage/state-keys';
 import {
   printAgentLogToConsole,
   getLiveLogs,
@@ -558,20 +559,62 @@ export class UIRenderer {
     }
   }
 
-  private bindStorageKey(comp: UIComponent, updater: (val: any) => void): void {
-    const key = comp.storageKey || comp.dataKey;
-    if (!key) return;
-    let list = this.boundStorageMap.get(key);
-    if (!list) {
-      list = [];
-      this.boundStorageMap.set(key, list);
+  private isBlockedBoundKey(rawKey: string, shortKey: string): boolean {
+    const trimmed = rawKey.trim();
+    if (trimmed === 'agentSettingsValues' || shortKey === 'agentSettingsValues') {
+      return false;
     }
-    list.push({ comp, updater });
+    return (
+      RESERVED_SYSTEM_KEYS.has(trimmed) ||
+      RESERVED_SYSTEM_KEYS.has(shortKey) ||
+      trimmed.startsWith('__pib_') ||
+      shortKey.startsWith('__pib_')
+    );
+  }
+
+  private persistBoundValue(comp: UIComponent, val: unknown): void {
+    const rawKey = (comp.storageKey || comp.dataKey || '').trim();
+    if (!rawKey) return;
+    const { shortKey, fullKey } = resolveStateKey(rawKey);
+    if (this.isBlockedBoundKey(rawKey, shortKey)) {
+      console.warn(`[UIRenderer] Blocked writing reserved system key "${rawKey}".`);
+      return;
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ [fullKey]: val }).catch(() => {});
+    }
+  }
+
+  private bindStorageKey(comp: UIComponent, updater: (val: any) => void): void {
+    const rawKey = (comp.storageKey || comp.dataKey || '').trim();
+    if (!rawKey) return;
+    const { shortKey, fullKey, isReserved } = resolveStateKey(rawKey);
+    if (this.isBlockedBoundKey(rawKey, shortKey)) {
+      console.warn(`[UIRenderer] Blocked binding reserved system key "${rawKey}".`);
+      return;
+    }
+
+    const watchKeys = new Set<string>([fullKey, shortKey, rawKey]);
+    for (const wk of watchKeys) {
+      let list = this.boundStorageMap.get(wk);
+      if (!list) {
+        list = [];
+        this.boundStorageMap.set(wk, list);
+      }
+      list.push({ comp, updater });
+    }
 
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get(key).then((stored) => {
-        if (stored && stored[key] !== undefined) {
-          updater(stored[key]);
+      const canFallbackRaw = !isReserved || shortKey === 'agentSettingsValues' || rawKey === 'agentSettingsValues';
+      const fetchKeys = Array.from(new Set(canFallbackRaw ? [fullKey, rawKey, shortKey] : [fullKey]));
+      chrome.storage.local.get(fetchKeys).then((stored) => {
+        if (!stored) return;
+        if (stored[fullKey] !== undefined) {
+          updater(stored[fullKey]);
+        } else if (canFallbackRaw && stored[rawKey] !== undefined) {
+          updater(stored[rawKey]);
+        } else if (canFallbackRaw && stored[shortKey] !== undefined) {
+          updater(stored[shortKey]);
         }
       }).catch(() => {});
     }
@@ -992,24 +1035,41 @@ export class UIRenderer {
       }
 
       case 'input': {
-        if (!comp.id) return null;
+        if (!comp.id && !comp.storageKey && !comp.dataKey) return null;
         const wrapper = document.createElement('div');
         wrapper.className = 'ui-input-wrapper';
 
         const label = document.createElement('label');
-        label.setAttribute('for', comp.id);
-        label.textContent = comp.text || '';
+        if (comp.id) label.setAttribute('for', comp.id);
+        label.textContent = comp.text || comp.title || '';
         wrapper.appendChild(label);
 
         const input = document.createElement('input');
         input.type = 'text';
-        input.id = comp.id;
+        if (comp.id) input.id = comp.id;
         input.placeholder = comp.placeholder || '';
         input.className = 'ui-input-field';
+        const initInputVal = comp.value !== undefined ? comp.value : comp.defaultValue;
+        if (initInputVal !== undefined) {
+          input.value = String(initInputVal);
+          if (comp.id) this.formValues[comp.id] = input.value;
+        }
 
         // Track state changes dynamically
         input.addEventListener('input', () => {
-          this.formValues[comp.id!] = input.value;
+          if (comp.id) this.formValues[comp.id] = input.value;
+          this.persistBoundValue(comp, input.value);
+          this.emitChangeInteraction(comp, input.value);
+        });
+
+        this.bindStorageKey(comp, (val) => {
+          if (val !== undefined && val !== null) {
+            const next = String(val);
+            if (input.value !== next && document.activeElement !== input) {
+              input.value = next;
+            }
+            if (comp.id) this.formValues[comp.id] = input.value;
+          }
         });
 
         wrapper.appendChild(input);
@@ -1128,16 +1188,21 @@ export class UIRenderer {
         ta.className = 'ui-input-field ui-textarea-field';
         ta.placeholder = comp.placeholder || '';
         ta.rows = comp.rows || 3;
-        if (comp.value !== undefined) {
-          ta.value = String(comp.value);
+        const initTaVal = comp.value !== undefined ? comp.value : comp.defaultValue;
+        if (initTaVal !== undefined) {
+          ta.value = String(initTaVal);
           if (comp.id) this.formValues[comp.id] = ta.value;
         }
         ta.addEventListener('input', () => {
           if (comp.id) this.formValues[comp.id] = ta.value;
+          this.persistBoundValue(comp, ta.value);
           this.emitChangeInteraction(comp, ta.value);
         });
         this.bindStorageKey(comp, (val) => {
-          ta.value = String(val ?? '');
+          const next = String(val ?? '');
+          if (ta.value !== next && document.activeElement !== ta) {
+            ta.value = next;
+          }
           if (comp.id) this.formValues[comp.id] = ta.value;
         });
         wrapper.appendChild(ta);
@@ -1161,12 +1226,14 @@ export class UIRenderer {
         if (comp.id) input.id = comp.id;
         input.className = 'ui-input-field ui-password-field';
         input.placeholder = comp.placeholder || 'Enter password/secret...';
-        if (comp.value !== undefined) {
-          input.value = String(comp.value);
+        const initPwVal = comp.value !== undefined ? comp.value : comp.defaultValue;
+        if (initPwVal !== undefined) {
+          input.value = String(initPwVal);
           if (comp.id) this.formValues[comp.id] = input.value;
         }
         input.addEventListener('input', () => {
           if (comp.id) this.formValues[comp.id] = input.value;
+          this.persistBoundValue(comp, input.value);
           this.emitChangeInteraction(comp, input.value);
         });
         const toggleBtn = document.createElement('button');
@@ -1183,7 +1250,10 @@ export class UIRenderer {
         row.appendChild(toggleBtn);
         wrapper.appendChild(row);
         this.bindStorageKey(comp, (val) => {
-          input.value = String(val ?? '');
+          const next = String(val ?? '');
+          if (input.value !== next && document.activeElement !== input) {
+            input.value = next;
+          }
           if (comp.id) this.formValues[comp.id] = input.value;
         });
         return wrapper;
@@ -1202,6 +1272,8 @@ export class UIRenderer {
         if (comp.id) sel.id = comp.id;
         sel.className = 'ui-input-field ui-select-field';
         if (comp.multiple) sel.multiple = true;
+        let dynamicSelectOptions = false;
+        const initialSelVal = comp.value !== undefined ? comp.value : comp.defaultValue;
 
         const populateOptions = (opts: Array<string | UISelectOption>) => {
           sel.innerHTML = '';
@@ -1210,7 +1282,7 @@ export class UIRenderer {
             ph.value = '';
             ph.textContent = comp.placeholder;
             ph.disabled = true;
-            ph.selected = comp.value === undefined;
+            ph.selected = initialSelVal === undefined;
             sel.appendChild(ph);
           }
           for (const opt of opts) {
@@ -1218,12 +1290,12 @@ export class UIRenderer {
             if (typeof opt === 'string') {
               optEl.value = opt;
               optEl.textContent = opt;
-              if (comp.value === opt) optEl.selected = true;
+              if (initialSelVal === opt) optEl.selected = true;
             } else {
               optEl.value = opt.value;
               optEl.textContent = opt.label + (opt.badge ? ` (${opt.badge})` : '');
               if (opt.disabled) optEl.disabled = true;
-              if (comp.value === opt.value) optEl.selected = true;
+              if (initialSelVal === opt.value) optEl.selected = true;
             }
             sel.appendChild(optEl);
           }
@@ -1239,12 +1311,22 @@ export class UIRenderer {
             ? Array.from(sel.selectedOptions).map((o) => o.value)
             : sel.value;
           if (comp.id) this.formValues[comp.id] = v;
+          if (!dynamicSelectOptions) {
+            this.persistBoundValue(comp, v);
+          }
           this.emitChangeInteraction(comp, v);
         });
         this.bindStorageKey(comp, (val) => {
           if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
+            dynamicSelectOptions = true;
             populateOptions(val);
-          } else if (val !== undefined) {
+          } else if (comp.multiple && Array.isArray(val)) {
+            const set = new Set(val.map(String));
+            Array.from(sel.options).forEach((o) => {
+              o.selected = set.has(o.value);
+            });
+            if (comp.id) this.formValues[comp.id] = Array.from(sel.selectedOptions).map((o) => o.value);
+          } else if (val !== undefined && val !== null) {
             sel.value = String(val);
             if (comp.id) this.formValues[comp.id] = sel.value;
           }
@@ -1266,6 +1348,17 @@ export class UIRenderer {
 
         const name = comp.id || `radio_${Math.random().toString(36).substring(2, 8)}`;
         const opts = comp.options || [];
+        let dynamicRadioOptions = false;
+        const baseInitial = comp.value !== undefined ? comp.value : comp.defaultValue;
+        let activeRadioVal =
+          baseInitial !== undefined
+            ? baseInitial
+            : opts[0]
+              ? typeof opts[0] === 'string'
+                ? opts[0]
+                : opts[0].value
+              : '';
+        let currentRadioOpts = opts;
 
         const renderOptions = (optionsList: Array<string | UISelectOption>, activeVal: any) => {
           groupContainer.innerHTML = '';
@@ -1279,9 +1372,13 @@ export class UIRenderer {
               btn.className = `ui-segment-btn ${val === activeVal ? 'active' : ''}`;
               btn.textContent = text;
               btn.onclick = () => {
+                activeRadioVal = val;
                 groupContainer.querySelectorAll('.ui-segment-btn').forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
                 if (comp.id) this.formValues[comp.id] = val;
+                if (!dynamicRadioOptions) {
+                  this.persistBoundValue(comp, val);
+                }
                 this.emitChangeInteraction(comp, val);
               };
               groupContainer.appendChild(btn);
@@ -1295,7 +1392,11 @@ export class UIRenderer {
               if (val === activeVal) r.checked = true;
               r.addEventListener('change', () => {
                 if (r.checked) {
+                  activeRadioVal = val;
                   if (comp.id) this.formValues[comp.id] = val;
+                  if (!dynamicRadioOptions) {
+                    this.persistBoundValue(comp, val);
+                  }
                   this.emitChangeInteraction(comp, val);
                 }
               });
@@ -1308,16 +1409,18 @@ export class UIRenderer {
           }
         };
 
-        const initialVal = comp.value !== undefined ? comp.value : (opts[0] ? (typeof opts[0] === 'string' ? opts[0] : opts[0].value) : '');
-        if (comp.id) this.formValues[comp.id] = initialVal;
-        renderOptions(opts, initialVal);
+        if (comp.id) this.formValues[comp.id] = activeRadioVal;
+        renderOptions(currentRadioOpts, activeRadioVal);
 
         this.bindStorageKey(comp, (val) => {
           if (Array.isArray(val)) {
-            renderOptions(val, initialVal);
-          } else if (val !== undefined) {
+            dynamicRadioOptions = true;
+            currentRadioOpts = val;
+            renderOptions(currentRadioOpts, activeRadioVal);
+          } else if (val !== undefined && val !== null) {
+            activeRadioVal = val;
             if (comp.id) this.formValues[comp.id] = val;
-            renderOptions(opts, val);
+            renderOptions(currentRadioOpts, val);
           }
         });
 
@@ -1337,7 +1440,13 @@ export class UIRenderer {
           }
           const group = document.createElement('div');
           group.className = 'ui-checkbox-group';
-          const selectedSet = new Set(Array.isArray(comp.value) ? comp.value : []);
+          const initArr = Array.isArray(comp.value)
+            ? comp.value
+            : Array.isArray(comp.defaultValue)
+              ? comp.defaultValue
+              : [];
+          const selectedSet = new Set(initArr);
+          const checkboxInputs: HTMLInputElement[] = [];
 
           for (const opt of comp.options) {
             const val = typeof opt === 'string' ? opt : opt.value;
@@ -1353,8 +1462,10 @@ export class UIRenderer {
               else selectedSet.delete(val);
               const arr = Array.from(selectedSet);
               if (comp.id) this.formValues[comp.id] = arr;
+              this.persistBoundValue(comp, arr);
               this.emitChangeInteraction(comp, arr);
             });
+            checkboxInputs.push(chk);
             lbl.appendChild(chk);
             const span = document.createElement('span');
             span.textContent = text;
@@ -1363,16 +1474,27 @@ export class UIRenderer {
           }
           wrapper.appendChild(group);
           if (comp.id) this.formValues[comp.id] = Array.from(selectedSet);
+          this.bindStorageKey(comp, (val) => {
+            if (Array.isArray(val)) {
+              selectedSet.clear();
+              for (const item of val) selectedSet.add(String(item));
+              for (const chk of checkboxInputs) {
+                chk.checked = selectedSet.has(chk.value);
+              }
+              if (comp.id) this.formValues[comp.id] = Array.from(selectedSet);
+            }
+          });
         } else {
           const lbl = document.createElement('label');
           lbl.className = 'ui-checkbox-label single';
           const chk = document.createElement('input');
           chk.type = 'checkbox';
           if (comp.id) chk.id = comp.id;
-          chk.checked = Boolean(comp.checked ?? comp.value);
+          chk.checked = Boolean(comp.checked ?? comp.value ?? comp.defaultValue);
           if (comp.id) this.formValues[comp.id] = chk.checked;
           chk.addEventListener('change', () => {
             if (comp.id) this.formValues[comp.id] = chk.checked;
+            this.persistBoundValue(comp, chk.checked);
             this.emitChangeInteraction(comp, chk.checked);
           });
           lbl.appendChild(chk);
@@ -1415,11 +1537,12 @@ export class UIRenderer {
         const chk = document.createElement('input');
         chk.type = 'checkbox';
         if (comp.id) chk.id = comp.id;
-        chk.checked = Boolean(comp.checked ?? comp.value);
+        chk.checked = Boolean(comp.checked ?? comp.value ?? comp.defaultValue);
         if (comp.id) this.formValues[comp.id] = chk.checked;
 
         chk.addEventListener('change', () => {
           if (comp.id) this.formValues[comp.id] = chk.checked;
+          this.persistBoundValue(comp, chk.checked);
           this.emitChangeInteraction(comp, chk.checked);
         });
 
@@ -1452,7 +1575,12 @@ export class UIRenderer {
         const valBadge = document.createElement('span');
         valBadge.className = 'ui-slider-badge';
         const unit = comp.unit || '';
-        const initialVal = comp.value !== undefined ? comp.value : (comp.min || 0);
+        const initialVal =
+          comp.value !== undefined
+            ? comp.value
+            : comp.defaultValue !== undefined
+              ? comp.defaultValue
+              : (comp.min || 0);
         valBadge.textContent = `${initialVal}${unit}`;
         headerRow.appendChild(valBadge);
         wrapper.appendChild(headerRow);
@@ -1470,12 +1598,13 @@ export class UIRenderer {
         rangeInput.addEventListener('input', () => {
           valBadge.textContent = `${rangeInput.value}${unit}`;
           if (comp.id) this.formValues[comp.id] = Number(rangeInput.value);
+          this.persistBoundValue(comp, Number(rangeInput.value));
           this.emitChangeInteraction(comp, Number(rangeInput.value));
         });
 
         wrapper.appendChild(rangeInput);
         this.bindStorageKey(comp, (val) => {
-          if (val !== undefined) {
+          if (val !== undefined && val !== null) {
             rangeInput.value = String(val);
             valBadge.textContent = `${val}${unit}`;
             if (comp.id) this.formValues[comp.id] = Number(val);
@@ -1497,16 +1626,18 @@ export class UIRenderer {
         inp.type = comp.mode || 'date';
         if (comp.id) inp.id = comp.id;
         inp.className = 'ui-input-field ui-datetime-field';
-        if (comp.value) inp.value = String(comp.value);
+        const initDt = comp.value ?? comp.defaultValue;
+        if (initDt) inp.value = String(initDt);
         if (comp.id) this.formValues[comp.id] = inp.value;
 
         inp.addEventListener('input', () => {
           if (comp.id) this.formValues[comp.id] = inp.value;
+          this.persistBoundValue(comp, inp.value);
           this.emitChangeInteraction(comp, inp.value);
         });
         wrapper.appendChild(inp);
         this.bindStorageKey(comp, (val) => {
-          if (val !== undefined) {
+          if (val !== undefined && val !== null) {
             inp.value = String(val);
             if (comp.id) this.formValues[comp.id] = inp.value;
           }
@@ -1642,6 +1773,7 @@ export class UIRenderer {
           if (!text.trim()) return;
           currentMessages.push({ role: 'user', content: text, timestamp: Date.now() });
           renderMessages(currentMessages);
+          this.persistBoundValue(comp, currentMessages);
           input.value = '';
 
           try {
@@ -1731,9 +1863,7 @@ export class UIRenderer {
               const d = tasks.filter((t) => t.done).length;
               countBadge.textContent = `${d}/${tasks.length} done`;
               if (comp.id) this.formValues[comp.id] = tasks;
-              if (comp.storageKey) {
-                chrome.storage.local.set({ [comp.storageKey]: tasks }).catch(() => {});
-              }
+              this.persistBoundValue(comp, tasks);
               this.emitChangeInteraction(comp, tasks);
             });
 

@@ -2,6 +2,31 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { recordSortSnapshotIfNeeded, actionToast } from './action-toast';
 import { recordAction, type TabGroupColor } from '../action-history';
+import {
+  isMissingResourceError,
+  markAgentGroupMutation,
+  markAgentTabMutation,
+} from '../events/mutation-guard';
+
+type ProcessGroupResult =
+  | {
+      ok: true;
+      id: number | undefined;
+      groupId: number | undefined;
+      windowId: number | undefined;
+      title: string | undefined;
+      color: TabGroupColor | undefined;
+      collapsed: boolean;
+      tabCount: number;
+    }
+  | {
+      ok: false;
+      missing?: boolean;
+      groupId?: number;
+      windowId?: number;
+      error: string;
+    }
+  | null;
 
 export const tabGroup = tool({
   description:
@@ -10,8 +35,14 @@ export const tabGroup = tool({
     groups: z
       .array(
         z.object({
-          groupId: z.number().optional().describe('Optional existing groupId to add tabs into directly without creating a duplicate group.'),
-          title: z.string().optional().describe('Group title (optional when adding to an existing groupId; required when creating a new group).'),
+          groupId: z
+            .number()
+            .optional()
+            .describe('Optional existing groupId to add tabs into directly without creating a duplicate group.'),
+          title: z
+            .string()
+            .optional()
+            .describe('Group title (optional when adding to an existing groupId; required when creating a new group).'),
           color: z
             .enum(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'])
             .optional(),
@@ -29,7 +60,10 @@ export const tabGroup = tool({
     tabIds: z.array(z.any()).optional().describe('Tab ids or tab objects to add to the group.'),
     ids: z.array(z.any()).optional().describe('Alias for tabIds.'),
     tabs: z.array(z.any()).optional().describe('Alias for tabIds (can be tab objects or ids).'),
-    groupId: z.number().optional().describe('Existing group id. Omit to create a new one or reuse an existing matching group.'),
+    groupId: z
+      .number()
+      .optional()
+      .describe('Existing group id. Omit to create a new one or reuse an existing matching group.'),
     id: z.number().optional().describe('Alias for groupId.'),
     windowId: z.number().optional().describe('Optional windowId to restrict or assign this group.'),
     title: z.string().optional(),
@@ -40,7 +74,9 @@ export const tabGroup = tool({
     collapsed: z
       .boolean()
       .optional()
-      .describe('Whether the group should be collapsed. If omitted when adding to an existing group, the group\'s current collapsed state is preserved.'),
+      .describe(
+        "Whether the group should be collapsed. If omitted when adding to an existing group, the group's current collapsed state is preserved.",
+      ),
     includePinned: z.boolean().optional().describe('Whether to allow grouping pinned tabs (default false).'),
   }),
   execute: async ({
@@ -63,7 +99,7 @@ export const tabGroup = tool({
 
     // Fetch all current tabs and tab groups in parallel for instant in-memory lookup
     const [allTabs, allGroups] = await Promise.all([
-      chrome.tabs.query({}),
+      chrome.tabs.query({}).catch(() => []),
       chrome.tabGroups.query({}).catch(() => []),
     ]);
 
@@ -88,7 +124,7 @@ export const tabGroup = tool({
       targetColor?: 'grey' | 'blue' | 'red' | 'yellow' | 'green' | 'pink' | 'purple' | 'cyan' | 'orange';
       targetWindowId?: number;
       targetCollapsed?: boolean;
-    }) => {
+    }): Promise<ProcessGroupResult> => {
       const requestedIds: number[] = spec.requestedTabItems
         .map((item) => {
           if (typeof item === 'number') return item;
@@ -101,6 +137,7 @@ export const tabGroup = tool({
         .filter((n) => Number.isFinite(n));
 
       const liveTabs: chrome.tabs.Tab[] = [];
+      let existingRequestedCount = 0;
       const previousTabs: Array<{
         tabId: number;
         groupId: number;
@@ -114,6 +151,7 @@ export const tabGroup = tool({
       for (const tid of requestedIds) {
         const t = tabMap.get(tid);
         if (!t) continue;
+        existingRequestedCount++;
         if (t.pinned && !includePinned) continue;
 
         let gTitle: string | undefined;
@@ -143,6 +181,13 @@ export const tabGroup = tool({
       }
 
       if (liveTabs.length === 0 && spec.targetGroupId === undefined) {
+        if (requestedIds.length > 0 && existingRequestedCount === 0) {
+          return {
+            ok: false,
+            missing: true,
+            error: `No tab with id: ${requestedIds.join(', ')}`,
+          };
+        }
         return null;
       }
 
@@ -152,7 +197,15 @@ export const tabGroup = tool({
       let prevGroupMeta: { title?: string; color?: TabGroupColor; collapsed?: boolean } | undefined;
 
       if (finalGroupId !== undefined) {
-        const eg = groupMap.get(finalGroupId);
+        let eg = groupMap.get(finalGroupId);
+        if (!eg) {
+          try {
+            eg = await chrome.tabGroups.get(finalGroupId);
+            if (eg) groupMap.set(eg.id, eg);
+          } catch {
+            // Group no longer exists
+          }
+        }
         if (eg) {
           wasCollapsed = eg.collapsed;
           prevGroupMeta = {
@@ -160,6 +213,15 @@ export const tabGroup = tool({
             color: eg.color as TabGroupColor,
             collapsed: eg.collapsed,
           };
+        } else if (liveTabs.length === 0 || !spec.targetTitle) {
+          return {
+            ok: false,
+            missing: true,
+            groupId: finalGroupId,
+            error: `No group with id: ${finalGroupId}`,
+          };
+        } else {
+          finalGroupId = undefined;
         }
       }
 
@@ -185,21 +247,104 @@ export const tabGroup = tool({
         wasCollapsed = true;
       }
 
-      const targetTabIds = liveTabs
+      let targetTabIds = liveTabs
         .filter((t) => effectiveWindowId === undefined || t.windowId === effectiveWindowId)
         .map((t) => t.id!);
 
+      const priorGroupIds = previousTabs.map((pt) => pt.groupId).filter((gid) => gid > 0);
+      if (priorGroupIds.length > 0) {
+        markAgentGroupMutation(priorGroupIds);
+      }
+
       if (targetTabIds.length > 0) {
-        const groupProps: { tabIds: [number, ...number[]]; groupId?: number; createProperties?: { windowId?: number } } = {
-          tabIds: targetTabIds as [number, ...number[]],
-        };
+        markAgentTabMutation(targetTabIds);
         if (finalGroupId !== undefined) {
-          groupProps.groupId = finalGroupId;
-        } else if (effectiveWindowId !== undefined) {
-          groupProps.createProperties = { windowId: effectiveWindowId };
+          markAgentGroupMutation(finalGroupId);
         }
 
-        finalGroupId = await chrome.tabs.group(groupProps as any);
+        const buildGroupProps = (
+          tids: number[],
+          gid?: number,
+        ): { tabIds: [number, ...number[]]; groupId?: number; createProperties?: { windowId?: number } } => {
+          const gp: { tabIds: [number, ...number[]]; groupId?: number; createProperties?: { windowId?: number } } = {
+            tabIds: tids as [number, ...number[]],
+          };
+          if (gid !== undefined) {
+            gp.groupId = gid;
+          } else if (effectiveWindowId !== undefined) {
+            gp.createProperties = { windowId: effectiveWindowId };
+          }
+          return gp;
+        };
+
+        try {
+          finalGroupId = await chrome.tabs.group(buildGroupProps(targetTabIds, finalGroupId) as any);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/no group with id|no tab group with id/i.test(msg)) {
+            if (spec.targetTitle) {
+              prevGroupMeta = undefined;
+              try {
+                finalGroupId = await chrome.tabs.group(buildGroupProps(targetTabIds, undefined) as any);
+              } catch (retryErr) {
+                const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+                return {
+                  ok: false,
+                  missing: isMissingResourceError(retryErr),
+                  error: retryMsg,
+                };
+              }
+            } else {
+              return {
+                ok: false,
+                missing: true,
+                groupId: finalGroupId,
+                error: msg,
+              };
+            }
+          } else if (/no tab with id/i.test(msg)) {
+            // Re-filter surviving tabs in case one closed between query and group
+            const survivingIds: number[] = [];
+            for (const tid of targetTabIds) {
+              try {
+                await chrome.tabs.get(tid);
+                survivingIds.push(tid);
+              } catch {
+                // Skip closed tab
+              }
+            }
+            if (survivingIds.length === 0) {
+              return { ok: false, missing: true, error: msg };
+            }
+            targetTabIds = survivingIds;
+            markAgentTabMutation(targetTabIds);
+            try {
+              finalGroupId = await chrome.tabs.group(buildGroupProps(targetTabIds, finalGroupId) as any);
+            } catch (retryErr) {
+              const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+              return {
+                ok: false,
+                missing: isMissingResourceError(retryErr),
+                error: retryMsg,
+              };
+            }
+          } else if (/no window with id/i.test(msg)) {
+            return {
+              ok: false,
+              missing: true,
+              windowId: effectiveWindowId,
+              error: msg,
+            };
+          } else if (isMissingResourceError(err)) {
+            return { ok: false, missing: true, error: msg };
+          } else {
+            return { ok: false, error: msg };
+          }
+        }
+
+        if (finalGroupId !== undefined) {
+          markAgentGroupMutation(finalGroupId);
+        }
       }
 
       // Strictly preserve collapsed state: An already-collapsed group MUST NEVER be expanded
@@ -213,24 +358,34 @@ export const tabGroup = tool({
       }
 
       const isExistingGroup = prevGroupMeta !== undefined;
-      const resolvedColor = (isExistingGroup && prevGroupMeta?.color)
-        ? (spec.targetColor ?? prevGroupMeta.color)
-        : (spec.targetColor ?? (prevGroupMeta?.color as TabGroupColor | undefined));
+      const resolvedColor =
+        isExistingGroup && prevGroupMeta?.color
+          ? (spec.targetColor ?? prevGroupMeta.color)
+          : (spec.targetColor ?? (prevGroupMeta?.color as TabGroupColor | undefined));
 
       // If targeting an existing group, preserve its existing title unless explicitly overriding
-      const resolvedTitle = spec.targetTitle !== undefined && spec.targetTitle.trim().length > 0
-        ? spec.targetTitle
-        : prevGroupMeta?.title;
+      const resolvedTitle =
+        spec.targetTitle !== undefined && spec.targetTitle.trim().length > 0
+          ? spec.targetTitle
+          : prevGroupMeta?.title;
 
       if (finalGroupId !== undefined) {
+        markAgentGroupMutation(finalGroupId);
         const updateProps: chrome.tabGroups.UpdateProperties = {};
         if (resolvedTitle !== undefined) updateProps.title = resolvedTitle;
         if (resolvedColor !== undefined) updateProps.color = resolvedColor;
         updateProps.collapsed = targetCollapsed;
         try {
           await chrome.tabGroups.update(finalGroupId, updateProps);
-        } catch {
-          // ignore
+        } catch (err) {
+          if (targetTabIds.length === 0 && isMissingResourceError(err)) {
+            return {
+              ok: false,
+              missing: true,
+              groupId: finalGroupId,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
         }
         if (targetCollapsed) {
           desiredCollapsedByGroupId.set(finalGroupId, true);
@@ -239,7 +394,9 @@ export const tabGroup = tool({
 
       await recordAction({
         toolName: 'tab_group',
-        label: resolvedTitle ? `Grouped ${targetTabIds.length} tabs into "${resolvedTitle}"` : `Grouped ${targetTabIds.length} tabs`,
+        label: resolvedTitle
+          ? `Grouped ${targetTabIds.length} tabs into "${resolvedTitle}"`
+          : `Grouped ${targetTabIds.length} tabs`,
         detail: `${targetTabIds.length} tabs into group ${finalGroupId} (window ${effectiveWindowId})`,
         undo: {
           kind: 'tab_group',
@@ -251,6 +408,7 @@ export const tabGroup = tool({
       });
 
       return {
+        ok: true,
         id: finalGroupId,
         groupId: finalGroupId,
         windowId: effectiveWindowId,
@@ -268,6 +426,7 @@ export const tabGroup = tool({
         const currentGroups = await chrome.tabGroups.query({});
         for (const cg of currentGroups) {
           if (desiredCollapsedByGroupId.get(cg.id) === true && !cg.collapsed) {
+            markAgentGroupMutation(cg.id);
             await chrome.tabGroups.update(cg.id, { collapsed: true }).catch(() => {});
           }
         }
@@ -279,7 +438,9 @@ export const tabGroup = tool({
     // 1. Batch mode
     if (Array.isArray(groups) && groups.length > 0) {
       const results: any[] = [];
+      const errors: Array<{ missing?: boolean; error: string }> = [];
       let totalTabs = 0;
+
       for (const g of groups) {
         const res = await processGroup({
           requestedTabItems: g.tabIds,
@@ -289,10 +450,25 @@ export const tabGroup = tool({
           targetWindowId: g.windowId,
           targetCollapsed: g.collapsed,
         });
-        if (res) {
-          results.push(res);
+        if (res && res.ok) {
+          const { ok: _ok, ...groupSummary } = res;
+          results.push(groupSummary);
           totalTabs += res.tabCount;
+        } else if (res && !res.ok) {
+          errors.push({ missing: res.missing, error: res.error });
         }
+      }
+
+      if (results.length === 0 && errors.length > 0) {
+        const allMissing = errors.every((e) => e.missing);
+        return {
+          ok: false,
+          ...(allMissing ? { missing: true } : {}),
+          batch: true,
+          groups: [],
+          totalTabsGrouped: 0,
+          error: errors.map((e) => e.error).join('; '),
+        };
       }
 
       await enforceCollapsedStates();
@@ -345,6 +521,13 @@ export const tabGroup = tool({
       return { ok: false, error: 'No accessible unpinned tabs to group', tabCount: 0 };
     }
 
+    if (!singleRes.ok) {
+      return {
+        ...singleRes,
+        tabCount: 0,
+      };
+    }
+
     await enforceCollapsedStates();
 
     if (toastMessage) {
@@ -369,9 +552,6 @@ export const tabGroup = tool({
       // ignore
     }
 
-    return {
-      ...singleRes,
-      ok: true,
-    };
+    return singleRes;
   },
 });

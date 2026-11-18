@@ -5,6 +5,7 @@
  * and packaging standalone Chrome Extensions.
  */
 
+import './zod-jitless';
 import { getConfig, type Config } from './config';
 import { CAPABILITIES, inferPermissionsFromPrompt, type PermissionInferenceResult } from './capabilities';
 import { UIRenderer, extractUIBlockFromPrompt, sanitizeJsonStringLiterals, normalizeThemeName } from './ui-renderer';
@@ -138,8 +139,8 @@ const STARTER_PROJECTS: ExtensionProjectData[] = [
     description: 'Smart tab organizer that automatically groups related research topics with live action history and instant undo.',
     prompt: SORTING_HAT_PROMPT,
     alarmMinutes: 30,
-    permissions: ['storage', 'alarms'],
-    optional_permissions: ['tabs', 'tabGroups', 'scripting'],
+    permissions: ['storage', 'alarms', 'tabs', 'tabGroups', 'scripting'],
+    optional_permissions: [],
     host_permissions: ['<all_urls>'],
     agentSettings: [
       { id: 'auto_sort', label: 'Auto-sort on schedule', hint: 'Sort tabs periodically', type: 'boolean', default: true },
@@ -156,13 +157,37 @@ const STARTER_PROJECTS: ExtensionProjectData[] = [
     description: 'Declutters browser bookmarks, finds duplicate URLs, and organizes links cleanly.',
     prompt: BOOKMARK_GARDENER_PROMPT,
     alarmMinutes: 60,
-    permissions: ['storage', 'alarms'],
-    optional_permissions: ['bookmarks'],
+    permissions: ['storage', 'alarms', 'bookmarks'],
+    optional_permissions: [],
     host_permissions: ['<all_urls>'],
     iconBrief: { symbol: 'bookmark', colors: ['#10b981', '#06b6d4'], styleDescription: 'Emerald green bookmark' },
     includeStudio: false,
   },
 ];
+
+/**
+ * Ensures selected capabilities live in `project.permissions` (enabled on install)
+ * and migrates legacy Studio projects where checked capabilities were placed into
+ * `optional_permissions` while `permissions` only held `['storage', 'alarms']`.
+ */
+function normalizeProjectPermissions(p: ExtensionProjectData): ExtensionProjectData {
+  const coreOnly = new Set(['storage', 'alarms', 'offscreen', 'sidePanel']);
+  const req = new Set<string>(['storage', 'alarms', ...(p.permissions || [])]);
+  const opt = p.optional_permissions || [];
+
+  const hasNonCoreReq = Array.from(req).some((x) => !coreOnly.has(x));
+  const looksLikeFullTemplateOptDump = opt.includes('fontSettings') || opt.includes('nativeMessaging');
+
+  if (!hasNonCoreReq && opt.length > 0 && !looksLikeFullTemplateOptDump) {
+    for (const perm of opt) {
+      req.add(perm);
+    }
+  }
+
+  p.permissions = Array.from(req);
+  p.optional_permissions = opt.filter((x) => !req.has(x));
+  return p;
+}
 
 // Merge generated examples catalog with starter projects, deduplicating by slug
 const ALL_STARTER_TEMPLATES: ExtensionProjectData[] = (() => {
@@ -191,7 +216,7 @@ const ALL_STARTER_TEMPLATES: ExtensionProjectData[] = (() => {
   for (const item of baseList) {
     if (!seen.has(item.slug)) {
       seen.add(item.slug);
-      list.push(item);
+      list.push(normalizeProjectPermissions(item));
     }
   }
   return list;
@@ -212,6 +237,7 @@ function slugify(text: string): string {
 
 interface EditorUndoSnapshot {
   promptText: string;
+  permissions: string[];
   hostPermissions: string[];
   optionalPermissions: string[];
   tab: string;
@@ -259,7 +285,8 @@ async function initStudio(): Promise<void> {
   // Load projects from storage or seed defaults
   const stored = await chrome.storage.local.get(['studioProjects', 'activeStudioProjectId', 'studioLiveOverride']);
   if (Array.isArray(stored.studioProjects) && stored.studioProjects.length > 0) {
-    projects = stored.studioProjects;
+    projects = stored.studioProjects.map((p: ExtensionProjectData) => normalizeProjectPermissions(p));
+    await chrome.storage.local.set({ studioProjects: projects });
   } else {
     projects = [...STARTER_PROJECTS];
     await chrome.storage.local.set({ studioProjects: projects });
@@ -303,9 +330,8 @@ function setupPermissionsList(): void {
     cb.id = `perm_${cap.id}`;
     cb.style.marginTop = '2px';
 
-    const isReq = (currentProject.permissions || []).includes(cap.id);
-    const isOpt = (currentProject.optional_permissions || []).includes(cap.id);
-    cb.checked = isReq || isOpt;
+    const reqSet = new Set(currentProject.permissions || []);
+    cb.checked = cap.permissions.every((p) => reqSet.has(p)) || reqSet.has(cap.id);
 
     cb.addEventListener('change', () => {
       savePermissionsFromCheckboxes();
@@ -323,32 +349,40 @@ function setupPermissionsList(): void {
 
 function savePermissionsFromCheckboxes(): void {
   const container = $('permissionsCheckboxList');
-  const checked = Array.from(container.querySelectorAll<HTMLInputElement>('input:checked')).map((i) => i.value);
+  const checked = new Set(
+    Array.from(container.querySelectorAll<HTMLInputElement>('input:checked')).map((i) => i.value),
+  );
 
-  // Core permissions required for background loop
-  const core = new Set(['storage', 'alarms']);
-  const optional: string[] = [];
+  // Checked permissions go into `permissions` so they are enabled out-of-the-box on install.
+  // Unchecked capabilities remain available in `optional_permissions` for runtime toggling in Settings.
+  const required = new Set<string>(['storage', 'alarms', 'offscreen', 'sidePanel']);
+  const optional = new Set<string>();
 
-  for (const id of checked) {
-    if (!core.has(id)) {
-      optional.push(id);
+  for (const cap of CAPABILITIES) {
+    if (checked.has(cap.id)) {
+      for (const p of cap.permissions) required.add(p);
+    } else {
+      for (const p of cap.permissions) {
+        if (!required.has(p)) optional.add(p);
+      }
     }
   }
 
-  currentProject.permissions = Array.from(core);
-  currentProject.optional_permissions = optional;
+  currentProject.permissions = Array.from(required);
+  currentProject.optional_permissions = Array.from(optional);
   saveProject();
+  updatePermissionInferenceUI(false);
   if (activeEditorTab === 'manifest') renderCodeEditor();
 }
 
 function updatePermissionsCheckboxes(): void {
-  const allProjectPerms = new Set([
-    ...(currentProject.permissions || []),
-    ...(currentProject.optional_permissions || []),
-  ]);
+  const reqSet = new Set(currentProject.permissions || []);
   const inputs = $('permissionsCheckboxList').querySelectorAll<HTMLInputElement>('input');
   for (const inp of inputs) {
-    inp.checked = allProjectPerms.has(inp.value);
+    const cap = CAPABILITIES.find((c) => c.id === inp.value);
+    inp.checked = cap
+      ? cap.permissions.every((p) => reqSet.has(p)) || reqSet.has(cap.id)
+      : reqSet.has(inp.value);
   }
 }
 
@@ -357,7 +391,7 @@ function updatePermissionsCheckboxes(): void {
 function updatePermissionInferenceUI(applyImmediately = false): void {
   const promptText = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : (currentProject.prompt || '');
   const descText = currentProject.description || ($textarea('extDescInput') ? $textarea('extDescInput').value : '');
-  const currentPerms = [...(currentProject.permissions || []), ...(currentProject.optional_permissions || [])];
+  const currentPerms = [...(currentProject.permissions || [])];
   const currentHosts = currentProject.host_permissions || [];
 
   const res = inferPermissionsFromPrompt({
@@ -370,16 +404,18 @@ function updatePermissionInferenceUI(applyImmediately = false): void {
 
   if (applyImmediately) {
     pushEditorUndoSnapshot();
-    const core = new Set(['storage', 'alarms']);
-    const existingOpt = new Set(currentProject.optional_permissions || []);
+    const existingReq = new Set(['storage', 'alarms', ...(currentProject.permissions || [])]);
     let addedCount = 0;
     for (const p of res.missingPermissions) {
-      if (!core.has(p)) {
-        existingOpt.add(p);
+      if (!existingReq.has(p)) {
+        existingReq.add(p);
         addedCount++;
       }
     }
-    currentProject.optional_permissions = Array.from(existingOpt);
+    currentProject.permissions = Array.from(existingReq);
+    currentProject.optional_permissions = (currentProject.optional_permissions || []).filter(
+      (p) => !existingReq.has(p),
+    );
 
     const existingHosts = new Set(currentProject.host_permissions || []);
     let addedHostsCount = 0;
@@ -776,6 +812,7 @@ function pushEditorUndoSnapshot(): void {
   const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
   editorUndoStack.push({
     promptText: currentPrompt,
+    permissions: [...(currentProject.permissions || ['storage', 'alarms'])],
     hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
     optionalPermissions: [...(currentProject.optional_permissions || [])],
     tab: activeEditorTab,
@@ -799,6 +836,7 @@ function performEditorUndo(): void {
   const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
   editorRedoStack.push({
     promptText: currentPrompt,
+    permissions: [...(currentProject.permissions || ['storage', 'alarms'])],
     hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
     optionalPermissions: [...(currentProject.optional_permissions || [])],
     tab: activeEditorTab,
@@ -806,6 +844,7 @@ function performEditorUndo(): void {
 
   const snap = editorUndoStack.pop()!;
   currentProject.prompt = snap.promptText;
+  currentProject.permissions = snap.permissions;
   currentProject.host_permissions = snap.hostPermissions;
   currentProject.optional_permissions = snap.optionalPermissions;
 
@@ -826,6 +865,7 @@ function performEditorRedo(): void {
   const currentPrompt = activeEditorTab === 'prompt' ? $textarea('codeEditor').value : currentProject.prompt || '';
   editorUndoStack.push({
     promptText: currentPrompt,
+    permissions: [...(currentProject.permissions || ['storage', 'alarms'])],
     hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
     optionalPermissions: [...(currentProject.optional_permissions || [])],
     tab: activeEditorTab,
@@ -833,6 +873,7 @@ function performEditorRedo(): void {
 
   const snap = editorRedoStack.pop()!;
   currentProject.prompt = snap.promptText;
+  currentProject.permissions = snap.permissions;
   currentProject.host_permissions = snap.hostPermissions;
   currentProject.optional_permissions = snap.optionalPermissions;
 
@@ -1329,8 +1370,16 @@ async function handleAiGenerate(): Promise<void> {
     if (blueprint.slug) currentProject.slug = blueprint.slug;
     if (blueprint.description) currentProject.description = blueprint.description;
     if (blueprint.alarmMinutes !== undefined) currentProject.alarmMinutes = blueprint.alarmMinutes;
-    if (blueprint.permissions) currentProject.permissions = blueprint.permissions;
-    if (blueprint.optional_permissions) currentProject.optional_permissions = blueprint.optional_permissions;
+    if (blueprint.permissions || blueprint.optional_permissions) {
+      const merged = new Set([
+        'storage',
+        'alarms',
+        ...(blueprint.permissions || []),
+        ...(blueprint.optional_permissions || []),
+      ]);
+      currentProject.permissions = Array.from(merged);
+      currentProject.optional_permissions = [];
+    }
     if (blueprint.host_permissions) currentProject.host_permissions = blueprint.host_permissions;
     if (blueprint.agentSettings) currentProject.agentSettings = blueprint.agentSettings;
     if (blueprint.iconBrief) {
@@ -1833,6 +1882,7 @@ function renderChatMessages(): void {
       const snap = msg.appliedChange.undoSnapshot;
       undoBtn.addEventListener('click', () => {
         currentProject.prompt = snap.promptText;
+        currentProject.permissions = snap.permissions;
         currentProject.host_permissions = snap.hostPermissions;
         currentProject.optional_permissions = snap.optionalPermissions;
         if (activeEditorTab === 'prompt') {
@@ -1909,6 +1959,7 @@ async function sendChatMessage(customText?: string): Promise<void> {
 
     const hasChanges = Boolean(
       result.updatedPromptMarkdown ||
+      result.updatedPermissions ||
       result.updatedOptionalPermissions ||
       result.updatedHostPermissions
     );
@@ -1916,6 +1967,7 @@ async function sendChatMessage(customText?: string): Promise<void> {
     if (hasChanges) {
       undoSnapshot = {
         promptText: currentProject.prompt || '',
+        permissions: [...(currentProject.permissions || ['storage', 'alarms'])],
         hostPermissions: [...(currentProject.host_permissions || ['<all_urls>'])],
         optionalPermissions: [...(currentProject.optional_permissions || [])],
         tab: activeEditorTab,
@@ -1929,8 +1981,17 @@ async function sendChatMessage(customText?: string): Promise<void> {
         }
       }
 
-      if (result.updatedOptionalPermissions) {
-        currentProject.optional_permissions = result.updatedOptionalPermissions;
+      if (result.updatedPermissions || result.updatedOptionalPermissions) {
+        const mergedReq = new Set([
+          'storage',
+          'alarms',
+          ...(result.updatedPermissions ?? currentProject.permissions ?? []),
+          ...(result.updatedOptionalPermissions ?? []),
+        ]);
+        currentProject.permissions = Array.from(mergedReq);
+        currentProject.optional_permissions = (currentProject.optional_permissions || []).filter(
+          (p) => !mergedReq.has(p),
+        );
         updatePermissionsCheckboxes();
       }
 
@@ -2038,13 +2099,22 @@ function generateUiSkeletonFromPromptAndConfig(project: ExtensionProjectData): {
   ];
 
   // 5. High-signal Metrics tailored to domain
-  if (permsSet.has('tabGroups') || permsSet.has('tabs')) {
+  if (permsSet.has('tabGroups')) {
     comps.push({
       type: 'metrics',
       metrics: [
         { label: 'Open Tabs', value: '16', subvalue: '2 windows' },
         { label: 'Active Groups', value: '3', subvalue: 'organized' },
         { label: 'Ungrouped', value: '4', subvalue: 'pending' },
+      ],
+    });
+  } else if (permsSet.has('tabs')) {
+    comps.push({
+      type: 'metrics',
+      metrics: [
+        { label: 'Open Tabs', value: '—', subvalue: 'monitored' },
+        { label: 'Flagged', value: '0', subvalue: 'active session' },
+        { label: 'Status', value: 'Active', subvalue: 'watching tabs' },
       ],
     });
   } else if (permsSet.has('bookmarks')) {
@@ -2174,8 +2244,10 @@ function generateUiSkeletonFromPromptAndConfig(project: ExtensionProjectData): {
 
   // 8. Workflow Run Progress
   let steps = ['Scan browser state', 'Evaluate prompt criteria', 'Execute agent actions'];
-  if (permsSet.has('tabGroups') || permsSet.has('tabs')) {
+  if (permsSet.has('tabGroups')) {
     steps = ['Scan open tabs & window context', 'Classify tabs into research topics', 'Apply tab groups safely'];
+  } else if (permsSet.has('tabs')) {
+    steps = ['Inspect open tabs & recent events', 'Evaluate prompt rules & thresholds', 'Apply tab actions & notify'];
   } else if (permsSet.has('bookmarks')) {
     steps = ['Scan bookmark tree & URLs', 'Detect broken links & duplicates', 'Reorganize folders'];
   } else if (permsSet.has('history')) {
@@ -2354,8 +2426,8 @@ function setupEventListeners(): void {
       description: 'An autonomous Chrome extension designed with Prompt in a Box.',
       prompt: `# New Custom Agent\n\n\`\`\`ui\n{\n  "title": "Agent Dashboard",\n  "theme": "compact",\n  "components": [\n    { "type": "header", "text": "Dashboard" },\n    { "type": "button", "id": "btn_go", "text": "Run", "intent": "info", "action": "trigger-run" }\n  ]\n}\n\`\`\`\n\nPerform actions through granted tools.\n`,
       alarmMinutes: 30,
-      permissions: ['storage', 'alarms'],
-      optional_permissions: ['tabs'],
+      permissions: ['storage', 'alarms', 'tabs'],
+      optional_permissions: [],
       host_permissions: ['<all_urls>'],
       iconBrief: { symbol: 'spark', colors: ['#6366f1', '#a855f7'] },
     };
@@ -2948,6 +3020,23 @@ function setupEventListeners(): void {
     if (activeEditorTab === 'prompt') {
       currentProject.prompt = $textarea('codeEditor').value;
       updateLiveUiPreview();
+    } else if (activeEditorTab === 'manifest') {
+      try {
+        const parsed = JSON.parse($textarea('codeEditor').value);
+        if (Array.isArray(parsed.permissions)) {
+          currentProject.permissions = parsed.permissions;
+        }
+        if (Array.isArray(parsed.optional_permissions)) {
+          currentProject.optional_permissions = parsed.optional_permissions;
+        }
+        if (Array.isArray(parsed.host_permissions)) {
+          currentProject.host_permissions = parsed.host_permissions;
+          renderHostPermissionsUI();
+        }
+        updatePermissionsCheckboxes();
+      } catch {
+        // Ignore partial JSON while typing
+      }
     }
     updateEditorStatus();
     saveProject();
